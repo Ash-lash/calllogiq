@@ -216,6 +216,14 @@ async function uploadToCloudinary(filePath, publicId, isRaw = false) {
   }
 }
 
+// Health Check Routes
+app.get('/', (req, res) => {
+  res.json({ status: 'healthy', service: 'CallLogIQ Backend', timestamp: new Date() });
+});
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'healthy', service: 'CallLogIQ Backend API' });
+});
+
 // --- AUTH ROUTES ---
 
 // 1. Initiate Register

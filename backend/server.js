@@ -126,8 +126,51 @@ function logSimulatedEmail(email, otp) {
   console.log('└────────────────────────────────────────────────────────┘\n');
 }
 
-// Send OTP Email (SMTP with Console fallback)
+// Send OTP Email (Resend Web API, falling back to SMTP, falling back to Console)
 async function sendOTPEmail(email, otp) {
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; max-width: 480px;">
+      <h2 style="color: #4f46e5; margin-bottom: 10px;">CallLogIQ Verification</h2>
+      <p style="color: #475569; font-size: 16px;">Hello,</p>
+      <p style="color: #475569; font-size: 16px;">Your verification OTP code is:</p>
+      <div style="background-color: #f1f5f9; padding: 15px; border-radius: 8px; font-size: 28px; font-weight: bold; letter-spacing: 4px; text-align: center; margin: 20px 0; color: #0f172a;">
+        ${otp}
+      </div>
+      <p style="color: #94a3b8; font-size: 14px;">This code is valid for 10 minutes. If you did not request this, you can safely ignore this email.</p>
+    </div>
+  `;
+
+  // 1. Try Resend API if API Key is configured
+  if (process.env.RESEND_API_KEY) {
+    try {
+      console.log('Attempting to send OTP email via Resend API...');
+      const fromEmail = process.env.RESEND_FROM || "CallLogIQ <onboarding@resend.dev>";
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: email,
+          subject: 'Your CallLogIQ Verification OTP Code',
+          html: htmlContent
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || JSON.stringify(result));
+      }
+      console.log(`OTP Email sent to ${email} via Resend API successfully.`);
+      return true;
+    } catch (err) {
+      console.error('Resend API email sending failed, trying SMTP fallback:', err.message);
+    }
+  }
+
+  // 2. Fallback to Nodemailer SMTP
   if (mailTransporter) {
     try {
       const mailOptions = {
@@ -135,17 +178,7 @@ async function sendOTPEmail(email, otp) {
         to: email,
         subject: 'Your CallLogIQ Verification OTP Code',
         text: `Your CallLogIQ verification code is ${otp}. It is valid for 10 minutes.`,
-        html: `
-          <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; max-width: 480px;">
-            <h2 style="color: #4f46e5; margin-bottom: 10px;">CallLogIQ Verification</h2>
-            <p style="color: #475569; font-size: 16px;">Hello,</p>
-            <p style="color: #475569; font-size: 16px;">Your verification OTP code is:</p>
-            <div style="background-color: #f1f5f9; padding: 15px; border-radius: 8px; font-size: 28px; font-weight: bold; letter-spacing: 4px; text-align: center; margin: 20px 0; color: #0f172a;">
-              ${otp}
-            </div>
-            <p style="color: #94a3b8; font-size: 14px;">This code is valid for 10 minutes. If you did not request this, you can safely ignore this email.</p>
-          </div>
-        `
+        html: htmlContent
       };
       await mailTransporter.sendMail(mailOptions);
       console.log(`OTP Email sent to ${email} via SMTP.`);

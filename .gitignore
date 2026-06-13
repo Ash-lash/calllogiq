@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Production builds
+dist/
+build/
+
+# Local databases & logs
+backend/db.json
+*.log
+
+# Environment variables & secrets
+.env
+backend/.env
+*service-account.json
+firebase-service-account.json
+
+# Temporary uploads & outputs
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/test_out.xlsx
+*.xlsx
+*.pdf
+
+# Agent-specific folders
+.gemini/
+scratch/
+.system_generated/

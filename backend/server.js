@@ -6,8 +6,30 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { exec } = require('child_process');
+const { exec, execSync } = require('child_process');
 const db = require('./db');
+
+// Auto-install python dependencies on startup if missing
+try {
+  console.log('Checking Python dependencies (pdfplumber, openpyxl)...');
+  let pythonCmd = 'python';
+  try {
+    execSync('python --version', { stdio: 'ignore' });
+  } catch (e) {
+    pythonCmd = 'python3';
+  }
+  
+  try {
+    execSync(`${pythonCmd} -c "import pdfplumber, openpyxl"`, { stdio: 'ignore' });
+    console.log('Python dependencies are already installed.');
+  } catch (e) {
+    console.log(`Python dependencies missing. Installing pdfplumber and openpyxl using ${pythonCmd}...`);
+    execSync(`${pythonCmd} -m pip install pdfplumber openpyxl`, { stdio: 'inherit' });
+    console.log('Python dependencies installed successfully.');
+  }
+} catch (err) {
+  console.warn('Warning: Auto-installation of Python dependencies skipped or failed:', err.message);
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;

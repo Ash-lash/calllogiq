@@ -256,6 +256,7 @@ app.post('/api/auth/register', async (req, res) => {
   };
   
   await db.saveOTP(email, otp, expiresAt, userMetadata);
+  console.log(`[AUTH] Generated OTP for ${email}: ${otp}`);
 
   const smtpActive = mailTransporter !== null;
   await sendOTPEmail(email, otp);
@@ -292,6 +293,7 @@ app.post('/api/auth/login', async (req, res) => {
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
   await db.saveOTP(email, otp, expiresAt);
+  console.log(`[AUTH] Generated OTP for ${email}: ${otp}`);
   
   const smtpActive = mailTransporter !== null;
   await sendOTPEmail(email, otp);

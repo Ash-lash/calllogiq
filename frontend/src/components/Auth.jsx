@@ -1,16 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Lock } from 'lucide-react';
+import { Mail, Lock, Briefcase, Calculator, Headphones, Users, Cpu, ArrowLeft, Shield } from 'lucide-react';
 
 function Auth({ onLoginSuccess }) {
+  const [activeTab, setActiveTab] = useState('employee'); // 'employee' or 'admin'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Domain Selection Flow States
+  const [needsDomain, setNeedsDomain] = useState(false);
+  const [pendingGoogleToken, setPendingGoogleToken] = useState('');
+  const [selectedDomain, setSelectedDomain] = useState('');
+
   // Load Google Identity Services script dynamically
   useEffect(() => {
     const loadGoogleScript = () => {
-      // Avoid duplicate script insertion
       if (document.getElementById('google-jssdk')) return;
 
       const script = document.createElement('script');
@@ -31,10 +36,26 @@ function Auth({ onLoginSuccess }) {
           callback: handleGoogleLoginSuccess
         });
 
+        renderGoogleButton();
+      }
+    };
+
+    if (window.google) {
+      initializeGoogleSignIn();
+    } else {
+      loadGoogleScript();
+    }
+  }, [activeTab, needsDomain]);
+
+  // Re-render Google button when active tab switches back to employee
+  const renderGoogleButton = () => {
+    setTimeout(() => {
+      const btnContainer = document.getElementById("google-signin-btn");
+      if (window.google && btnContainer) {
         window.google.accounts.id.renderButton(
-          document.getElementById("google-signin-btn"),
+          btnContainer,
           { 
-            theme: "outline", 
+            theme: "filled_blue", 
             size: "large", 
             width: 320, 
             type: "standard", 
@@ -44,28 +65,62 @@ function Auth({ onLoginSuccess }) {
           }
         );
       }
-    };
-
-    if (window.google) {
-      initializeGoogleSignIn();
-    } else {
-      loadGoogleScript();
-    }
-  }, []);
+    }, 100);
+  };
 
   const handleGoogleLoginSuccess = async (response) => {
     setLoading(true);
     setError('');
+    const idToken = response.credential;
+    
     try {
       const res = await fetch('/api/auth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken: response.credential })
+        body: JSON.stringify({ idToken })
       });
       const data = await res.json();
+      
       if (!res.ok) {
         throw new Error(data.error || 'Google Sign-In failed');
       }
+
+      // Check if user requires domain selection
+      if (data.needsDomain) {
+        setPendingGoogleToken(idToken);
+        setNeedsDomain(true);
+      } else {
+        onLoginSuccess(data.token, data.user);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDomainConfirm = async (e) => {
+    e.preventDefault();
+    if (!selectedDomain) {
+      setError('Please select a department domain.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: pendingGoogleToken, domain: selectedDomain })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Account setup failed');
+      }
+
       onLoginSuccess(data.token, data.user);
     } catch (err) {
       setError(err.message);
@@ -99,77 +154,509 @@ function Auth({ onLoginSuccess }) {
     }
   };
 
+  // Domain Config Options
+  const domains = [
+    { id: 'Sales', label: 'Sales', icon: Briefcase, color: '#4f46e5', desc: 'Outbound sales & lead conversion' },
+    { id: 'Accounts', label: 'Accounts', icon: Calculator, color: '#7c3aed', desc: 'Billing, payouts & bookkeeping' },
+    { id: 'Support', label: 'Support', icon: Headphones, color: '#059669', desc: 'Customer queries & resolution' },
+    { id: 'HR', label: 'HR', icon: Users, color: '#ea580c', desc: 'Recruitment & team welfare' },
+    { id: 'Operations', label: 'Operations', icon: Cpu, color: '#dc2626', desc: 'Infrastructure & logistics' }
+  ];
+
   return (
-    <div className="auth-page">
-      <div className="auth-card" style={{ maxWidth: '440px', width: '100%' }}>
-        <div className="auth-header">
-          <div className="auth-logo">CallLogIQ</div>
-          <div className="auth-subtitle">
-            Sign in to access your dashboard
-          </div>
-        </div>
+    <div className="auth-page-wrapper">
+      {/* 2030 Ambient Glowing Blobs */}
+      <div className="glowing-blob-1"></div>
+      <div className="glowing-blob-2"></div>
 
-        {error && <div className="alert alert-danger" style={{ marginBottom: '1.5rem' }}>{error}</div>}
+      {/* Local styles injection for jaw-dropping visual effects */}
+      <style>{`
+        .auth-page-wrapper {
+          position: relative;
+          min-height: 100vh;
+          width: 100vw;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #0b0f19;
+          font-family: 'Outfit', sans-serif;
+          overflow: hidden;
+        }
 
-        {/* Employee Access (Google OAuth) */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '2rem' }}>
-          <span style={{ fontSize: '0.9rem', fontWeight: '500', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-            Employee Access
-          </span>
-          <div id="google-signin-btn" style={{ minHeight: '40px' }}></div>
-        </div>
+        .glowing-blob-1 {
+          position: absolute;
+          width: 600px;
+          height: 600px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(79, 70, 229, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
+          top: -200px;
+          left: -100px;
+          animation: floatBlob 15s infinite alternate ease-in-out;
+          pointer-events: none;
+        }
 
-        {/* Separator line */}
-        <div style={{ display: 'flex', alignItems: 'center', margin: '1.5rem 0', color: 'var(--text-secondary)' }}>
-          <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border-light)' }}></div>
-          <span style={{ padding: '0 10px', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            or Admin Access
-          </span>
-          <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border-light)' }}></div>
-        </div>
+        .glowing-blob-2 {
+          position: absolute;
+          width: 500px;
+          height: 500px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(124, 58, 237, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
+          bottom: -150px;
+          right: -100px;
+          animation: floatBlob 20s infinite alternate-reverse ease-in-out;
+          pointer-events: none;
+        }
 
-        {/* Admin Login Form */}
-        <form onSubmit={handleAdminSubmit}>
-          <div className="form-group">
-            <label className="form-label">Admin Email</label>
-            <div style={{ position: 'relative' }}>
-              <Mail size={18} style={{ position: 'absolute', left: '12px', top: '14px', color: 'var(--text-secondary)' }} />
-              <input 
-                type="email" 
-                className="form-input" 
-                placeholder="vtredusolutions@gmail.com" 
-                value={email} 
-                onChange={e => setEmail(e.target.value)} 
-                style={{ paddingLeft: '2.5rem' }}
-                required 
-              />
+        @keyframes floatBlob {
+          0% { transform: translate(0, 0) scale(1); }
+          100% { transform: translate(100px, 50px) scale(1.1); }
+        }
+
+        .futuristic-card {
+          position: relative;
+          width: 480px;
+          padding: 2.5rem;
+          background: rgba(17, 24, 39, 0.7);
+          backdrop-filter: blur(25px);
+          -webkit-backdrop-filter: blur(25px);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 28px;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+          z-index: 10;
+          transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .futuristic-card::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: 28px;
+          padding: 1.5px;
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.02) 100%);
+          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          pointer-events: none;
+        }
+
+        .lottie-container {
+          display: flex;
+          justify-content: center;
+          margin-bottom: 0.5rem;
+          transition: all 0.4s ease;
+        }
+
+        .lottie-logo-wrapper {
+          filter: drop-shadow(0 0 20px rgba(99, 102, 241, 0.2));
+        }
+
+        .brand-title {
+          font-family: 'Outfit', sans-serif;
+          font-size: 2.2rem;
+          font-weight: 800;
+          text-align: center;
+          letter-spacing: -0.02em;
+          background: linear-gradient(135deg, #ffffff 30%, #a5b4fc 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          margin-bottom: 0.25rem;
+        }
+
+        .brand-subtitle {
+          font-size: 0.95rem;
+          color: #9ca3af;
+          text-align: center;
+          margin-bottom: 2rem;
+        }
+
+        /* 2030 iOS Style Capsule Switcher */
+        .capsule-switcher {
+          display: flex;
+          position: relative;
+          background: rgba(31, 41, 55, 0.6);
+          padding: 4px;
+          border-radius: 9999px;
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          margin-bottom: 2.5rem;
+          cursor: pointer;
+        }
+
+        .switcher-slider {
+          position: absolute;
+          width: calc(50% - 4px);
+          height: calc(100% - 8px);
+          background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+          border-radius: 9999px;
+          transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+        }
+
+        .switcher-slider.admin-active {
+          transform: translateX(100%);
+        }
+
+        .switcher-tab {
+          flex: 1;
+          text-align: center;
+          padding: 10px 0;
+          font-size: 0.9rem;
+          font-weight: 600;
+          color: #9ca3af;
+          z-index: 2;
+          transition: color 0.3s ease;
+          background: none;
+          border: none;
+          outline: none;
+          cursor: pointer;
+        }
+
+        .switcher-tab.active {
+          color: #ffffff;
+        }
+
+        /* Form Controls */
+        .input-group {
+          margin-bottom: 1.5rem;
+        }
+
+        .input-label {
+          display: block;
+          font-size: 0.8rem;
+          font-weight: 600;
+          color: #9ca3af;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          margin-bottom: 0.5rem;
+        }
+
+        .input-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .input-field {
+          width: 100%;
+          padding: 14px 14px 14px 44px;
+          background: rgba(31, 41, 55, 0.4);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 14px;
+          color: #ffffff;
+          font-size: 0.95rem;
+          outline: none;
+          transition: all 0.3s ease;
+        }
+
+        .input-field:focus {
+          border-color: #6366f1;
+          background: rgba(31, 41, 55, 0.7);
+          box-shadow: 0 0 15px rgba(99, 102, 241, 0.15);
+        }
+
+        .input-icon {
+          position: absolute;
+          left: 14px;
+          color: #6b7280;
+          transition: color 0.3s ease;
+        }
+
+        .input-field:focus + .input-icon {
+          color: #818cf8;
+        }
+
+        /* Interactive Domain Cards */
+        .domain-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 0.8rem;
+          margin: 1.5rem 0 2rem 0;
+          max-height: 320px;
+          overflow-y: auto;
+          padding-right: 4px;
+        }
+
+        .domain-grid::-webkit-scrollbar {
+          width: 4px;
+        }
+        .domain-grid::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 99px;
+        }
+
+        .domain-item-card {
+          display: flex;
+          align-items: center;
+          padding: 14px;
+          background: rgba(31, 41, 55, 0.4);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 16px;
+          cursor: pointer;
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .domain-item-card:hover {
+          background: rgba(31, 41, 55, 0.7);
+          transform: translateY(-2px);
+          border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .domain-icon-wrapper {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 40px;
+          height: 40px;
+          border-radius: 12px;
+          margin-right: 14px;
+          transition: all 0.3s ease;
+        }
+
+        .domain-label {
+          font-weight: 700;
+          font-size: 1rem;
+          color: #ffffff;
+        }
+
+        .domain-desc {
+          font-size: 0.75rem;
+          color: #9ca3af;
+          margin-top: 1px;
+        }
+
+        /* 2030 Sign In Button */
+        .glowing-btn {
+          width: 100%;
+          padding: 15px;
+          background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+          border: none;
+          outline: none;
+          color: #ffffff;
+          font-weight: 700;
+          font-size: 1rem;
+          border-radius: 16px;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          box-shadow: 0 10px 20px -10px rgba(99, 102, 241, 0.4);
+        }
+
+        .glowing-btn:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow: 0 15px 25px -5px rgba(99, 102, 241, 0.6);
+        }
+
+        .glowing-btn:active:not(:disabled) {
+          transform: translateY(0);
+        }
+
+        .glowing-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        /* Google Integration Styling */
+        .google-btn-container {
+          display: flex;
+          justify-content: center;
+          margin: 1.5rem 0;
+          filter: drop-shadow(0 4px 15px rgba(37, 99, 235, 0.2));
+          transition: transform 0.25s ease;
+        }
+        
+        .google-btn-container:hover {
+          transform: scale(1.02);
+        }
+
+        .info-disclaimer {
+          text-align: center;
+          font-size: 0.72rem;
+          line-height: 1.4;
+          color: #6b7280;
+          margin-top: 2rem;
+        }
+      `}</style>
+
+      <div className="futuristic-card">
+        {/* Render Lottie Logo (Google GSI scripts will welcome you) */}
+        {!needsDomain && (
+          <div className="lottie-container">
+            <div className="lottie-logo-wrapper">
+              <lottie-player
+                src="/loginAnimation.json"
+                background="transparent"
+                speed="1.2"
+                style={{ width: '150px', height: '150px' }}
+                loop
+                autoplay
+              ></lottie-player>
             </div>
           </div>
+        )}
 
-          <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-            <label className="form-label">Password</label>
-            <div style={{ position: 'relative' }}>
-              <Lock size={18} style={{ position: 'absolute', left: '12px', top: '14px', color: 'var(--text-secondary)' }} />
-              <input 
-                type="password" 
-                className="form-input" 
-                placeholder="••••••••" 
-                value={password} 
-                onChange={e => setPassword(e.target.value)} 
-                style={{ paddingLeft: '2.5rem' }}
-                required 
-              />
-            </div>
+        {/* Header Title */}
+        <h2 className="brand-title">
+          {needsDomain ? 'Select Department' : 'CallLogIQ'}
+        </h2>
+        <p className="brand-subtitle">
+          {needsDomain 
+            ? 'Complete your account setup to enter the workspace' 
+            : 'Sign in to access your portal'}
+        </p>
+
+        {error && (
+          <div className="alert alert-danger" style={{ 
+            background: 'rgba(220, 38, 38, 0.15)', 
+            border: '1px solid rgba(220, 38, 38, 0.3)',
+            color: '#f87171',
+            borderRadius: '12px',
+            padding: '12px',
+            fontSize: '0.85rem',
+            marginBottom: '1.5rem',
+            textAlign: 'center'
+          }}>
+            {error}
           </div>
+        )}
 
-          <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
-            {loading ? 'Signing In...' : 'Sign In as Admin'}
-          </button>
-        </form>
+        {/* CONDITIONAL BODY: Needs Domain Selection */}
+        {needsDomain ? (
+          <form onSubmit={handleDomainConfirm}>
+            <span className="input-label">Choose your Domain</span>
+            
+            <div className="domain-grid">
+              {domains.map((dom) => {
+                const Icon = dom.icon;
+                const isSelected = selectedDomain === dom.id;
+                return (
+                  <div
+                    key={dom.id}
+                    className="domain-item-card"
+                    onClick={() => {
+                      setSelectedDomain(dom.id);
+                      setError('');
+                    }}
+                    style={{
+                      borderColor: isSelected ? dom.color : 'rgba(255, 255, 255, 0.08)',
+                      boxShadow: isSelected ? `0 0 15px ${dom.color}25` : 'none',
+                      background: isSelected ? 'rgba(31, 41, 55, 0.7)' : 'rgba(31, 41, 55, 0.4)'
+                    }}
+                  >
+                    <div className="domain-icon-wrapper" style={{
+                      background: isSelected ? dom.color : 'rgba(255, 255, 255, 0.05)',
+                      color: isSelected ? '#ffffff' : dom.color
+                    }}>
+                      <Icon size={20} />
+                    </div>
+                    <div>
+                      <div className="domain-label">{dom.label}</div>
+                      <div className="domain-desc">{dom.desc}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
 
-        <div style={{ marginTop: '2rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-          Only authorized administrators can log in with email and password. Employees must use their Google accounts.
-        </div>
+            <div style={{ display: 'flex', gap: '0.8rem' }}>
+              <button
+                type="button"
+                className="glowing-btn"
+                style={{ 
+                  flex: 1, 
+                  background: 'rgba(255, 255, 255, 0.05)', 
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  boxShadow: 'none'
+                }}
+                onClick={() => {
+                  setNeedsDomain(false);
+                  setPendingGoogleToken('');
+                  setSelectedDomain('');
+                  setError('');
+                }}
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              
+              <button
+                type="submit"
+                className="glowing-btn"
+                style={{ flex: 2 }}
+                disabled={loading || !selectedDomain}
+              >
+                {loading ? 'Completing Setup...' : 'Enter Dashboard'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          /* STANDARD AUTH FLOW: Login forms & Google Sign-In */
+          <>
+            {/* iOS style switcher */}
+            <div className="capsule-switcher" onClick={() => {
+              setActiveTab(activeTab === 'employee' ? 'admin' : 'employee');
+              setError('');
+            }}>
+              <div className={`switcher-slider ${activeTab === 'admin' ? 'admin-active' : ''}`}></div>
+              <button className={`switcher-tab ${activeTab === 'employee' ? 'active' : ''}`}>Employee</button>
+              <button className={`switcher-tab ${activeTab === 'admin' ? 'active' : ''}`}>Administrator</button>
+            </div>
+
+            {/* TAB 1: Employee Access */}
+            {activeTab === 'employee' && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <span className="input-label" style={{ marginBottom: '1rem' }}>Secure SSO Sign-In</span>
+                
+                <div id="google-signin-btn" className="google-btn-container" style={{ minHeight: '46px' }}></div>
+                
+                <p className="info-disclaimer">
+                  Click the Google Sign-in button above to authorize access. If this is your first sign-in, you will be prompted to select your domain.
+                </p>
+              </div>
+            )}
+
+            {/* TAB 2: Administrator Access */}
+            {activeTab === 'admin' && (
+              <form onSubmit={handleAdminSubmit}>
+                <div className="input-group">
+                  <label className="input-label">Admin Email</label>
+                  <div className="input-wrapper">
+                    <input 
+                      type="email" 
+                      className="input-field" 
+                      placeholder="vtredusolutions@gmail.com"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      required 
+                    />
+                    <Mail size={18} className="input-icon" />
+                  </div>
+                </div>
+
+                <div className="input-group" style={{ marginBottom: '2rem' }}>
+                  <label className="input-label">Password</label>
+                  <div className="input-wrapper">
+                    <input 
+                      type="password" 
+                      className="input-field" 
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      required 
+                    />
+                    <Lock size={18} className="input-icon" />
+                  </div>
+                </div>
+
+                <button type="submit" className="glowing-btn" disabled={loading}>
+                  {loading ? 'Authenticating System...' : 'Access Admin Dashboard'}
+                </button>
+                
+                <p className="info-disclaimer">
+                  <Shield size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                  Local login is strictly reserved for system administrators. Users must sign in via employee SSO.
+                </p>
+              </form>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

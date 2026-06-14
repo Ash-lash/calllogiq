@@ -287,15 +287,29 @@ app.post('/api/auth/google', async (req, res) => {
     // Check if user exists by email
     let user = await db.findUserByEmail(email.toLowerCase());
     
-    // Auto-create user if they don't exist
+    // Auto-create user if they don't exist (prompt for domain first)
     if (!user) {
-      console.log(`Auto-registering new user via Google: ${email}`);
+      const { domain } = req.body;
+      if (!domain) {
+        return res.json({
+          needsDomain: true,
+          email: email.toLowerCase(),
+          name: name || email.split('@')[0]
+        });
+      }
+
+      const validDomains = ['Sales', 'Accounts', 'Support', 'HR', 'Operations'];
+      if (!validDomains.includes(domain)) {
+        return res.status(400).json({ error: 'Invalid department domain' });
+      }
+
+      console.log(`Auto-registering new user via Google: ${email} under domain ${domain}`);
       const isEmailAdmin = email.toLowerCase() === ADMIN_EMAIL;
       user = await db.createUser({
         email: email.toLowerCase(),
         passwordHash: '', // Google users don't have local password
         name: name || email.split('@')[0],
-        domain: 'Operations', // Default domain
+        domain: domain,
         role: isEmailAdmin ? 'admin' : 'user'
       });
     }

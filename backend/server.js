@@ -34,7 +34,7 @@ try {
 const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'calllogiq_super_secret_jwt_key_123';
-const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@calllogiq.com').toLowerCase();
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'vtredusolutions@gmail.com').toLowerCase();
 
 // Ensure uploads and output directories exist
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
@@ -263,42 +263,66 @@ app.get('/api/health', (req, res) => {
 // --- AUTH ROUTES ---
 
 // 1. Initiate Register
-app.post('/api/auth/register', async (req, res) => {
-  const { email, password, name, domain } = req.body;
-  if (!email || !password || !name || !domain) {
-    return res.status(400).json({ error: 'All fields are required' });
+// 1. Google Sign-In Verification
+app.post('/api/auth/google', async (req, res) => {
+  const { idToken } = req.body;
+  if (!idToken) {
+    return res.status(400).json({ error: 'Google ID token is required' });
   }
 
-  const existingUser = await db.findUserByEmail(email);
-  if (existingUser) {
-    return res.status(400).json({ error: 'Email already registered' });
+  try {
+    // Validate ID Token with Google's tokeninfo API
+    const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
+    const payload = await response.json();
+
+    if (!response.ok) {
+      return res.status(400).json({ error: payload.error_description || 'Invalid Google ID token' });
+    }
+
+    const { email, name } = payload;
+    if (!email) {
+      return res.status(400).json({ error: 'Google account is missing email address' });
+    }
+
+    // Check if user exists by email
+    let user = await db.findUserByEmail(email.toLowerCase());
+    
+    // Auto-create user if they don't exist
+    if (!user) {
+      console.log(`Auto-registering new user via Google: ${email}`);
+      const isEmailAdmin = email.toLowerCase() === ADMIN_EMAIL;
+      user = await db.createUser({
+        email: email.toLowerCase(),
+        passwordHash: '', // Google users don't have local password
+        name: name || email.split('@')[0],
+        domain: 'Operations', // Default domain
+        role: isEmailAdmin ? 'admin' : 'user'
+      });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign({
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      domain: user.domain,
+      role: user.role
+    }, JWT_SECRET, { expiresIn: '24h' });
+
+    return res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        domain: user.domain,
+        role: user.role
+      }
+    });
+  } catch (err) {
+    console.error('Google Auth Error:', err);
+    return res.status(500).json({ error: 'Google Authentication failed. Please try again.' });
   }
-
-  const passwordHash = bcrypt.hashSync(password, 10);
-  const otp = generateOTP();
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-  const isEmailAdmin = email.toLowerCase() === ADMIN_EMAIL;
-  
-  const userMetadata = {
-    email,
-    passwordHash,
-    name,
-    domain,
-    role: isEmailAdmin ? 'admin' : 'user'
-  };
-  
-  await db.saveOTP(email, otp, expiresAt, userMetadata);
-  console.log(`[AUTH] Generated OTP for ${email}: ${otp}`);
-
-  const smtpActive = mailTransporter !== null;
-  await sendOTPEmail(email, otp);
-
-  return res.json({ 
-    message: smtpActive ? 'OTP verification code sent to your email.' : 'OTP sent (Simulated in terminal console)', 
-    email, 
-    simulated: !smtpActive 
-  });
 });
 
 // 2. Initiate Login
@@ -308,91 +332,50 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
-  const user = await db.findUserByEmail(email);
-  if (!user) {
-    // If logging in as admin but not registered, we can auto-register or reject
-    if (email.toLowerCase() === ADMIN_EMAIL) {
-      return res.status(404).json({ error: 'Admin account not registered yet. Please register first.' });
+  // Enforce Direct Admin Login
+  if (email.toLowerCase() === ADMIN_EMAIL) {
+    if (password === 'Chennai@600116') {
+      let user = await db.findUserByEmail(ADMIN_EMAIL);
+      if (!user) {
+        // Auto-seed admin user if missing
+        const passwordHash = bcrypt.hashSync('Chennai@600116', 10);
+        user = await db.createUser({
+          email: ADMIN_EMAIL,
+          passwordHash,
+          name: 'System Admin',
+          domain: 'Operations',
+          role: 'admin'
+        });
+      }
+
+      // Generate token directly (No OTP!)
+      const token = jwt.sign({
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        domain: user.domain,
+        role: user.role
+      }, JWT_SECRET, { expiresIn: '24h' });
+
+      return res.json({
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          domain: user.domain,
+          role: user.role
+        }
+      });
+    } else {
+      return res.status(401).json({ error: 'Invalid admin credentials' });
     }
-    return res.status(401).json({ error: 'Invalid email or password' });
   }
 
-  const isValidPassword = bcrypt.compareSync(password, user.passwordHash);
-  if (!isValidPassword) {
-    return res.status(401).json({ error: 'Invalid email or password' });
-  }
-
-  const otp = generateOTP();
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-  await db.saveOTP(email, otp, expiresAt);
-  console.log(`[AUTH] Generated OTP for ${email}: ${otp}`);
-  
-  const smtpActive = mailTransporter !== null;
-  await sendOTPEmail(email, otp);
-
-  return res.json({ 
-    message: smtpActive ? 'OTP verification code sent to your email.' : 'OTP sent (Simulated in terminal console)', 
-    email, 
-    simulated: !smtpActive 
-  });
+  // Regular users are required to sign in with Google
+  return res.status(401).json({ error: 'Unauthorized. Employees must use Google Sign-In.' });
 });
 
-// 3. Verify OTP and get Token
-app.post('/api/auth/verify-otp', async (req, res) => {
-  const { email, code, type } = req.body; // type can be 'login' or 'register'
-  if (!email || !code) {
-    return res.status(400).json({ error: 'Email and OTP code are required' });
-  }
-
-  const otp = await db.getOTP(email);
-  if (!otp || otp.code !== code) {
-    return res.status(400).json({ error: 'Invalid OTP code' });
-  }
-
-  if (new Date() > new Date(otp.expiresAt)) {
-    await db.deleteOTP(email);
-    return res.status(400).json({ error: 'OTP code has expired' });
-  }
-
-  // Remove used OTP
-  await db.deleteOTP(email);
-
-  let user = await db.findUserByEmail(email);
-
-  if (!user && otp.metadata) {
-    // This was a register flow, create the user now
-    user = await db.createUser({
-      email: otp.metadata.email,
-      passwordHash: otp.metadata.passwordHash,
-      name: otp.metadata.name,
-      domain: otp.metadata.domain,
-      role: otp.metadata.role
-    });
-  } else if (!user) {
-    return res.status(404).json({ error: 'User record not found' });
-  }
-
-  // Create token
-  const token = jwt.sign({
-    userId: user.id,
-    email: user.email,
-    name: user.name,
-    domain: user.domain,
-    role: user.role
-  }, JWT_SECRET, { expiresIn: '24h' });
-
-  return res.json({
-    token,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      domain: user.domain,
-      role: user.role
-    }
-  });
-});
 
 // --- CALL ANALYSIS ROUTES ---
 

@@ -16,10 +16,61 @@ const format_seconds = (seconds) => {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
-function UserDashboard({ user, token, previewMode }) {
+function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
   const [selectedLog, setSelectedLog] = useState(null);
   const [history, setHistory] = useState([]);
   const [tasks, setTasks] = useState([]);
+  
+  // Profile Setup States
+  const [showSetupModal, setShowSetupModal] = useState(user?.domain === 'Pending' && !previewMode);
+  const [profileName, setProfileName] = useState(user?.name || '');
+  const [selectedSetupDomain, setSelectedSetupDomain] = useState('');
+  const [setupLoading, setSetupLoading] = useState(false);
+  const [setupError, setSetupError] = useState('');
+
+  useEffect(() => {
+    if (user) {
+      setShowSetupModal(user.domain === 'Pending' && !previewMode);
+      setProfileName(user.name || '');
+    }
+  }, [user, previewMode]);
+
+  const handleSetupSubmit = async (e) => {
+    e.preventDefault();
+    if (!profileName.trim()) {
+      setSetupError('Name is required.');
+      return;
+    }
+    if (!selectedSetupDomain) {
+      setSetupError('Please select a domain.');
+      return;
+    }
+
+    setSetupLoading(true);
+    setSetupError('');
+    try {
+      const res = await fetch('/api/users/update-profile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ name: profileName, domain: selectedSetupDomain })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update profile');
+      }
+      if (onProfileUpdate) {
+        onProfileUpdate(data.token, data.user);
+      }
+      setShowSetupModal(false);
+    } catch (err) {
+      setSetupError(err.message);
+    } finally {
+      setSetupLoading(false);
+    }
+  };
   
   // File Upload State
   const [dragActive, setDragActive] = useState(false);
@@ -585,6 +636,144 @@ function UserDashboard({ user, token, previewMode }) {
           </div>
         </div>
       </div>
+      {/* 2030 Futuristic Profile Setup Modal */}
+      {showSetupModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(11, 15, 25, 0.9)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div className="futuristic-card" style={{
+            background: 'rgba(17, 24, 39, 0.95)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '24px',
+            padding: '2.5rem',
+            width: '460px',
+            maxWidth: '100%',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+            color: '#ffffff',
+            boxSizing: 'border-box'
+          }}>
+            <h2 style={{ 
+              fontSize: '1.8rem', 
+              fontWeight: 800, 
+              margin: '0 0 0.5rem 0', 
+              background: 'linear-gradient(135deg, #ffffff 30%, #a5b4fc 100%)', 
+              WebkitBackgroundClip: 'text', 
+              WebkitTextFillColor: 'transparent',
+              fontFamily: "'Outfit', sans-serif" 
+            }}>
+              Complete Your Profile
+            </h2>
+            <p style={{ color: '#9ca3af', fontSize: '0.9rem', margin: '0 0 1.5rem 0' }}>
+              Confirm your display name and choose your department domain to configure your new workspace.
+            </p>
+
+            {setupError && (
+              <div style={{ 
+                background: 'rgba(220, 38, 38, 0.15)', 
+                border: '1px solid rgba(220, 38, 38, 0.3)', 
+                color: '#f87171', 
+                borderRadius: '12px', 
+                padding: '10px', 
+                fontSize: '0.85rem', 
+                marginBottom: '1.5rem', 
+                textAlign: 'center' 
+              }}>
+                {setupError}
+              </div>
+            )}
+
+            <form onSubmit={handleSetupSubmit}>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={profileName}
+                  onChange={e => setProfileName(e.target.value)}
+                  placeholder="e.g. Ashwin Annamalai"
+                  required
+                  style={{ 
+                    width: '100%', 
+                    padding: '14px', 
+                    background: 'rgba(31, 41, 55, 0.4)', 
+                    border: '1px solid rgba(255, 255, 255, 0.08)', 
+                    borderRadius: '12px', 
+                    color: '#ffffff', 
+                    outline: 'none', 
+                    boxSizing: 'border-box',
+                    fontSize: '0.95rem'
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '2rem' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                  Department Domain
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '180px', overflowY: 'auto', paddingRight: '4px' }}>
+                  {['Sales', 'Accounts', 'Support', 'HR', 'Operations'].map((dom) => {
+                    const isSelected = selectedSetupDomain === dom;
+                    return (
+                      <div
+                        key={dom}
+                        onClick={() => setSelectedSetupDomain(dom)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '12px 14px',
+                          background: isSelected ? 'rgba(99, 102, 241, 0.15)' : 'rgba(31, 41, 55, 0.4)',
+                          border: `1px solid ${isSelected ? '#6366f1' : 'rgba(255, 255, 255, 0.08)'}`,
+                          borderRadius: '12px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                          fontWeight: isSelected ? 600 : 500
+                        }}
+                      >
+                        <span style={{ flex: 1, color: isSelected ? '#ffffff' : '#e5e7eb', fontSize: '0.9rem' }}>{dom}</span>
+                        {isSelected && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#6366f1', boxShadow: '0 0 8px #6366f1' }}></span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={setupLoading || !profileName.trim() || !selectedSetupDomain}
+                style={{
+                  width: '100%',
+                  padding: '14px',
+                  background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+                  border: 'none',
+                  outline: 'none',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  boxShadow: '0 10px 20px -10px rgba(99, 102, 241, 0.4)',
+                  transition: 'all 0.3s'
+                }}
+              >
+                {setupLoading ? 'Saving Profile...' : 'Save & Enter Workspace'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

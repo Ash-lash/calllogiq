@@ -125,7 +125,7 @@ function App() {
         {activeTab === 'admin' && isUserAdmin ? (
           <AdminDashboard user={user} token={token} />
         ) : (
-          <UserDashboard user={user} token={token} previewMode={isUserAdmin} />
+          <UserDashboard user={user} token={token} previewMode={isUserAdmin} onProfileUpdate={handleLoginSuccess} />
         )}
       </main>
     </div>

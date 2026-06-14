@@ -287,29 +287,15 @@ app.post('/api/auth/google', async (req, res) => {
     // Check if user exists by email
     let user = await db.findUserByEmail(email.toLowerCase());
     
-    // Auto-create user if they don't exist (prompt for domain first)
+    // Auto-create user if they don't exist
     if (!user) {
-      const { domain } = req.body;
-      if (!domain) {
-        return res.json({
-          needsDomain: true,
-          email: email.toLowerCase(),
-          name: name || email.split('@')[0]
-        });
-      }
-
-      const validDomains = ['Sales', 'Accounts', 'Support', 'HR', 'Operations'];
-      if (!validDomains.includes(domain)) {
-        return res.status(400).json({ error: 'Invalid department domain' });
-      }
-
-      console.log(`Auto-registering new user via Google: ${email} under domain ${domain}`);
+      console.log(`Auto-registering new user via Google: ${email}`);
       const isEmailAdmin = email.toLowerCase() === ADMIN_EMAIL;
       user = await db.createUser({
         email: email.toLowerCase(),
         passwordHash: '', // Google users don't have local password
         name: name || email.split('@')[0],
-        domain: domain,
+        domain: 'Pending', // Mark as pending to trigger frontend selection modal
         role: isEmailAdmin ? 'admin' : 'user'
       });
     }
@@ -387,7 +373,50 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   // Regular users are required to sign in with Google
-  return res.status(401).json({ error: 'Unauthorized. Employees must use Google Sign-In.' });
+});
+
+// 3. Update User Profile (Name and Domain selection)
+app.post('/api/users/update-profile', authenticateToken, async (req, res) => {
+  const { name, domain } = req.body;
+  if (!name || !domain) {
+    return res.status(400).json({ error: 'Name and Domain are required' });
+  }
+
+  const validDomains = ['Sales', 'Accounts', 'Support', 'HR', 'Operations'];
+  if (!validDomains.includes(domain)) {
+    return res.status(400).json({ error: 'Invalid department domain' });
+  }
+
+  try {
+    const userId = req.user.userId;
+    const updatedUser = await db.updateUser(userId, { name, domain });
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Generate new JWT token with updated profile info
+    const token = jwt.sign({
+      userId: updatedUser.id,
+      email: updatedUser.email,
+      name: updatedUser.name,
+      domain: updatedUser.domain,
+      role: updatedUser.role
+    }, JWT_SECRET, { expiresIn: '24h' });
+
+    return res.json({
+      token,
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        domain: updatedUser.domain,
+        role: updatedUser.role
+      }
+    });
+  } catch (err) {
+    console.error('Update Profile Error:', err);
+    return res.status(500).json({ error: 'Failed to update profile' });
+  }
 });
 
 

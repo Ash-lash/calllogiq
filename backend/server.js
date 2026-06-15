@@ -197,19 +197,41 @@ async function sendOTPEmail(email, otp) {
 // Firebase Admin SDK Initialization
 const admin = require('firebase-admin');
 
-const firebaseConfigPath = path.join(__dirname, 'firebase-service-account.json');
-if (fs.existsSync(firebaseConfigPath)) {
+let firebaseInitialized = false;
+
+// 1. Try to load from environment variable (as JSON string)
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   try {
-    const serviceAccount = require(firebaseConfigPath);
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
-    console.log('Firebase Admin SDK initialized successfully with service account.');
+    console.log('Firebase Admin SDK initialized successfully via FIREBASE_SERVICE_ACCOUNT env variable.');
+    firebaseInitialized = true;
   } catch (err) {
-    console.error('Failed to initialize Firebase Admin SDK with service account:', err);
+    console.error('Failed to initialize Firebase Admin SDK from FIREBASE_SERVICE_ACCOUNT env variable:', err);
   }
-} else {
-  console.log('Firebase service account key (firebase-service-account.json) is missing. Using local database fallback (db.json).');
+}
+
+// 2. Fallback to file check if not initialized
+if (!firebaseInitialized) {
+  const firebaseConfigPath = path.join(__dirname, 'firebase-service-account.json');
+  if (fs.existsSync(firebaseConfigPath)) {
+    try {
+      const serviceAccount = require(firebaseConfigPath);
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      console.log('Firebase Admin SDK initialized successfully with service account file.');
+      firebaseInitialized = true;
+    } catch (err) {
+      console.error('Failed to initialize Firebase Admin SDK with service account file:', err);
+    }
+  }
+}
+
+if (!firebaseInitialized) {
+  console.log('Firebase service account key is missing (neither FIREBASE_SERVICE_ACCOUNT env var nor firebase-service-account.json file). Using local database fallback (db.json).');
 }
 
 // Cloudinary SDK Configuration

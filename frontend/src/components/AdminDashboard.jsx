@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Users, Calendar, FileSpreadsheet, PlusCircle, CheckCircle, Clock, 
-  PhoneCall, AlertTriangle, Download, ArrowRight, ClipboardList
+  PhoneCall, AlertTriangle, Download, ArrowRight, ClipboardList, Settings, RotateCcw
 } from 'lucide-react';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
@@ -35,6 +35,11 @@ function AdminDashboard({ user, token }) {
   const [editingUser, setEditingUser] = useState(null);
   const [editSuccess, setEditSuccess] = useState('');
   const [editError, setEditError] = useState('');
+
+  // Database Flush State
+  const [flushSuccess, setFlushSuccess] = useState('');
+  const [flushError, setFlushError] = useState('');
+  const [flushLoading, setFlushLoading] = useState(false);
 
   // Fetch Admin Data
   useEffect(() => {
@@ -233,6 +238,43 @@ function AdminDashboard({ user, token }) {
     }
   };
 
+  const handleFlushDatabase = async () => {
+    if (!window.confirm("WARNING: Are you sure you want to flush/reset the database? This will delete all users (except you), all attendance logs, and all task logs. This action is IRREVERSIBLE.")) {
+      return;
+    }
+
+    setFlushLoading(true);
+    setFlushSuccess('');
+    setFlushError('');
+
+    try {
+      const res = await fetch('/api/admin/flush-database', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to flush database');
+      }
+
+      setFlushSuccess('Database flushed successfully! Redirecting you to re-login...');
+      
+      // Since everything is flushed, sign the admin out so they can log back in and re-seed the admin user
+      setTimeout(() => {
+        localStorage.removeItem('token');
+        window.location.reload();
+      }, 3000);
+    } catch (err) {
+      setFlushError(err.message);
+    } finally {
+      setFlushLoading(false);
+    }
+  };
+
   // Helper: Format seconds to string
   const formatSeconds = (seconds) => {
     const h = Math.floor(seconds / 3600);
@@ -387,6 +429,13 @@ function AdminDashboard({ user, token }) {
         >
           <ClipboardList size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
           Assign Workload Tasks
+        </button>
+        <button 
+          onClick={() => setAdminTab('settings')} 
+          className={`tab-btn ${adminTab === 'settings' ? 'active' : ''}`}
+        >
+          <Settings size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
+          System Settings
         </button>
       </div>
 
@@ -922,6 +971,85 @@ function AdminDashboard({ user, token }) {
                 No workload tasks assigned yet.
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* SUB-VIEW 5: System Settings (Admin only) */}
+      {adminTab === 'settings' && (
+        <div className="card" style={{ maxWidth: '600px', margin: '2rem auto', padding: '2rem' }}>
+          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+            <div style={{
+              display: 'inline-flex',
+              padding: '1rem',
+              borderRadius: '50%',
+              backgroundColor: 'var(--danger-light)',
+              color: 'var(--danger)',
+              marginBottom: '1rem'
+            }}>
+              <AlertTriangle size={32} />
+            </div>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.5rem' }}>
+              System Administration Settings
+            </h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+              Perform administrative maintenance and system operations.
+            </p>
+          </div>
+
+          <div style={{
+            border: '1px solid var(--border-light)',
+            borderRadius: '12px',
+            padding: '1.25rem',
+            backgroundColor: 'var(--bg-main)',
+            marginBottom: '1.5rem'
+          }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem' }}>
+              Flush / Reset Database
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '1rem' }}>
+              This action will completely delete all registered employees, call log records, daily stats, and workload tasks from the system. Your admin login account will be automatically re-seeded upon next login. 
+            </p>
+            <div style={{ padding: '0.75rem', borderRadius: '8px', backgroundColor: 'var(--danger-light)', color: 'var(--danger)', fontSize: '0.8rem', fontWeight: 500, marginBottom: '1rem' }}>
+              WARNING: This action is permanent and cannot be undone. All data stored in Firebase Firestore will be completely wiped.
+            </div>
+
+            {flushSuccess && (
+              <div className="alert success-alert" style={{ marginBottom: '1rem' }}>
+                <CheckCircle size={16} />
+                <span>{flushSuccess}</span>
+              </div>
+            )}
+            {flushError && (
+              <div className="alert error-alert" style={{ marginBottom: '1rem' }}>
+                <AlertTriangle size={16} />
+                <span>{flushError}</span>
+              </div>
+            )}
+
+            <button
+              onClick={handleFlushDatabase}
+              disabled={flushLoading}
+              className="btn btn-danger"
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                backgroundColor: 'var(--danger)',
+                color: 'white',
+                padding: '0.75rem',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: 600,
+                cursor: flushLoading ? 'not-allowed' : 'pointer',
+                opacity: flushLoading ? 0.7 : 1
+              }}
+            >
+              <RotateCcw size={18} />
+              {flushLoading ? 'Flushing Database...' : 'Flush All Database Data'}
+            </button>
           </div>
         </div>
       )}

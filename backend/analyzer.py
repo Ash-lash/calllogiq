@@ -105,10 +105,8 @@ def analyze_pdf(pdf_path, username):
                         dt = datetime.strptime(time_str, "%H:%M %d-%m-%Y")
                     except ValueError:
                         try:
-                            # Try parsing fallback
-                            dt = datetime.strptime(time_str, "%H:%M %d-%m")
-                            # Set current year or placeholder
-                            dt = dt.replace(year=2026)
+                            # Try parsing fallback - append year to suppress Python 3.15 deprecation warnings
+                            dt = datetime.strptime(f"{time_str}-2026", "%H:%M %d-%m-%Y")
                         except ValueError:
                             # Skip if time format is unparseable
                             continue
@@ -123,6 +121,60 @@ def analyze_pdf(pdf_path, username):
                         'type': call_type
                     })
                     
+    # Fallback to regex-based text parsing if table extraction yielded nothing
+    if not all_calls:
+        import re
+        # Pattern matching: Name/Prefix, Phone, Time, Date, Duration, Call Type
+        pattern = re.compile(
+            r'(.*?)\s+'
+            r'(\+?\d[\d\s\-]{7,15})\s+'
+            r'(\d{1,2}:\d{2})\s+'
+            r'(\d{2}-\d{2}(?:-\d{4})?)\s+'
+            r'(\d{2}:\d{2}:\d{2}|\d{2}:\d{2}|\d+)\s+'
+            r'(Dialed|Received|Missed|Rejected)',
+            re.IGNORECASE
+        )
+        with pdfplumber.open(pdf_path) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text()
+                if not text:
+                    continue
+                for line in text.split('\n'):
+                    match = pattern.search(line)
+                    if match:
+                        name, phone, time_str, date_str, duration_str, call_type = match.groups()
+                        name = (name or '').strip().replace('\n', ' ')
+                        phone = (phone or '').strip()
+                        time_str = (time_str or '').strip()
+                        date_str = (date_str or '').strip()
+                        duration_str = (duration_str or '').strip()
+                        call_type = (call_type or '').strip()
+                        
+                        if call_type.lower() == 'rejected':
+                            call_type = 'Missed'
+                        
+                        full_time_str = f"{time_str} {date_str}"
+                        duration_secs = parse_duration(duration_str)
+                        
+                        # Parse time
+                        try:
+                            dt = datetime.strptime(full_time_str, "%H:%M %d-%m-%Y")
+                        except ValueError:
+                            try:
+                                dt = datetime.strptime(f"{full_time_str}-2026", "%H:%M %d-%m-%Y")
+                            except ValueError:
+                                continue
+                                
+                        all_calls.append({
+                            'name': name or phone,
+                            'phone': phone,
+                            'time': dt,
+                            'time_str': full_time_str,
+                            'duration_str': duration_str,
+                            'duration_secs': duration_secs,
+                            'type': call_type
+                        })
+                        
     if not all_calls:
         raise ValueError("No call log records found in PDF")
         

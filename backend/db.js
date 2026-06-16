@@ -412,6 +412,30 @@ const db = {
       writeLocalDB(data);
       return data.users[idx];
     }
+  },
+
+  flushDatabase: async () => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const collections = ['users', 'logs', 'tasks', 'otps'];
+      for (const colName of collections) {
+        const snapshot = await firestore.collection(colName).get();
+        const batch = firestore.batch();
+        snapshot.forEach(doc => {
+          batch.delete(doc.ref);
+        });
+        await batch.commit();
+      }
+    } else {
+      const emptyData = {
+        users: [],
+        logs: [],
+        tasks: [],
+        otps: []
+      };
+      writeLocalDB(emptyData);
+    }
+    return true;
   }
 };
 

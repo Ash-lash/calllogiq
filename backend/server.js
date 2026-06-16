@@ -444,6 +444,27 @@ app.post('/api/users/update-profile', authenticateToken, async (req, res) => {
 
 // --- CALL ANALYSIS ROUTES ---
 
+// Simple sequential task queue to prevent concurrent Python execution and save memory
+const analysisQueue = [];
+let isProcessingQueue = false;
+
+async function processQueue() {
+  if (isProcessingQueue) return;
+  if (analysisQueue.length === 0) return;
+
+  isProcessingQueue = true;
+  const task = analysisQueue.shift();
+
+  try {
+    await task();
+  } catch (err) {
+    console.error('Queue task error:', err);
+  } finally {
+    isProcessingQueue = false;
+    processQueue();
+  }
+}
+
 // Upload Call Log PDF
 app.post('/api/calls/upload', authenticateToken, upload.single('pdf'), (req, res) => {
   if (!req.file) {
@@ -457,94 +478,131 @@ app.post('/api/calls/upload', authenticateToken, upload.single('pdf'), (req, res
   const excelFilename = `${username.replace(/\s+/g, '_')}_Call_Log_Analysis_${Date.now()}.xlsx`;
   const excelPath = path.join(UPLOADS_DIR, excelFilename);
   
-  // Call Python analyzer
-  const pyScript = path.join(__dirname, 'analyzer.py');
-  const command = `python "${pyScript}" --pdf "${pdfPath}" --user "${username}" --out "${excelPath}"`;
-  
-  exec(command, async (error, stdout, stderr) => {
-    if (error) {
-      if (fs.existsSync(pdfPath)) {
-        fs.unlinkSync(pdfPath);
-      }
-      console.error('Python Execution Error:', stderr);
-      return res.status(500).json({ 
-        error: 'Failed to analyze PDF', 
-        details: stderr || error.message 
-      });
-    }
-    
-    try {
-      const analysisData = JSON.parse(stdout);
-      
-      if (analysisData.error) {
-        if (fs.existsSync(pdfPath)) {
-          fs.unlinkSync(pdfPath);
-        }
-        return res.status(400).json({ error: analysisData.error });
-      }
-      
-      // ONE UPLOAD PER DAY CONSTRAINT CHECK
-      const allLogs = await db.getAllLogs();
-      const existingLog = allLogs.find(l => l.userId === userId && l.callDate === analysisData.call_date);
-      if (existingLog) {
-        if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
-        if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
-        return res.status(400).json({ 
-          error: `You have already uploaded a call log for this date (${analysisData.call_date}). Only one upload per day is allowed.` 
+  // Push the analysis function to the queue
+  analysisQueue.push(() => {
+    return new Promise((resolve) => {
+      // ONE UPLOAD PER CALENDAR DAY CONSTRAINT CHECK
+      db.getAllLogs().then(async (allLogs) => {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const hasUploadedToday = allLogs.some(l => {
+          if (l.userId !== userId) return false;
+          if (!l.createdAt) return false;
+          const uploadDate = l.createdAt.split('T')[0];
+          return uploadDate === todayStr;
         });
-      }
-      
-      const logId = 'log_' + Date.now().toString() + Math.random().toString(36).substr(2, 5);
-      const finalFilename = `${logId}.xlsx`;
-      const finalPath = path.join(UPLOADS_DIR, finalFilename);
-      
-      // Upload PDF to Cloudinary
-      const pdfDest = `pdfs/${userId}/${logId}`;
-      const pdfUrl = await uploadToCloudinary(pdfPath, pdfDest, true) || '';
-      
-      // Delete local temp PDF upload
-      if (fs.existsSync(pdfPath)) {
-        fs.unlinkSync(pdfPath);
-      }
-      
-      // Rename excel file locally
-      if (fs.existsSync(excelPath)) {
-        fs.renameSync(excelPath, finalPath);
-      }
-      
-      // Upload Excel to Cloudinary
-      const excelDest = `excels/${userId}/${logId}`;
-      const excelUrl = await uploadToCloudinary(finalPath, excelDest, true) || '';
-      
-      // Save log entry to DB
-      const logEntry = await db.createLog({
-        id: logId,
-        userId,
-        filename: finalFilename,
-        callDate: analysisData.call_date,
-        summary: analysisData.summary,
-        calls: analysisData.calls,
-        arrivalTime: analysisData.summary.workday_start,
-        departureTime: analysisData.summary.workday_end,
-        pdfUrl,
-        excelUrl
+
+        if (hasUploadedToday) {
+          if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
+          if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
+          res.status(400).json({ 
+            error: "You have already uploaded a call log today. Only one upload per day is allowed." 
+          });
+          return resolve();
+        }
+
+        // Call Python analyzer
+        const pyScript = path.join(__dirname, 'analyzer.py');
+        const command = `python "${pyScript}" --pdf "${pdfPath}" --user "${username}" --out "${excelPath}"`;
+        
+        exec(command, async (error, stdout, stderr) => {
+          if (error) {
+            if (fs.existsSync(pdfPath)) {
+              fs.unlinkSync(pdfPath);
+            }
+            console.error('Python Execution Error:', stderr);
+            res.status(500).json({ 
+              error: 'Failed to analyze PDF', 
+              details: stderr || error.message 
+            });
+            return resolve();
+          }
+          
+          try {
+            const analysisData = JSON.parse(stdout);
+            
+            if (analysisData.error) {
+              if (fs.existsSync(pdfPath)) {
+                fs.unlinkSync(pdfPath);
+              }
+              res.status(400).json({ error: analysisData.error });
+              return resolve();
+            }
+            
+            // DUPLICATE CALL LOG DATE CHECK
+            const existingLog = allLogs.find(l => l.userId === userId && l.callDate === analysisData.call_date);
+            if (existingLog) {
+              if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
+              if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
+              res.status(400).json({ 
+                error: `A call log for the date ${analysisData.call_date} has already been uploaded.` 
+              });
+              return resolve();
+            }
+            
+            const logId = 'log_' + Date.now().toString() + Math.random().toString(36).substr(2, 5);
+            const finalFilename = `${logId}.xlsx`;
+            const finalPath = path.join(UPLOADS_DIR, finalFilename);
+            
+            // Upload PDF to Cloudinary
+            const pdfDest = `pdfs/${userId}/${logId}`;
+            const pdfUrl = await uploadToCloudinary(pdfPath, pdfDest, true) || '';
+            
+            // Delete local temp PDF upload
+            if (fs.existsSync(pdfPath)) {
+              fs.unlinkSync(pdfPath);
+            }
+            
+            // Rename excel file locally
+            if (fs.existsSync(excelPath)) {
+              fs.renameSync(excelPath, finalPath);
+            }
+            
+            // Upload Excel to Cloudinary
+            const excelDest = `excels/${userId}/${logId}`;
+            const excelUrl = await uploadToCloudinary(finalPath, excelDest, true) || '';
+            
+            // Save log entry to DB
+            const logEntry = await db.createLog({
+              id: logId,
+              userId,
+              filename: finalFilename,
+              callDate: analysisData.call_date,
+              summary: analysisData.summary,
+              calls: analysisData.calls,
+              arrivalTime: analysisData.summary.workday_start,
+              departureTime: analysisData.summary.workday_end,
+              pdfUrl,
+              excelUrl
+            });
+            
+            res.json({
+              message: 'PDF analyzed and Excel sheet generated successfully!',
+              log: logEntry
+            });
+            resolve();
+            
+          } catch (parseErr) {
+            if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
+            if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
+            console.error('JSON Parsing Error:', parseErr, stdout);
+            res.status(500).json({ 
+              error: 'Analysis output parsing failed', 
+              details: parseErr.message 
+            });
+            resolve();
+          }
+        });
+      }).catch(err => {
+        if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
+        console.error('Queue database retrieval error:', err);
+        res.status(500).json({ error: 'Database retrieval error', details: err.message });
+        resolve();
       });
-      
-      return res.json({
-        message: 'PDF analyzed and Excel sheet generated successfully!',
-        log: logEntry
-      });
-      
-    } catch (parseErr) {
-      if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
-      if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
-      console.error('JSON Parsing Error:', parseErr, stdout);
-      return res.status(500).json({ 
-        error: 'Analysis output parsing failed', 
-        details: parseErr.message 
-      });
-    }
+    });
   });
+
+  // Trigger processing
+  processQueue();
 });
 
 // Get history of uploads
@@ -801,6 +859,17 @@ app.post('/api/admin/assign-task', authenticateToken, requireAdmin, async (req, 
   });
   
   return res.json({ message: 'Task assigned successfully', task: newTask });
+});
+
+// Flush/Reset database (Admin only)
+app.post('/api/admin/flush-database', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    await db.flushDatabase();
+    return res.json({ message: 'Database flushed successfully.' });
+  } catch (err) {
+    console.error('Error flushing database:', err);
+    return res.status(500).json({ error: 'Failed to flush database.' });
+  }
 });
 
 // Seed admin account (Helper route for development testing)

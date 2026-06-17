@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, Calendar, FileSpreadsheet, PlusCircle, CheckCircle, Clock, 
   PhoneCall, AlertTriangle, Download, ArrowRight, ClipboardList, Settings, RotateCcw,
-  ChevronUp, ChevronDown, ChevronsUpDown, FileText, Folder, FolderOpen, RefreshCw
+  ChevronUp, ChevronDown, ChevronsUpDown, FileText, Folder, FolderOpen, RefreshCw, Trash2
 } from 'lucide-react';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
@@ -287,6 +287,25 @@ function AdminDashboard({ user, token }) {
       fetchTasks();
     } catch (err) {
       setTaskError(err.message);
+    }
+  };
+
+  const handleDeleteTask = async (taskId) => {
+    if (!window.confirm("Are you sure you want to delete this task?")) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/tasks/${taskId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setTasks(prev => prev.filter(t => t.id !== taskId));
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to delete task');
+      }
+    } catch (err) {
+      console.error('Error deleting task:', err);
+      alert('Error deleting task: ' + err.message);
     }
   };
 
@@ -1369,35 +1388,60 @@ function AdminDashboard({ user, token }) {
                   
                   {tasks.length > 0 ? (
                     <div style={{ overflowY: 'auto', flex: 1, paddingRight: '0.25rem' }}>
-                      {tasks.map(task => {
-                        let assigneeName = task.assignedTo;
-                        // If assignee is a userId, find user name
-                        const targetUser = users.find(u => u.id === task.assignedTo);
-                        if (targetUser) {
-                          assigneeName = targetUser.name;
-                        }
+                      {tasks
+                        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                        .slice(0, 2)
+                        .map(task => {
+                          let assigneeName = task.assignedTo;
+                          // If assignee is a userId, find user name
+                          const targetUser = users.find(u => u.id === task.assignedTo);
+                          if (targetUser) {
+                            assigneeName = targetUser.name;
+                          }
 
-                        const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(task.assignedTo.toLowerCase());
+                          const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(task.assignedTo.toLowerCase());
 
-                        return (
-                          <div 
-                            key={task.id} 
-                            style={{ 
-                              padding: '1rem', 
-                              border: '1px solid var(--border-light)', 
-                              borderRadius: '10px', 
-                              marginBottom: '0.75rem',
-                              backgroundColor: 'var(--bg-main)'
-                            }}
-                          >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                              <h4 style={{ fontSize: '0.95rem', fontWeight: 600 }}>{task.title}</h4>
-                              {isDomainTask ? (
-                                <span className="badge badge-primary">Domain: {task.assignedTo}</span>
-                              ) : (
-                                <span className="badge badge-success">Personal</span>
-                              )}
-                            </div>
+                          return (
+                            <div 
+                              key={task.id} 
+                              style={{ 
+                                padding: '1rem', 
+                                border: '1px solid var(--border-light)', 
+                                borderRadius: '10px', 
+                                marginBottom: '0.75rem',
+                                backgroundColor: 'var(--bg-main)'
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                <h4 style={{ fontSize: '0.95rem', fontWeight: 600 }}>{task.title}</h4>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  {isDomainTask ? (
+                                    <span className="badge badge-primary">Domain: {task.assignedTo}</span>
+                                  ) : (
+                                    <span className="badge badge-success">Personal</span>
+                                  )}
+                                  <button 
+                                    onClick={() => handleDeleteTask(task.id)}
+                                    style={{
+                                      border: 'none',
+                                      background: 'none',
+                                      color: 'var(--danger, #dc2626)',
+                                      cursor: 'pointer',
+                                      padding: '0.1rem 0.2rem',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      borderRadius: '4px',
+                                      transition: 'background-color 0.15s ease'
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(220, 38, 38, 0.08)'}
+                                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    title="Delete task"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </div>
                             
                             {task.description && (
                               <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>

@@ -1424,6 +1424,21 @@ app.get('/api/admin/tasks', authenticateToken, requireAdmin, async (req, res) =>
   }
 });
 
+// Delete a task (Admin only)
+app.delete('/api/admin/tasks/:taskId', authenticateToken, requireAdmin, async (req, res) => {
+  const { taskId } = req.params;
+  try {
+    const success = await db.deleteTask(taskId);
+    if (!success) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    return res.json({ message: 'Task deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting task:', err);
+    return res.status(500).json({ error: 'Failed to delete task' });
+  }
+});
+
 // Assign a task (Admin only)
 app.post('/api/admin/assign-task', authenticateToken, requireAdmin, async (req, res) => {
   const { title, description, assignedTo } = req.body; // assignedTo can be a userId or a domain

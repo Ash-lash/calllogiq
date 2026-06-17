@@ -645,16 +645,79 @@ app.get('/api/calls/download/:logId', authenticateToken, requireAdmin, async (re
     return res.status(404).json({ error: 'Excel log file record not found' });
   }
   
+  const logUser = await db.findUserById(log.userId);
+  const downloadName = `${logUser ? logUser.name.replace(/\s+/g, '_') : 'User'}_Call_Log_Analysis_${log.callDate.replace(/\s+/g, '')}.xlsx`;
+  
+  // Try local file first
   const filePath = path.join(UPLOADS_DIR, log.filename);
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: 'Excel file not found on disk' });
+  if (fs.existsSync(filePath)) {
+    return res.download(filePath, downloadName);
   }
   
-  const user = await db.findUserById(log.userId);
-  const downloadName = `${user ? user.name.replace(/\s+/g, '_') : 'User'}_Call_Log_Analysis_${log.callDate.replace(/\s+/g, '')}.xlsx`;
+  // Fall back: proxy from Cloudinary excelUrl
+  if (log.excelUrl) {
+    try {
+      const https = require('https');
+      const http = require('http');
+      const protocol = log.excelUrl.startsWith('https') ? https : http;
+      res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      protocol.get(log.excelUrl, (fileRes) => {
+        fileRes.pipe(res);
+      }).on('error', (err) => {
+        console.error('Error proxying Excel from Cloudinary:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to stream Excel from cloud storage' });
+        }
+      });
+    } catch (err) {
+      console.error('Error setting up Excel proxy:', err);
+      return res.status(500).json({ error: 'Excel proxy error' });
+    }
+    return;
+  }
   
-  return res.download(filePath, downloadName);
+  return res.status(404).json({ error: 'Excel file not available (not on disk and no cloud URL)' });
 });
+
+// View/Download PDF (Admin only) - streams the PDF from Cloudinary with auth
+app.get('/api/calls/pdf/:logId', authenticateToken, requireAdmin, async (req, res) => {
+  const { logId } = req.params;
+  const log = await db.getLogById(logId);
+  
+  if (!log) {
+    return res.status(404).json({ error: 'Log record not found' });
+  }
+  
+  if (!log.pdfUrl) {
+    return res.status(404).json({ error: 'No PDF available for this log entry' });
+  }
+  
+  try {
+    const https = require('https');
+    const http = require('http');
+    const protocol = log.pdfUrl.startsWith('https') ? https : http;
+    const logUser = await db.findUserById(log.userId);
+    const filename = `${logUser ? logUser.name.replace(/\s+/g, '_') : 'User'}_${log.callDate.replace(/\s+/g, '')}.pdf`;
+    
+    // For view: set Content-Disposition inline so browser opens it
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    
+    protocol.get(log.pdfUrl, (fileRes) => {
+      fileRes.pipe(res);
+    }).on('error', (err) => {
+      console.error('Error proxying PDF from Cloudinary:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to stream PDF from cloud storage' });
+      }
+    });
+  } catch (err) {
+    console.error('Error setting up PDF proxy:', err);
+    return res.status(500).json({ error: 'PDF proxy error' });
+  }
+});
+
 
 // Get Attendance Report for a specific user (Admin only)
 app.get('/api/admin/attendance/:userId', authenticateToken, requireAdmin, async (req, res) => {

@@ -46,6 +46,9 @@ function AdminDashboard({ user, token }) {
   const [flushError, setFlushError] = useState('');
   const [flushLoading, setFlushLoading] = useState(false);
 
+  // Download loading states: { [logId_type]: true/false }
+  const [downloadingStates, setDownloadingStates] = useState({});
+
   // Fetch Admin Data
   useEffect(() => {
     fetchUsers();
@@ -286,6 +289,44 @@ function AdminDashboard({ user, token }) {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     return `${h}h ${m}m`;
+  };
+
+  // Authenticated file action: opens PDF inline or downloads Excel
+  const handleFileAction = async (logId, type) => {
+    const key = `${logId}_${type}`;
+    setDownloadingStates(prev => ({ ...prev, [key]: true }));
+    try {
+      const endpoint = type === 'pdf' ? `/api/calls/pdf/${logId}` : `/api/calls/download/${logId}`;
+      const res = await fetch(endpoint, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || `Failed to load ${type.toUpperCase()}`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      if (type === 'pdf') {
+        // Open PDF in a new browser tab for viewing
+        window.open(url, '_blank');
+      } else {
+        // Trigger download for Excel
+        const a = document.createElement('a');
+        const contentDisposition = res.headers.get('Content-Disposition') || '';
+        const filenameMatch = contentDisposition.match(/filename="(.+?)"/);
+        a.download = filenameMatch ? filenameMatch[1] : `CallLog_${logId}.xlsx`;
+        a.href = url;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (err) {
+      alert(`Error accessing ${type.toUpperCase()}: ${err.message}`);
+    } finally {
+      setDownloadingStates(prev => ({ ...prev, [key]: false }));
+    }
   };
 
   // Helper: Get employee productivity metrics
@@ -702,29 +743,30 @@ function AdminDashboard({ user, token }) {
                             <td>{row.talkTime}</td>
                             <td>{row.calls}</td>
                             <td>
-                              {row.status === 'Present' && row.pdfUrl && (
-                                <a 
-                                  href={row.pdfUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                              {row.status === 'Present' && row.logId && (
+                                <button
+                                  onClick={() => handleFileAction(row.logId, 'pdf')}
+                                  disabled={downloadingStates[`${row.logId}_pdf`] || !row.pdfUrl}
                                   className="btn btn-outline" 
-                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '3px', opacity: row.pdfUrl ? 1 : 0.4, cursor: row.pdfUrl ? 'pointer' : 'not-allowed' }}
+                                  title={row.pdfUrl ? 'View PDF' : 'No PDF available'}
                                 >
                                   <FileText size={12} />
-                                  PDF
-                                </a>
+                                  {downloadingStates[`${row.logId}_pdf`] ? '...' : 'PDF'}
+                                </button>
                               )}
                             </td>
                             <td>
                               {row.status === 'Present' && row.logId && (
-                                <a 
-                                  href={`/api/calls/download/${row.logId}`} 
+                                <button
+                                  onClick={() => handleFileAction(row.logId, 'excel')}
+                                  disabled={downloadingStates[`${row.logId}_excel`]}
                                   className="btn btn-outline" 
-                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                                 >
                                   <Download size={12} />
-                                  Excel
-                                </a>
+                                  {downloadingStates[`${row.logId}_excel`] ? 'Loading...' : 'Excel'}
+                                </button>
                               )}
                             </td>
                           </tr>
@@ -880,28 +922,27 @@ function AdminDashboard({ user, token }) {
                           <td>{log.summary.workday_span_str}</td>
                           <td>{log.summary.total_idle_str} ({log.summary.idle_gaps_count} breaks)</td>
                           <td>
-                            {log.pdfUrl ? (
-                              <a 
-                                href={log.pdfUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="btn btn-outline" 
-                                style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
-                              >
-                                <FileText size={12} />
-                                View PDF
-                              </a>
-                            ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>N/A</span>}
+                            <button
+                              onClick={() => handleFileAction(log.id, 'pdf')}
+                              disabled={downloadingStates[`${log.id}_pdf`] || !log.pdfUrl}
+                              className="btn btn-outline" 
+                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '3px', opacity: log.pdfUrl ? 1 : 0.4, cursor: log.pdfUrl ? 'pointer' : 'not-allowed' }}
+                              title={log.pdfUrl ? 'View original PDF' : 'No PDF available'}
+                            >
+                              <FileText size={12} />
+                              {downloadingStates[`${log.id}_pdf`] ? 'Loading...' : 'View PDF'}
+                            </button>
                           </td>
                           <td>
-                            <a 
-                              href={`/api/calls/download/${log.id}`} 
+                            <button 
+                              onClick={() => handleFileAction(log.id, 'excel')}
+                              disabled={downloadingStates[`${log.id}_excel`]}
                               className="btn btn-outline" 
-                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                             >
                               <Download size={12} />
-                              Download XLSX
-                            </a>
+                              {downloadingStates[`${log.id}_excel`] ? 'Loading...' : 'Download XLSX'}
+                            </button>
                           </td>
                         </tr>
                       );

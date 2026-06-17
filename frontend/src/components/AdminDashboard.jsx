@@ -486,7 +486,7 @@ function AdminDashboard({ user, token }) {
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Employee Name</th>
+                    <th className="name-col">Employee Name</th>
                     <th className="email-col">Email</th>
                     <th>Domain</th>
                     <th>Branch</th>
@@ -501,7 +501,7 @@ function AdminDashboard({ user, token }) {
                 <tbody>
                   {leaderboard.filter(u => u.email !== user.email).map(emp => (
                     <tr key={emp.id}>
-                      <td style={{ fontWeight: 600 }}>{emp.name}</td>
+                      <td className="name-col" style={{ fontWeight: 600 }}>{emp.name}</td>
                       <td className="email-col">{emp.email}</td>
                       <td><span className="badge badge-primary">{emp.domain}</span></td>
                       <td>

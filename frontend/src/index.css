@@ -1032,3 +1032,12 @@ a:hover {
     justify-content: center;
   }
 }
+
+@keyframes uploadProgressAnim {
+  0% {
+    left: -40%;
+  }
+  100% {
+    left: 100%;
+  }
+}

@@ -387,6 +387,29 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
           <p className="uploader-desc">
             {uploadLoading ? 'Running metrics models and generating spreadsheets...' : 'or click to browse from files (Only PDF logs)'}
           </p>
+          {uploadLoading && (
+            <div style={{ 
+              width: '100%', 
+              maxWidth: '350px', 
+              height: '6px', 
+              backgroundColor: 'var(--border-color)', 
+              borderRadius: '3px', 
+              marginTop: '1.25rem', 
+              overflow: 'hidden', 
+              position: 'relative' 
+            }} onClick={e => e.stopPropagation()}>
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                height: '100%',
+                width: '45%',
+                borderRadius: '3px',
+                background: 'linear-gradient(90deg, #111111 0%, #777777 100%)',
+                animation: 'uploadProgressAnim 1.4s infinite ease-in-out'
+              }} />
+            </div>
+          )}
           {uploadError && (
             <div className="alert alert-danger" style={{ marginTop: '1rem', width: '100%', maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
               <AlertCircle size={16} style={{ display: 'inline', marginRight: '0.5rem', verticalAlign: 'middle' }} />

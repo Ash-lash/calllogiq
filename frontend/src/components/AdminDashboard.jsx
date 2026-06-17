@@ -486,15 +486,15 @@ function AdminDashboard({ user, token }) {
               <table className="table">
                 <thead>
                   <tr>
-                    <th className="name-col">Employee Name</th>
+                    <th className="name-col">Employee</th>
                     <th className="email-col">Email</th>
                     <th>Domain</th>
                     <th>Branch</th>
-                    <th>Uploads</th>
-                    <th>Total Calls</th>
-                    <th>Avg Calls/Day</th>
-                    <th>Total Talk Time</th>
-                    <th>Total Idle Time</th>
+                    <th>Logs</th>
+                    <th>Calls</th>
+                    <th>Avg/Day</th>
+                    <th>Talk Time</th>
+                    <th>Idle Time</th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
@@ -631,13 +631,13 @@ function AdminDashboard({ user, token }) {
                       <tr>
                         <th>Date</th>
                         <th>Status</th>
-                        <th>Clock In (Arrival)</th>
-                        <th>Clock Out (Departure)</th>
-                        <th>Workday Span</th>
-                        <th>Net Working Hours (9h req)</th>
-                        <th>Talking Hours</th>
-                        <th>Call Count</th>
-                        <th>Report</th>
+                        <th>Clock In</th>
+                        <th>Clock Out</th>
+                        <th>Span</th>
+                        <th>Net Hours</th>
+                        <th>Talk Time</th>
+                        <th>Calls</th>
+                        <th>Excel</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -756,14 +756,14 @@ function AdminDashboard({ user, token }) {
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Reporting Period</th>
-                    <th>Files Compiled</th>
-                    <th>Dialed calls</th>
-                    <th>Incoming calls</th>
-                    <th>Missed calls</th>
-                    <th>Total Call Logs</th>
-                    <th>Accumulated Talk Time</th>
-                    <th>Accumulated Idle Gaps</th>
+                    <th>Period</th>
+                    <th>Compiled</th>
+                    <th>Dialed</th>
+                    <th>Incoming</th>
+                    <th>Missed</th>
+                    <th>Total</th>
+                    <th>Talk Time</th>
+                    <th>Idle Gaps</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -797,13 +797,13 @@ function AdminDashboard({ user, token }) {
                 <table className="table" style={{ fontSize: '0.85rem' }}>
                   <thead>
                     <tr>
-                      <th>Telecaller</th>
-                      <th>Call Log Date</th>
+                      <th className="name-col">Telecaller</th>
+                      <th>Date</th>
                       <th>Dialed</th>
                       <th>Incoming</th>
                       <th>Missed</th>
-                      <th>Workday Span</th>
-                      <th>Idle Gaps</th>
+                      <th>Span</th>
+                      <th>Idle</th>
                       <th>Action</th>
                     </tr>
                   </thead>
@@ -812,7 +812,7 @@ function AdminDashboard({ user, token }) {
                       const logUser = users.find(u => u.id === log.userId);
                       return (
                         <tr key={log.id}>
-                          <td style={{ fontWeight: 600 }}>{logUser ? logUser.name : 'Unknown User'}</td>
+                          <td className="name-col" style={{ fontWeight: 600 }}>{logUser ? logUser.name : 'Unknown User'}</td>
                           <td>{log.callDate}</td>
                           <td>{log.summary.total_dialed}</td>
                           <td>{log.summary.total_incoming}</td>

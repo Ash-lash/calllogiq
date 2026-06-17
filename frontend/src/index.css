@@ -700,7 +700,7 @@ a:hover {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  font-size: 0.82rem; /* Compact font size to fit viewport */
+  font-size: 0.76rem; /* Compact font size to fit viewport */
   table-layout: auto;
 }
 
@@ -708,15 +708,15 @@ a:hover {
   background-color: #f1f5f9;
   color: var(--text-primary);
   font-weight: 800;
-  padding: 0.5rem 0.6rem;
+  padding: 0.42rem 0.5rem;
   border-bottom: 2px solid var(--border-color);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.03em;
   white-space: nowrap;
 }
 
 .table td {
-  padding: 0.5rem 0.6rem;
+  padding: 0.42rem 0.5rem;
   border-bottom: 1.5px solid var(--border-light);
   color: var(--text-secondary);
   vertical-align: middle;
@@ -724,14 +724,14 @@ a:hover {
 }
 
 .email-col {
-  max-width: 140px;
+  max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .name-col {
-  max-width: 130px;
+  max-width: 105px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -67,8 +67,13 @@ function App() {
     <div className="app-container">
       {/* Sidebar navigation */}
       <aside className="sidebar">
-        <div className="sidebar-title">
-          <span>📊</span> CallLogIQ
+        <div className="sidebar-title" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.6rem 0.8rem' }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+            <rect width="24" height="24" rx="4" fill="#111111" />
+            <path d="M7 7H9V17H7V7ZM11 11H13V17H11V11ZM15 14H17V17H15V14Z" fill="#ffffff" />
+            <circle cx="17" cy="8" r="2" fill="#ef4444" />
+          </svg>
+          <span style={{ fontSize: '1.2rem', fontWeight: 900, letterSpacing: '-0.04em' }}>CALLLOGIQ</span>
         </div>
         
         <nav className="sidebar-menu">

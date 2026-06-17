@@ -487,7 +487,7 @@ function AdminDashboard({ user, token }) {
                 <thead>
                   <tr>
                     <th>Employee Name</th>
-                    <th>Email</th>
+                    <th className="email-col">Email</th>
                     <th>Domain</th>
                     <th>Branch</th>
                     <th>Uploads</th>
@@ -502,7 +502,7 @@ function AdminDashboard({ user, token }) {
                   {leaderboard.filter(u => u.email !== user.email).map(emp => (
                     <tr key={emp.id}>
                       <td style={{ fontWeight: 600 }}>{emp.name}</td>
-                      <td>{emp.email}</td>
+                      <td className="email-col">{emp.email}</td>
                       <td><span className="badge badge-primary">{emp.domain}</span></td>
                       <td>
                         <span 
@@ -731,7 +731,7 @@ function AdminDashboard({ user, token }) {
                   <BarChart data={aggregatedList}>
                     <XAxis dataKey="period" stroke="var(--text-secondary)" fontSize={10} tickLine={false} />
                     <YAxis stroke="var(--text-secondary)" fontSize={10} tickLine={false} />
-                    <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '8px', color: 'var(--text-primary)' }} />
+                    <Tooltip contentStyle={{ background: '#ffffff', border: '2px solid #111111', borderRadius: '4px', color: '#111111', fontWeight: '700' }} />
                     <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
                     <Bar dataKey="dialed" name="Dialed Calls" fill="var(--primary)" stackId="a" />
                     <Bar dataKey="incoming" name="Incoming Calls" fill="var(--success)" stackId="a" />
@@ -1086,8 +1086,9 @@ function AdminDashboard({ user, token }) {
           <div className="card" style={{
             width: '100%',
             maxWidth: '500px',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-            border: '1px solid var(--border-light)',
+            boxShadow: '6px 6px 0px 0px #111111',
+            border: '2px solid #111111',
+            borderRadius: '4px',
             animation: 'fadeIn 0.2s ease-out'
           }}>
             <div className="card-title-bar" style={{ marginBottom: '1.5rem' }}>

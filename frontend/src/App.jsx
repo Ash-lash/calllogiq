@@ -116,7 +116,7 @@ function App() {
                 </div>
               )}
               {user.branch && user.branch !== 'Pending' && (
-                <div className="user-meta-domain" style={{ background: 'var(--success-light)', color: 'var(--success)' }}>
+                <div className="user-meta-domain" style={{ borderColor: 'var(--success)', color: 'var(--success)', boxShadow: '1px 1px 0px var(--success)' }}>
                   {user.branch}
                 </div>
               )}

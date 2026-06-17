@@ -402,11 +402,11 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
           {selectedLog ? (
             <div>
               {/* Selected log header details */}
-              <div className="card" style={{ marginBottom: '1.5rem', background: 'var(--gradient-card)' }}>
+              <div className="card" style={{ marginBottom: '1.5rem', background: '#ffffff' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <h3 style={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Calendar size={18} color="var(--primary)" />
+                    <h3 style={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', letterSpacing: '-0.02em' }}>
+                      <Calendar size={18} color="#111111" />
                       Call Logs Analysis: {selectedLog.callDate}
                     </h3>
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
@@ -508,10 +508,10 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                       <BarChart data={getBarData()}>
                         <XAxis dataKey="name" stroke="var(--text-secondary)" fontSize={10} tickLine={false} />
                         <YAxis stroke="var(--text-secondary)" fontSize={10} tickLine={false} />
-                        <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '8px', color: 'var(--text-primary)' }} />
+                        <Tooltip contentStyle={{ background: '#ffffff', border: '2px solid #111111', borderRadius: '4px', color: '#111111', fontWeight: '700' }} />
                         <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                        <Bar dataKey="Dialed" fill="var(--primary)" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="Incoming" fill="var(--success)" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="Dialed" fill="#111111" radius={[0, 0, 0, 0]} />
+                        <Bar dataKey="Incoming" fill="var(--success)" radius={[0, 0, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -539,7 +539,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip />
+                          <Tooltip contentStyle={{ background: '#ffffff', border: '2px solid #111111', borderRadius: '4px', color: '#111111', fontWeight: '700' }} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
@@ -620,17 +620,19 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                     onClick={() => setSelectedLog(log)}
                     style={{ 
                       padding: '0.75rem 1rem',
-                      border: '1px solid var(--border-light)',
-                      borderRadius: '10px',
-                      marginBottom: '0.5rem',
+                      border: '2px solid #111111',
+                      borderRadius: '4px',
+                      marginBottom: '0.6rem',
                       cursor: 'pointer',
-                      background: selectedLog?.id === log.id ? 'var(--primary-light)' : 'transparent',
-                      color: selectedLog?.id === log.id ? 'var(--primary)' : 'inherit',
-                      transition: 'all var(--transition-fast)'
+                      background: selectedLog?.id === log.id ? '#111111' : '#ffffff',
+                      color: selectedLog?.id === log.id ? '#ffffff' : '#111111',
+                      boxShadow: selectedLog?.id === log.id ? '2px 2px 0px #111' : 'none',
+                      transition: 'all 0.2s ease',
+                      transform: selectedLog?.id === log.id ? 'translate(-1px, -1px)' : 'none'
                     }}
                   >
-                    <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Log Date: {log.callDate}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>Log Date: {log.callDate}</div>
+                    <div style={{ fontSize: '0.75rem', color: selectedLog?.id === log.id ? '#e2e8f0' : 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem' }}>
                       <span>Total calls: {log.summary.grand_total}</span>
                       <span>{new Date(log.createdAt).toLocaleDateString()}</span>
                     </div>
@@ -645,7 +647,6 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
           </div>
         </div>
       </div>
-      {/* 2030 Futuristic Profile Setup Modal */}
       {showSetupModal && (
         <div style={{
           position: 'fixed',
@@ -653,9 +654,9 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(15, 23, 42, 0.3)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
+          background: 'rgba(17, 17, 17, 0.4)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -664,40 +665,40 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
         }}>
           <div className="card" style={{
             background: '#ffffff',
-            border: '1px solid rgba(99, 102, 241, 0.15)',
-            borderRadius: '24px',
+            border: '2px solid #111111',
+            borderRadius: '4px',
             padding: '2.5rem',
             width: '460px',
             maxWidth: '100%',
-            boxShadow: 'var(--shadow-xl), var(--shadow-glow)',
-            color: 'var(--text-primary)',
+            boxShadow: '6px 6px 0px 0px #111111',
+            color: '#111111',
             boxSizing: 'border-box'
           }}>
             <h2 style={{ 
               fontSize: '1.8rem', 
               fontWeight: 900, 
               margin: '0 0 0.5rem 0', 
-              background: 'linear-gradient(135deg, #1e293b 30%, #475569 100%)', 
-              WebkitBackgroundClip: 'text', 
-              WebkitTextFillColor: 'transparent',
-              fontFamily: "'Outfit', sans-serif" 
+              color: '#111111',
+              fontFamily: "'Outfit', sans-serif",
+              textTransform: 'uppercase',
+              letterSpacing: '-0.03em'
             }}>
               Complete Your Profile
             </h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', margin: '0 0 1.5rem 0', fontWeight: 500 }}>
-              Confirm your display name and choose your department domain to configure your new workspace.
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', margin: '0 0 1.5rem 0', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Confirm display name & select workspace credentials.
             </p>
 
             {setupError && (
               <div style={{ 
-                background: 'rgba(220, 38, 38, 0.08)', 
-                border: '1px solid rgba(220, 38, 38, 0.2)', 
+                background: 'var(--danger-light)', 
+                border: '2px solid var(--danger)', 
                 color: 'var(--danger)', 
-                borderRadius: '12px', 
                 padding: '10px', 
                 fontSize: '0.85rem', 
                 marginBottom: '1.5rem', 
-                textAlign: 'center' 
+                textAlign: 'center',
+                fontWeight: 700
               }}>
                 {setupError}
               </div>
@@ -705,7 +706,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
 
             <form onSubmit={handleSetupSubmit}>
               <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
                   Full Name
                 </label>
                 <input
@@ -716,34 +717,33 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                   required
                   style={{ 
                     width: '100%', 
-                    padding: '14px', 
-                    background: '#f1f5f9', 
-                    border: '1px solid rgba(99, 102, 241, 0.08)', 
-                    borderRadius: '12px', 
-                    color: '#0f172a', 
+                    padding: '12px 14px', 
+                    background: '#ffffff', 
+                    border: '2px solid #111111', 
+                    borderRadius: '4px', 
+                    color: '#111111', 
                     outline: 'none', 
                     boxSizing: 'border-box',
                     fontSize: '0.95rem',
-                    transition: 'all 0.3s ease'
+                    fontWeight: 600,
+                    transition: 'all 0.2s ease'
                   }}
                   onFocus={e => {
-                    e.target.style.background = '#ffffff';
-                    e.target.style.borderColor = 'var(--primary)';
-                    e.target.style.boxShadow = '0 0 15px rgba(79, 70, 229, 0.15)';
+                    e.target.style.transform = 'translate(-2px, -2px)';
+                    e.target.style.boxShadow = '3px 3px 0px #111';
                   }}
                   onBlur={e => {
-                    e.target.style.background = '#f1f5f9';
-                    e.target.style.borderColor = 'rgba(99, 102, 241, 0.08)';
+                    e.target.style.transform = 'none';
                     e.target.style.boxShadow = 'none';
                   }}
                 />
               </div>
 
-              <div style={{ marginBottom: '2rem' }}>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+              <div style={{ marginBottom: '1.75rem' }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
                   Department Domain
                 </label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '180px', overflowY: 'auto', paddingRight: '4px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '180px', overflowY: 'auto', paddingRight: '4px' }}>
                   {['Sales', 'Accounts', 'Support', 'HR', 'Operations'].map((dom) => {
                     const isSelected = selectedSetupDomain === dom;
                     return (
@@ -754,24 +754,26 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                           display: 'flex',
                           alignItems: 'center',
                           padding: '12px 14px',
-                          background: isSelected ? 'var(--primary-light)' : '#f1f5f9',
-                          border: `1px solid ${isSelected ? 'var(--primary)' : 'rgba(99, 102, 241, 0.08)'}`,
-                          borderRadius: '12px',
+                          background: isSelected ? '#111111' : '#ffffff',
+                          border: '2px solid #111111',
+                          borderRadius: '4px',
                           cursor: 'pointer',
-                          transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-                          fontWeight: isSelected ? 700 : 500
+                          transition: 'all 0.2s ease',
+                          fontWeight: 800,
+                          transform: isSelected ? 'translate(-2px, -2px)' : 'none',
+                          boxShadow: isSelected ? '3px 3px 0px #111' : 'none'
                         }}
                       >
-                        <span style={{ flex: 1, color: isSelected ? 'var(--primary)' : 'var(--text-secondary)', fontSize: '0.95rem' }}>{dom}</span>
-                        {isSelected && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary)', boxShadow: 'var(--shadow-glow)' }}></span>}
+                        <span style={{ flex: 1, color: isSelected ? '#ffffff' : '#111111', fontSize: '0.92rem', textTransform: 'uppercase' }}>{dom}</span>
+                        {isSelected && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ffffff' }}></span>}
                       </div>
                     );
                   })}
                 </div>
               </div>
 
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+              <div style={{ marginBottom: '2rem' }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
                   Workplace Branch
                 </label>
                 <div style={{ 
@@ -790,15 +792,18 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                           alignItems: 'center',
                           justifyContent: 'center',
                           padding: '12px 8px',
-                          background: isSelected ? 'var(--primary-light)' : '#f1f5f9',
-                          border: `1px solid ${isSelected ? 'var(--primary)' : 'rgba(99, 102, 241, 0.08)'}`,
-                          borderRadius: '12px',
+                          background: isSelected ? '#111111' : '#ffffff',
+                          border: '2px solid #111111',
+                          borderRadius: '4px',
                           cursor: 'pointer',
-                          transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-                          fontWeight: isSelected ? 700 : 500,
-                          fontSize: '0.9rem',
+                          transition: 'all 0.2s ease',
+                          fontWeight: 800,
+                          fontSize: '0.88rem',
                           textAlign: 'center',
-                          color: isSelected ? 'var(--primary)' : 'var(--text-secondary)'
+                          color: isSelected ? '#ffffff' : '#111111',
+                          textTransform: 'uppercase',
+                          transform: isSelected ? 'translate(-2px, -2px)' : 'none',
+                          boxShadow: isSelected ? '3px 3px 0px #111' : 'none'
                         }}
                       >
                         {br}
@@ -814,17 +819,32 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                 style={{
                   width: '100%',
                   padding: '14px',
-                  background: 'var(--gradient-primary)',
-                  border: 'none',
+                  background: '#111111',
+                  border: '2px solid #111111',
                   outline: 'none',
                   color: '#ffffff',
-                  fontWeight: 700,
+                  fontWeight: 800,
                   fontSize: '1rem',
-                  borderRadius: '12px',
+                  borderRadius: '4px',
                   cursor: 'pointer',
-                  boxShadow: '0 10px 20px -10px rgba(79, 70, 229, 0.4)',
-                  transition: 'all 0.3s',
-                  marginTop: '0.5rem'
+                  boxShadow: '3px 3px 0px #111',
+                  transition: 'all 0.2s ease',
+                  marginTop: '0.5rem',
+                  textTransform: 'uppercase'
+                }}
+                onMouseEnter={e => {
+                  if (!e.currentTarget.disabled) {
+                    e.currentTarget.style.background = '#ffffff';
+                    e.currentTarget.style.color = '#111111';
+                    e.currentTarget.style.transform = 'translate(-2px, -2px)';
+                    e.currentTarget.style.boxShadow = '5px 5px 0px #111';
+                  }
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = '#111111';
+                  e.currentTarget.style.color = '#ffffff';
+                  e.currentTarget.style.transform = 'none';
+                  e.currentTarget.style.boxShadow = '3px 3px 0px #111';
                 }}
               >
                 {setupLoading ? 'Saving Profile...' : 'Save & Enter Workspace'}

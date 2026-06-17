@@ -7,6 +7,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell 
 } from 'recharts';
+import API_BASE from '../api';
 
 const format_seconds = (seconds) => {
   if (isNaN(seconds) || seconds === undefined || seconds === null) return '00:00:00';
@@ -54,7 +55,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
     setSetupLoading(true);
     setSetupError('');
     try {
-      const res = await fetch('/api/users/update-profile', {
+      const res = await fetch(`${API_BASE}/api/users/update-profile`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -95,7 +96,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
 
   const fetchHistory = async () => {
     try {
-      const res = await fetch('/api/calls/history', {
+      const res = await fetch(`${API_BASE}/api/calls/history`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -112,7 +113,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
 
   const fetchTasks = async () => {
     try {
-      const res = await fetch('/api/tasks', {
+      const res = await fetch(`${API_BASE}/api/tasks`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -164,7 +165,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
     formData.append('pdf', file);
 
     try {
-      const res = await fetch('/api/calls/upload', {
+      const res = await fetch(`${API_BASE}/api/calls/upload`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData
@@ -188,7 +189,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
   // Toggle Task Status
   const handleToggleTask = async (taskId, currentStatus) => {
     try {
-      const res = await fetch(`/api/tasks/${taskId}/toggle`, {
+      const res = await fetch(`${API_BASE}/api/tasks/${taskId}/toggle`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -415,7 +416,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                   </div>
                   {previewMode && (
                     <a 
-                      href={`/api/calls/download/${selectedLog.id}`} 
+                      href={`${API_BASE}/api/calls/download/${selectedLog.id}`} 
                       className="btn btn-success" 
                       style={{ textDecoration: 'none' }}
                     >

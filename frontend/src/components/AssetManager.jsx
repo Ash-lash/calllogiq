@@ -3,6 +3,7 @@ import {
   Laptop, Phone, Wifi, AlertTriangle, CheckCircle, Trash2, Edit2, 
   Download, User, Calendar, ArrowRight, Search, FileText, X, Check, UploadCloud
 } from 'lucide-react';
+import API_BASE from '../api';
 
 function AssetManager({ user, token }) {
   const isUserAdmin = user.role === 'admin';
@@ -82,7 +83,7 @@ function AssetManager({ user, token }) {
     setError('');
     try {
       // 1. Fetch user's latest verification status
-      const myRes = await fetch('/api/assets/verifications/my-latest', {
+      const myRes = await fetch(`${API_BASE}/api/assets/verifications/my-latest`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (myRes.ok) {
@@ -118,7 +119,7 @@ function AssetManager({ user, token }) {
       }
 
       // 2. Fetch all assets for warnings / inventory
-      const assetsRes = await fetch('/api/assets', {
+      const assetsRes = await fetch(`${API_BASE}/api/assets`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (assetsRes.ok) {
@@ -141,14 +142,14 @@ function AssetManager({ user, token }) {
 
   const fetchAdminData = async () => {
     try {
-      const verRes = await fetch('/api/assets/verifications', {
+      const verRes = await fetch(`${API_BASE}/api/assets/verifications`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (verRes.ok) {
         setAllVerifications(await verRes.json());
       }
 
-      const notifRes = await fetch('/api/assets/notifications', {
+      const notifRes = await fetch(`${API_BASE}/api/assets/notifications`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (notifRes.ok) {
@@ -171,7 +172,7 @@ function AssetManager({ user, token }) {
     formData.append('image', file);
     
     try {
-      const res = await fetch('/api/assets/upload-image', {
+      const res = await fetch(`${API_BASE}/api/assets/upload-image`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -275,7 +276,7 @@ function AssetManager({ user, token }) {
 
     setLoading(true);
     try {
-      const res = await fetch('/api/assets/verifications', {
+      const res = await fetch(`${API_BASE}/api/assets/verifications`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -342,7 +343,7 @@ function AssetManager({ user, token }) {
         }
       }
 
-      const res = await fetch('/api/assets/verifications', {
+      const res = await fetch(`${API_BASE}/api/assets/verifications`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -376,7 +377,7 @@ function AssetManager({ user, token }) {
   // Download Excel Report
   const handleDownloadReport = async () => {
     try {
-      let url = '/api/assets/reports/download';
+      let url = `${API_BASE}/api/assets/reports/download`;
       const params = [];
       if (selectedYear) params.push(`year=${selectedYear}`);
       if (selectedMonth && selectedMonth !== 'All') params.push(`month=${selectedMonth}`);
@@ -409,7 +410,7 @@ function AssetManager({ user, token }) {
   // Resolve Alert Notification
   const handleResolveAlert = async (id) => {
     try {
-      const res = await fetch(`/api/assets/notifications/${id}/resolve`, {
+      const res = await fetch(`${API_BASE}/api/assets/notifications/${id}/resolve`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -426,7 +427,7 @@ function AssetManager({ user, token }) {
     e.preventDefault();
     try {
       const sanitizedTag = assetForm.assetTagId.replace(/\s+/g, '').toUpperCase();
-      const res = await fetch(`/api/assets/${editingAsset.assetTagId}`, {
+      const res = await fetch(`${API_BASE}/api/assets/${editingAsset.assetTagId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -450,7 +451,7 @@ function AssetManager({ user, token }) {
   const handleDeleteAsset = async (tagId) => {
     if (!window.confirm(`Are you sure you want to delete asset ${tagId}?`)) return;
     try {
-      const res = await fetch(`/api/assets/${tagId}`, {
+      const res = await fetch(`${API_BASE}/api/assets/${tagId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });

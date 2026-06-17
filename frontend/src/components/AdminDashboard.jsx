@@ -8,6 +8,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
   LineChart, Line
 } from 'recharts';
+import API_BASE from '../api';
 
 function AdminDashboard({ user, token }) {
   const [users, setUsers] = useState([]);
@@ -73,7 +74,7 @@ function AdminDashboard({ user, token }) {
   const fetchAttendance = async (userId) => {
     setAttendanceLoading(true);
     try {
-      const res = await fetch(`/api/admin/attendance/${userId}`, {
+      const res = await fetch(`${API_BASE}/api/admin/attendance/${userId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -89,7 +90,7 @@ function AdminDashboard({ user, token }) {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/admin/users', {
+      const res = await fetch(`${API_BASE}/api/admin/users`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -103,7 +104,7 @@ function AdminDashboard({ user, token }) {
 
   const fetchLogs = async () => {
     try {
-      const res = await fetch('/api/admin/logs', {
+      const res = await fetch(`${API_BASE}/api/admin/logs`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -118,7 +119,7 @@ function AdminDashboard({ user, token }) {
   const fetchTasks = async () => {
     // Admin can see all tasks
     try {
-      const res = await fetch('/api/tasks', {
+      const res = await fetch(`${API_BASE}/api/tasks`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -140,7 +141,7 @@ function AdminDashboard({ user, token }) {
     }
 
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, {
+      const res = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -175,7 +176,7 @@ function AdminDashboard({ user, token }) {
     }
 
     try {
-      const res = await fetch(`/api/admin/users/${editingUser.id}`, {
+      const res = await fetch(`${API_BASE}/api/admin/users/${editingUser.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -222,7 +223,7 @@ function AdminDashboard({ user, token }) {
     }
 
     try {
-      const res = await fetch('/api/admin/assign-task', {
+      const res = await fetch(`${API_BASE}/api/admin/assign-task`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -262,7 +263,7 @@ function AdminDashboard({ user, token }) {
     setFlushError('');
 
     try {
-      const res = await fetch('/api/admin/flush-database', {
+      const res = await fetch(`${API_BASE}/api/admin/flush-database`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -301,7 +302,7 @@ function AdminDashboard({ user, token }) {
     const key = `${logId}_${type}`;
     setDownloadingStates(prev => ({ ...prev, [key]: true }));
     try {
-      const endpoint = type === 'pdf' ? `/api/calls/pdf/${logId}` : `/api/calls/download/${logId}`;
+      const endpoint = type === 'pdf' ? `${API_BASE}/api/calls/pdf/${logId}` : `${API_BASE}/api/calls/download/${logId}`;
       const res = await fetch(endpoint, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -343,7 +344,7 @@ function AdminDashboard({ user, token }) {
   const handleAggregateDownload = async (userId, userName) => {
     setAggregateLoading(prev => ({ ...prev, [userId]: true }));
     try {
-      const res = await fetch(`/api/calls/aggregate-excel/${userId}`, {
+      const res = await fetch(`${API_BASE}/api/calls/aggregate-excel/${userId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) {

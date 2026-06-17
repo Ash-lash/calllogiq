@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Lock, Briefcase, Calculator, Headphones, Users, Cpu, ArrowLeft, Shield } from 'lucide-react';
+import API_BASE from '../api';
 
 function Auth({ onLoginSuccess }) {
   const [activeTab, setActiveTab] = useState('employee'); // 'employee' or 'admin'
@@ -74,7 +75,7 @@ function Auth({ onLoginSuccess }) {
     const idToken = response.credential;
     
     try {
-      const res = await fetch('/api/auth/google', {
+      const res = await fetch(`${API_BASE}/api/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken })
@@ -110,7 +111,7 @@ function Auth({ onLoginSuccess }) {
     setError('');
 
     try {
-      const res = await fetch('/api/auth/google', {
+      const res = await fetch(`${API_BASE}/api/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken: pendingGoogleToken, domain: selectedDomain })
@@ -135,7 +136,7 @@ function Auth({ onLoginSuccess }) {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })

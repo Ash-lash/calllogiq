@@ -316,6 +316,7 @@ const db = {
     const newTask = {
       status: 'pending',
       completions: [],
+      employeeStages: {},
       createdAt: new Date().toISOString(),
       ...task,
       id
@@ -370,7 +371,7 @@ const db = {
     }
   },
 
-  toggleTaskStatus: async (taskId, userId, isCompleted) => {
+  updateTaskStatus: async (taskId, userId, status) => {
     const firestore = getFirestore();
     if (firestore) {
       const docRef = firestore.collection('tasks').doc(taskId);
@@ -378,19 +379,19 @@ const db = {
       if (!doc.exists) return null;
       
       const task = doc.data();
-      const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(task.assignedTo.toLowerCase());
+      if (!task.employeeStages) task.employeeStages = {};
+      task.employeeStages[userId] = status;
       
+      const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(task.assignedTo.toLowerCase());
       if (isDomainTask) {
         if (!task.completions) task.completions = [];
-        if (isCompleted) {
-          if (!task.completions.includes(userId)) {
-            task.completions.push(userId);
-          }
+        if (status === 'completed') {
+          if (!task.completions.includes(userId)) task.completions.push(userId);
         } else {
           task.completions = task.completions.filter(id => id !== userId);
         }
       } else {
-        task.status = isCompleted ? 'completed' : 'pending';
+        task.status = status;
       }
       
       await docRef.set(task);
@@ -399,24 +400,30 @@ const db = {
       const data = readLocalDB();
       const task = data.tasks.find(t => t.id === taskId);
       if (!task) return null;
-
+      
+      if (!task.employeeStages) task.employeeStages = {};
+      task.employeeStages[userId] = status;
+      
       const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(task.assignedTo.toLowerCase());
-
       if (isDomainTask) {
-        if (isCompleted) {
-          if (!task.completions.includes(userId)) {
-            task.completions.push(userId);
-          }
+        if (!task.completions) task.completions = [];
+        if (status === 'completed') {
+          if (!task.completions.includes(userId)) task.completions.push(userId);
         } else {
           task.completions = task.completions.filter(id => id !== userId);
         }
       } else {
-        task.status = isCompleted ? 'completed' : 'pending';
+        task.status = status;
       }
-
+      
       writeLocalDB(data);
       return task;
     }
+  },
+
+  toggleTaskStatus: async (taskId, userId, isCompleted) => {
+    const status = isCompleted ? 'completed' : 'pending';
+    return db.updateTaskStatus(taskId, userId, status);
   },
 
   deleteUser: async (id) => {

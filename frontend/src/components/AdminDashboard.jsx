@@ -1341,7 +1341,7 @@ function AdminDashboard({ user, token }) {
                         </p>
                       )}
                       
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.6rem', display: 'flex', justifyContent: 'space-between' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.6rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span>Assigned to: <strong>{assigneeName}</strong></span>
                         {isDomainTask ? (
                           <span>Completions: {task.completions?.length || 0}</span>
@@ -1351,6 +1351,57 @@ function AdminDashboard({ user, token }) {
                           </span>
                         )}
                       </div>
+
+                      {/* Employee Stage Tracking */}
+                      {(() => {
+                        let assignedUsers = [];
+                        if (isDomainTask) {
+                          assignedUsers = users.filter(u => u.domain && u.domain.toLowerCase() === task.assignedTo.toLowerCase() && u.role !== 'admin');
+                        } else {
+                          const targetUser = users.find(u => u.id === task.assignedTo);
+                          if (targetUser) assignedUsers = [targetUser];
+                        }
+
+                        if (assignedUsers.length === 0) return null;
+
+                        return (
+                          <div style={{ marginTop: '0.8rem', borderTop: '1px dashed var(--border-color)', paddingTop: '0.6rem' }}>
+                            <div style={{ fontWeight: 600, fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
+                              Employee Progress Status:
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                              {assignedUsers.map(u => {
+                                const stage = task.employeeStages?.[u.id] || (isDomainTask ? 'pending' : (task.status || 'pending'));
+                                let badgeBg = '#f3f4f6';
+                                let badgeColor = '#4b5563';
+                                if (stage === 'seen') { badgeBg = '#fef3c7'; badgeColor = '#b45309'; }
+                                else if (stage === 'doing') { badgeBg = '#e0f2fe'; badgeColor = '#0369a1'; }
+                                else if (stage === 'completed') { badgeBg = '#d1fae5'; badgeColor = '#047857'; }
+                                
+                                return (
+                                  <span 
+                                    key={u.id} 
+                                    style={{ 
+                                      fontSize: '0.7rem', 
+                                      padding: '0.15rem 0.4rem', 
+                                      borderRadius: '4px', 
+                                      backgroundColor: badgeBg, 
+                                      color: badgeColor,
+                                      fontWeight: 600,
+                                      border: '1px solid rgba(0,0,0,0.05)',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '2px'
+                                    }}
+                                  >
+                                    {u.name}: <strong style={{ textTransform: 'capitalize' }}>{stage}</strong>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}

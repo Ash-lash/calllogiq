@@ -186,23 +186,38 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
     }
   };
 
-  // Toggle Task Status
-  const handleToggleTask = async (taskId, currentStatus) => {
+  // Update Task Status
+  const handleUpdateStatus = async (taskId, newStatus) => {
     try {
-      const res = await fetch(`${API_BASE}/api/tasks/${taskId}/toggle`, {
+      const statusLabels = {
+        pending: 'Pending (Not Started)',
+        seen: 'Seen (Acknowledged)',
+        doing: 'Doing (In Progress)',
+        completed: 'Completed (Done)'
+      };
+      
+      const label = statusLabels[newStatus] || newStatus;
+      const isConfirmed = window.confirm(`Are you sure you want to mark this task as "${label}"? This will update the admin.`);
+      if (!isConfirmed) return;
+
+      const res = await fetch(`${API_BASE}/api/tasks/${taskId}/status`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}` 
         },
-        body: JSON.stringify({ isCompleted: !currentStatus })
+        body: JSON.stringify({ status: newStatus })
       });
       if (res.ok) {
-        // Optimistic UI update
-        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, isCompleted: !currentStatus } : t));
+        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus, isCompleted: newStatus === 'completed' } : t));
+        alert(`Task status updated to "${label}". The admin has been updated.`);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to update task status');
       }
     } catch (err) {
-      console.error('Error toggling task:', err);
+      console.error('Error updating task status:', err);
+      alert('Error updating task status: ' + err.message);
     }
   };
 
@@ -602,28 +617,98 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                 My Todo checklist ({tasks.filter(t => !t.isCompleted).length})
               </h3>
             </div>
-            
-            {tasks.length > 0 ? (
-              <ul className="todo-list">
-                {tasks.map(task => (
-                  <li key={task.id} className={`todo-item ${task.isCompleted ? 'completed' : ''}`}>
-                    <input 
-                      type="checkbox" 
-                      className="todo-checkbox" 
-                      checked={task.isCompleted} 
-                      onChange={() => handleToggleTask(task.id, task.isCompleted)}
-                      disabled={previewMode}
-                    />
-                    <div className="todo-details">
-                      <div className="todo-item-title">{task.title}</div>
-                      {task.description && <div className="todo-item-desc">{task.description}</div>}
-                      <span className={`todo-badge ${task.isDomainTask ? 'domain' : 'personal'}`}>
-                        {task.isDomainTask ? `${task.assignedTo} task` : 'Personal'}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                 {tasks.length > 0 ? (
+               <ul className="todo-list">
+                 {tasks.map(task => {
+                   let badgeBg = '#f3f4f6';
+                   let badgeColor = '#4b5563';
+                   if (task.status === 'seen') { badgeBg = '#fef3c7'; badgeColor = '#d97706'; }
+                   else if (task.status === 'doing') { badgeBg = '#e0f2fe'; badgeColor = '#0284c7'; }
+                   else if (task.status === 'completed') { badgeBg = '#d1fae5'; badgeColor = '#059669'; }
+
+                   return (
+                     <li key={task.id} className={`todo-item ${task.status === 'completed' ? 'completed' : ''}`} style={{ display: 'block', padding: '1rem' }}>
+                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                         <div className="todo-details" style={{ width: '100%' }}>
+                           <div className="todo-item-title" style={{ fontSize: '0.95rem', fontWeight: 600 }}>{task.title}</div>
+                           {task.description && <div className="todo-item-desc" style={{ fontSize: '0.8rem', marginTop: '0.2rem' }}>{task.description}</div>}
+                           <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.4rem', alignItems: 'center' }}>
+                             <span className={`todo-badge ${task.isDomainTask ? 'domain' : 'personal'}`}>
+                               {task.isDomainTask ? `${task.assignedTo} task` : 'Personal'}
+                             </span>
+                             <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.35rem', borderRadius: '4px', backgroundColor: badgeBg, color: badgeColor, fontWeight: 700, textTransform: 'uppercase' }}>
+                               {task.status || 'pending'}
+                             </span>
+                           </div>
+                         </div>
+                       </div>
+                       
+                       {/* Task Status Action Buttons */}
+                       {!previewMode && (
+                         <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.75rem', borderTop: '1px dashed var(--border-color)', paddingTop: '0.6rem' }}>
+                           <button 
+                             onClick={() => handleUpdateStatus(task.id, 'seen')}
+                             style={{
+                               padding: '0.3rem 0.6rem',
+                               fontSize: '0.75rem',
+                               borderRadius: '6px',
+                               border: task.status === 'seen' ? '1px solid #d97706' : '1px solid var(--border-color)',
+                               background: task.status === 'seen' ? '#fef3c7' : '#ffffff',
+                               color: task.status === 'seen' ? '#b45309' : 'var(--text-primary)',
+                               cursor: 'pointer',
+                               fontWeight: 600,
+                               display: 'inline-flex',
+                               alignItems: 'center',
+                               gap: '3px',
+                               transition: 'all 0.15s ease'
+                             }}
+                           >
+                             👀 Seen
+                           </button>
+                           <button 
+                             onClick={() => handleUpdateStatus(task.id, 'doing')}
+                             style={{
+                               padding: '0.3rem 0.6rem',
+                               fontSize: '0.75rem',
+                               borderRadius: '6px',
+                               border: task.status === 'doing' ? '1px solid #0284c7' : '1px solid var(--border-color)',
+                               background: task.status === 'doing' ? '#e0f2fe' : '#ffffff',
+                               color: task.status === 'doing' ? '#0369a1' : 'var(--text-primary)',
+                               cursor: 'pointer',
+                               fontWeight: 600,
+                               display: 'inline-flex',
+                               alignItems: 'center',
+                               gap: '3px',
+                               transition: 'all 0.15s ease'
+                             }}
+                           >
+                             ⚙️ Doing
+                           </button>
+                           <button 
+                             onClick={() => handleUpdateStatus(task.id, 'completed')}
+                             style={{
+                               padding: '0.3rem 0.6rem',
+                               fontSize: '0.75rem',
+                               borderRadius: '6px',
+                               border: task.status === 'completed' ? '1px solid #059669' : '1px solid var(--border-color)',
+                               background: task.status === 'completed' ? '#d1fae5' : '#ffffff',
+                               color: task.status === 'completed' ? '#047857' : 'var(--text-primary)',
+                               cursor: 'pointer',
+                               fontWeight: 600,
+                               display: 'inline-flex',
+                               alignItems: 'center',
+                               gap: '3px',
+                               transition: 'all 0.15s ease'
+                             }}
+                           >
+                             ✅ Completed
+                           </button>
+                         </div>
+                       )}
+                     </li>
+                   );
+                 })}
+               </ul>
             ) : (
               <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)' }}>
                 No active tasks assigned

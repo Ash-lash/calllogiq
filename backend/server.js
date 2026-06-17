@@ -1240,7 +1240,8 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
   // Format task checklist response
   const formattedTasks = tasks.map(t => {
     const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(t.assignedTo.toLowerCase());
-    const isCompleted = isDomainTask ? t.completions.includes(req.user.userId) : t.status === 'completed';
+    const status = t.employeeStages?.[req.user.userId] || (isDomainTask ? (t.completions?.includes(req.user.userId) ? 'completed' : 'pending') : (t.status || 'pending'));
+    const isCompleted = status === 'completed';
     
     return {
       id: t.id,
@@ -1249,6 +1250,7 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
       assignedTo: t.assignedTo,
       isDomainTask,
       isCompleted,
+      status, // 'pending', 'seen', 'doing', 'completed'
       createdAt: t.createdAt
     };
   });
@@ -1256,12 +1258,30 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
   return res.json(formattedTasks);
 });
 
-// Toggle Task Status
+// Update Task Status (specific stage: pending, seen, doing, completed)
+app.post('/api/tasks/:taskId/status', authenticateToken, async (req, res) => {
+  const { taskId } = req.params;
+  const { status } = req.body;
+  
+  if (!['pending', 'seen', 'doing', 'completed'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid task status' });
+  }
+  
+  const updatedTask = await db.updateTaskStatus(taskId, req.user.userId, status);
+  if (!updatedTask) {
+    return res.status(404).json({ error: 'Task not found' });
+  }
+  
+  return res.json({ message: `Task status updated to ${status}`, task: updatedTask });
+});
+
+// Toggle Task Status (for backwards compatibility/simple checklist)
 app.post('/api/tasks/:taskId/toggle', authenticateToken, async (req, res) => {
   const { taskId } = req.params;
   const { isCompleted } = req.body;
   
-  const updatedTask = await db.toggleTaskStatus(taskId, req.user.userId, isCompleted);
+  const status = isCompleted ? 'completed' : 'pending';
+  const updatedTask = await db.updateTaskStatus(taskId, req.user.userId, status);
   if (!updatedTask) {
     return res.status(404).json({ error: 'Task not found' });
   }

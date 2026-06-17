@@ -580,15 +580,42 @@ app.post('/api/calls/upload', authenticateToken, upload.single('pdf'), (req, res
               return resolve();
             }
             
-            // ONE PDF PER DATE CONSTRAINT CHECK (based on the PDF's own date, not upload date)
-            // This allows uploading a past-date PDF even after uploading today's PDF,
-            // as long as there is no existing PDF for that particular date.
-            const existingLog = allLogs.find(l => l.userId === userId && l.callDate === analysisData.call_date);
-            if (existingLog) {
+            // 3 UNIQUE PDFS PER DATE CONSTRAINT CHECK (based on PDF's own callDate)
+            const existingLogsForDate = allLogs.filter(l => l.userId === userId && l.callDate === analysisData.call_date);
+            
+            if (existingLogsForDate.length >= 3) {
               if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
               if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
               res.status(400).json({ 
-                error: `A call log for the date ${analysisData.call_date} has already been uploaded. Only one PDF per date is allowed.` 
+                error: `A maximum of 3 call logs can be uploaded for the date ${analysisData.call_date}.` 
+              });
+              return resolve();
+            }
+
+            // Helper to check if two call lists are identical
+            const areCallListsIdentical = (listA, listB) => {
+              if (!listA || !listB) return false;
+              if (listA.length !== listB.length) return false;
+              for (let i = 0; i < listA.length; i++) {
+                const cA = listA[i];
+                const cB = listB[i];
+                if (cA.phone !== cB.phone ||
+                    cA.time_str !== cB.time_str ||
+                    cA.duration_secs !== cB.duration_secs ||
+                    cA.type !== cB.type) {
+                  return false;
+                }
+              }
+              return true;
+            };
+
+            // Reject if an identical call log content exists for this date
+            const isDuplicate = existingLogsForDate.some(el => areCallListsIdentical(el.calls, analysisData.calls));
+            if (isDuplicate) {
+              if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
+              if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
+              res.status(400).json({ 
+                error: `This exact call log for ${analysisData.call_date} has already been uploaded.` 
               });
               return resolve();
             }
@@ -686,8 +713,6 @@ app.get('/api/calls/download/:logId', authenticateToken, requireAdmin, async (re
   // Fall back: proxy from Cloudinary excelUrl
   if (log.excelUrl) {
     try {
-      res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       getStreamWithRedirects(log.excelUrl, (err, fileRes) => {
         if (err) {
           console.error('Error proxying Excel from Cloudinary:', err);
@@ -696,6 +721,17 @@ app.get('/api/calls/download/:logId', authenticateToken, requireAdmin, async (re
           }
           return;
         }
+
+        if (fileRes.statusCode >= 400) {
+          console.error(`Cloudinary returned status ${fileRes.statusCode} for Excel`);
+          if (!res.headersSent) {
+            res.status(fileRes.statusCode).json({ error: `Excel file not found or inaccessible in cloud storage (Status ${fileRes.statusCode})` });
+          }
+          return;
+        }
+        
+        res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         fileRes.pipe(res);
       });
     } catch (err) {
@@ -725,10 +761,6 @@ app.get('/api/calls/pdf/:logId', authenticateToken, requireAdmin, async (req, re
     const logUser = await db.findUserById(log.userId);
     const filename = `${logUser ? logUser.name.replace(/\s+/g, '_') : 'User'}_${log.callDate.replace(/\s+/g, '')}.pdf`;
     
-    // For view: set Content-Disposition inline so browser opens it
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-    
     getStreamWithRedirects(log.pdfUrl, (err, fileRes) => {
       if (err) {
         console.error('Error proxying PDF from Cloudinary:', err);
@@ -737,6 +769,18 @@ app.get('/api/calls/pdf/:logId', authenticateToken, requireAdmin, async (req, re
         }
         return;
       }
+
+      if (fileRes.statusCode >= 400) {
+        console.error(`Cloudinary returned status ${fileRes.statusCode} for PDF`);
+        if (!res.headersSent) {
+          res.status(fileRes.statusCode).json({ error: `PDF file not found or inaccessible in cloud storage (Status ${fileRes.statusCode})` });
+        }
+        return;
+      }
+      
+      // Only set headers if the source response is 2xx success
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
       fileRes.pipe(res);
     });
   } catch (err) {

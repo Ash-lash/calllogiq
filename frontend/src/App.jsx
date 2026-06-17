@@ -66,8 +66,10 @@ function App() {
         const response = await originalFetch(...args);
         if (response.status === 401 || response.status === 403) {
           const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
-          // Avoid logging out on login/google auth endpoints themselves
-          if (!url.includes('/api/auth/login') && !url.includes('/api/auth/google')) {
+          // Avoid logging out on login/google auth endpoints themselves, or on PDF/Excel proxy routes
+          const isAuthRoute = url.includes('/api/auth/login') || url.includes('/api/auth/google');
+          const isFileProxyRoute = url.includes('/api/calls/pdf') || url.includes('/api/calls/download') || url.includes('/api/assets/reports/download');
+          if (!isAuthRoute && !isFileProxyRoute) {
             console.warn('Session expired or unauthorized (401/403). Logging out...');
             handleLogout();
           }

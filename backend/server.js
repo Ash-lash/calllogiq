@@ -396,7 +396,7 @@ app.post('/api/auth/google', async (req, res) => {
       domain: user.domain,
       branch: user.branch || 'Pending',
       role: user.role
-    }, JWT_SECRET, { expiresIn: '24h' });
+    }, JWT_SECRET, { expiresIn: '30d' });
 
     return res.json({
       token,
@@ -447,7 +447,7 @@ app.post('/api/auth/login', async (req, res) => {
         domain: user.domain,
         branch: user.branch || 'Maduravoyal',
         role: user.role
-      }, JWT_SECRET, { expiresIn: '24h' });
+      }, JWT_SECRET, { expiresIn: '30d' });
 
       return res.json({
         token,
@@ -500,7 +500,7 @@ app.post('/api/users/update-profile', authenticateToken, async (req, res) => {
       domain: updatedUser.domain,
       branch: updatedUser.branch || 'Pending',
       role: updatedUser.role
-    }, JWT_SECRET, { expiresIn: '24h' });
+    }, JWT_SECRET, { expiresIn: '30d' });
 
     return res.json({
       token,

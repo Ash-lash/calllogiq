@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Users, Calendar, FileSpreadsheet, PlusCircle, CheckCircle, Clock, 
-  PhoneCall, AlertTriangle, Download, ArrowRight, ClipboardList, Settings, RotateCcw
+  PhoneCall, AlertTriangle, Download, ArrowRight, ClipboardList, Settings, RotateCcw,
+  ChevronUp, ChevronDown, ChevronsUpDown, FileText
 } from 'lucide-react';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
@@ -35,6 +36,10 @@ function AdminDashboard({ user, token }) {
   const [editingUser, setEditingUser] = useState(null);
   const [editSuccess, setEditSuccess] = useState('');
   const [editError, setEditError] = useState('');
+
+  // Leaderboard Sort State
+  const [sortKey, setSortKey] = useState('talkTimeSecs');
+  const [sortDir, setSortDir] = useState('desc'); // 'asc' or 'desc'
 
   // Database Flush State
   const [flushSuccess, setFlushSuccess] = useState('');
@@ -309,8 +314,31 @@ function AdminDashboard({ user, token }) {
       };
     });
 
-    // Sort by talk time decreasing
-    return leaderboard.sort((a, b) => b.talkTimeSecs - a.talkTimeSecs);
+    // Sort by the selected key and direction
+    return leaderboard.sort((a, b) => {
+      const aVal = a[sortKey];
+      const bVal = b[sortKey];
+      if (typeof aVal === 'string') {
+        return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+      return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+    });
+  };
+
+  const handleSort = (key) => {
+    if (sortKey === key) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('desc');
+    }
+  };
+
+  const SortIcon = ({ colKey }) => {
+    if (sortKey !== colKey) return <ChevronsUpDown size={13} style={{ opacity: 0.4, verticalAlign: 'middle', marginLeft: '3px' }} />;
+    return sortDir === 'asc'
+      ? <ChevronUp size={13} style={{ color: 'var(--primary)', verticalAlign: 'middle', marginLeft: '3px' }} />
+      : <ChevronDown size={13} style={{ color: 'var(--primary)', verticalAlign: 'middle', marginLeft: '3px' }} />;
   };
 
   // Helper: Get Aggregated Reports (Monthly, Daily, Weekly, Quarterly, Yearly)
@@ -486,15 +514,31 @@ function AdminDashboard({ user, token }) {
               <table className="table">
                 <thead>
                   <tr>
-                    <th className="name-col">Employee</th>
-                    <th className="email-col">Email</th>
-                    <th>Domain</th>
+                    <th className="name-col" onClick={() => handleSort('name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Employee <SortIcon colKey="name" />
+                    </th>
+                    <th className="email-col" onClick={() => handleSort('email')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Email <SortIcon colKey="email" />
+                    </th>
+                    <th onClick={() => handleSort('domain')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Domain <SortIcon colKey="domain" />
+                    </th>
                     <th>Branch</th>
-                    <th>Logs</th>
-                    <th>Calls</th>
-                    <th>Avg/Day</th>
-                    <th>Talk Time</th>
-                    <th>Idle Time</th>
+                    <th onClick={() => handleSort('uploads')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Logs <SortIcon colKey="uploads" />
+                    </th>
+                    <th onClick={() => handleSort('totalCalls')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Calls <SortIcon colKey="totalCalls" />
+                    </th>
+                    <th onClick={() => handleSort('avgCallsPerLog')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Avg/Day <SortIcon colKey="avgCallsPerLog" />
+                    </th>
+                    <th onClick={() => handleSort('talkTimeSecs')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Talk Time <SortIcon colKey="talkTimeSecs" />
+                    </th>
+                    <th onClick={() => handleSort('idleTimeSecs')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Idle Time <SortIcon colKey="idleTimeSecs" />
+                    </th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
@@ -637,6 +681,7 @@ function AdminDashboard({ user, token }) {
                         <th>Net Hours</th>
                         <th>Talk Time</th>
                         <th>Calls</th>
+                        <th>PDF</th>
                         <th>Excel</th>
                       </tr>
                     </thead>
@@ -657,11 +702,25 @@ function AdminDashboard({ user, token }) {
                             <td>{row.talkTime}</td>
                             <td>{row.calls}</td>
                             <td>
+                              {row.status === 'Present' && row.pdfUrl && (
+                                <a 
+                                  href={row.pdfUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="btn btn-outline" 
+                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                >
+                                  <FileText size={12} />
+                                  PDF
+                                </a>
+                              )}
+                            </td>
+                            <td>
                               {row.status === 'Present' && row.logId && (
                                 <a 
                                   href={`/api/calls/download/${row.logId}`} 
                                   className="btn btn-outline" 
-                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', textDecoration: 'none' }}
+                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                                 >
                                   <Download size={12} />
                                   Excel
@@ -804,7 +863,8 @@ function AdminDashboard({ user, token }) {
                       <th>Missed</th>
                       <th>Span</th>
                       <th>Idle</th>
-                      <th>Action</th>
+                      <th>PDF</th>
+                      <th>Excel</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -820,10 +880,24 @@ function AdminDashboard({ user, token }) {
                           <td>{log.summary.workday_span_str}</td>
                           <td>{log.summary.total_idle_str} ({log.summary.idle_gaps_count} breaks)</td>
                           <td>
+                            {log.pdfUrl ? (
+                              <a 
+                                href={log.pdfUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn btn-outline" 
+                                style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                              >
+                                <FileText size={12} />
+                                View PDF
+                              </a>
+                            ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>N/A</span>}
+                          </td>
+                          <td>
                             <a 
                               href={`/api/calls/download/${log.id}`} 
                               className="btn btn-outline" 
-                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', textDecoration: 'none' }}
+                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                             >
                               <Download size={12} />
                               Download XLSX

@@ -520,26 +520,10 @@ app.post('/api/calls/upload', authenticateToken, upload.single('pdf'), (req, res
   // Push the analysis function to the queue
   analysisQueue.push(() => {
     return new Promise((resolve) => {
-      // ONE UPLOAD PER CALENDAR DAY CONSTRAINT CHECK
+      // Fetch all logs for this user first, then run the analyzer
       db.getAllLogs().then(async (allLogs) => {
-        const todayStr = new Date().toISOString().split('T')[0];
-        const hasUploadedToday = allLogs.some(l => {
-          if (l.userId !== userId) return false;
-          if (!l.createdAt) return false;
-          const uploadDate = l.createdAt.split('T')[0];
-          return uploadDate === todayStr;
-        });
 
-        if (hasUploadedToday) {
-          if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
-          if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
-          res.status(400).json({ 
-            error: "You have already uploaded a call log today. Only one upload per day is allowed." 
-          });
-          return resolve();
-        }
-
-        // Call Python analyzer
+        // Call Python analyzer FIRST so we know the PDF's date
         const pyScript = path.join(__dirname, 'analyzer.py');
         const command = `python "${pyScript}" --pdf "${pdfPath}" --user "${username}" --out "${excelPath}"`;
         
@@ -567,13 +551,15 @@ app.post('/api/calls/upload', authenticateToken, upload.single('pdf'), (req, res
               return resolve();
             }
             
-            // DUPLICATE CALL LOG DATE CHECK
+            // ONE PDF PER DATE CONSTRAINT CHECK (based on the PDF's own date, not upload date)
+            // This allows uploading a past-date PDF even after uploading today's PDF,
+            // as long as there is no existing PDF for that particular date.
             const existingLog = allLogs.find(l => l.userId === userId && l.callDate === analysisData.call_date);
             if (existingLog) {
               if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
               if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
               res.status(400).json({ 
-                error: `A call log for the date ${analysisData.call_date} has already been uploaded.` 
+                error: `A call log for the date ${analysisData.call_date} has already been uploaded. Only one PDF per date is allowed.` 
               });
               return resolve();
             }
@@ -742,6 +728,7 @@ app.get('/api/admin/attendance/:userId', authenticateToken, requireAdmin, async 
           netWorkHours: netWorkHoursStr,
           talkTime: log.summary.talk_time_str || '-',
           calls: log.summary.grand_total || 0,
+          logId: log.id || '',
           pdfUrl: log.pdfUrl || ''
         });
       } else {

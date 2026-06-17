@@ -21,6 +21,39 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
   const [selectedLog, setSelectedLog] = useState(null);
   const [history, setHistory] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [iosAlert, setIosAlert] = useState(null);
+
+  const showIosAlert = (message, title = 'Notification') => {
+    return new Promise((resolve) => {
+      setIosAlert({
+        title,
+        message,
+        type: 'alert',
+        onConfirm: () => {
+          setIosAlert(null);
+          resolve(true);
+        }
+      });
+    });
+  };
+
+  const showIosConfirm = (message, title = 'Confirm Action') => {
+    return new Promise((resolve) => {
+      setIosAlert({
+        title,
+        message,
+        type: 'confirm',
+        onConfirm: () => {
+          setIosAlert(null);
+          resolve(true);
+        },
+        onCancel: () => {
+          setIosAlert(null);
+          resolve(false);
+        }
+      });
+    });
+  };
   
   // Profile Setup States
   const [showSetupModal, setShowSetupModal] = useState((user?.domain === 'Pending' || user?.branch === 'Pending') && !previewMode);
@@ -197,7 +230,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
       };
       
       const label = statusLabels[newStatus] || newStatus;
-      const isConfirmed = window.confirm(`Are you sure you want to mark this task as "${label}"? This will update the admin.`);
+      const isConfirmed = await showIosConfirm(`Are you sure you want to mark this task as "${label}"? This will update the admin.`, 'Confirm Status Change');
       if (!isConfirmed) return;
 
       const res = await fetch(`${API_BASE}/api/tasks/${taskId}/status`, {
@@ -210,14 +243,14 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
       });
       if (res.ok) {
         setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus, isCompleted: newStatus === 'completed' } : t));
-        alert(`Task status updated to "${label}". The admin has been updated.`);
+        await showIosAlert(`Task status updated to "${label}". The admin has been updated.`, 'Status Updated');
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || 'Failed to update task status');
+        await showIosAlert(err.error || 'Failed to update task status', 'Error');
       }
     } catch (err) {
       console.error('Error updating task status:', err);
-      alert('Error updating task status: ' + err.message);
+      await showIosAlert('Error updating task status: ' + err.message, 'Error');
     }
   };
 
@@ -959,6 +992,84 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                 {setupLoading ? 'Saving Profile...' : 'Save & Enter Workspace'}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+      {/* iOS Apple style Alert Popup Dialog */}
+      {iosAlert && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          backgroundColor: 'rgba(0, 0, 0, 0.4)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <div style={{
+            width: '270px',
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            backdropFilter: 'blur(20px)',
+            borderRadius: '14px',
+            textAlign: 'center',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.15)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            animation: 'scaleIn 0.25s cubic-bezier(0.1, 0.8, 0.25, 1)'
+          }}>
+            <div style={{ padding: '1.25rem 1rem 1rem 1rem' }}>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#000', margin: 0 }}>
+                {iosAlert.title}
+              </h3>
+              <p style={{ fontSize: '0.82rem', color: '#333', marginTop: '0.35rem', marginBottom: 0, lineHeight: 1.35 }}>
+                {iosAlert.message}
+              </p>
+            </div>
+            
+            <div style={{ display: 'flex', borderTop: '0.5px solid rgba(0, 0, 0, 0.15)' }}>
+              {iosAlert.type === 'confirm' && (
+                <button 
+                  onClick={iosAlert.onCancel}
+                  style={{
+                    flex: 1,
+                    padding: '0.75rem 0.5rem',
+                    border: 'none',
+                    background: 'none',
+                    fontSize: '1rem',
+                    color: '#007aff',
+                    cursor: 'pointer',
+                    outline: 'none',
+                    fontWeight: 400,
+                    borderRight: '0.5px solid rgba(0, 0, 0, 0.15)'
+                  }}
+                >
+                  Cancel
+                </button>
+              )}
+              <button 
+                onClick={iosAlert.onConfirm}
+                style={{
+                  flex: 1,
+                  padding: '0.75rem 0.5rem',
+                  border: 'none',
+                  background: 'none',
+                  fontSize: '1rem',
+                  color: '#007aff',
+                  cursor: 'pointer',
+                  outline: 'none',
+                  fontWeight: 600
+                }}
+              >
+                OK
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -42,7 +42,17 @@ function getStreamWithRedirects(url, callback, redirectCount = 0) {
   try {
     const parsedUrl = new URL(url);
     const protocol = parsedUrl.protocol === 'https:' ? https : http;
-    protocol.get(url, (res) => {
+    const options = {
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+      path: parsedUrl.pathname + parsedUrl.search,
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+        'Accept': '*/*'
+      }
+    };
+    protocol.get(options, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         let redirectUrl = res.headers.location;
         if (!redirectUrl.startsWith('http')) {
@@ -624,13 +634,19 @@ app.post('/api/calls/upload', authenticateToken, upload.single('pdf'), (req, res
             const finalFilename = `${logId}.xlsx`;
             const finalPath = path.join(UPLOADS_DIR, finalFilename);
             
+            // Rename PDF to .dat temporarily before upload to bypass Cloudinary PDF restrictions
+            const tempPdfDatPath = pdfPath.replace(/\.pdf$/i, '.dat');
+            if (fs.existsSync(pdfPath)) {
+              fs.renameSync(pdfPath, tempPdfDatPath);
+            }
+
             // Upload PDF to Cloudinary
             const pdfDest = `pdfs/${userId}/${logId}`;
-            const pdfUrl = await uploadToCloudinary(pdfPath, pdfDest, true) || '';
+            const pdfUrl = await uploadToCloudinary(tempPdfDatPath, pdfDest, true) || '';
             
             // Delete local temp PDF upload
-            if (fs.existsSync(pdfPath)) {
-              fs.unlinkSync(pdfPath);
+            if (fs.existsSync(tempPdfDatPath)) {
+              fs.unlinkSync(tempPdfDatPath);
             }
             
             // Rename excel file locally
@@ -638,9 +654,20 @@ app.post('/api/calls/upload', authenticateToken, upload.single('pdf'), (req, res
               fs.renameSync(excelPath, finalPath);
             }
             
+            // Copy Excel to .dat temporarily before upload to bypass Cloudinary restrictions
+            const tempExcelDatPath = finalPath.replace(/\.xlsx$/i, '.dat');
+            if (fs.existsSync(finalPath)) {
+              fs.copyFileSync(finalPath, tempExcelDatPath);
+            }
+
             // Upload Excel to Cloudinary
             const excelDest = `excels/${userId}/${logId}`;
-            const excelUrl = await uploadToCloudinary(finalPath, excelDest, true) || '';
+            const excelUrl = await uploadToCloudinary(tempExcelDatPath, excelDest, true) || '';
+            
+            // Delete local temp Excel upload
+            if (fs.existsSync(tempExcelDatPath)) {
+              fs.unlinkSync(tempExcelDatPath);
+            }
             
             // Save log entry to DB
             const logEntry = await db.createLog({

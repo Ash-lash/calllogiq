@@ -96,6 +96,16 @@ const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'calllogiq_super_secret_jwt_key_123';
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'vtredusolutions@gmail.com').toLowerCase();
 
+let migrationStatus = {
+  inProgress: false,
+  total: 0,
+  current: 0,
+  successCount: 0,
+  alreadyMigrated: 0,
+  errorCount: 0,
+  errors: []
+};
+
 // Ensure uploads and output directories exist
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
@@ -1262,114 +1272,133 @@ app.post('/api/admin/flush-database', authenticateToken, requireAdmin, async (re
   }
 });
 
+// Helper function to run migration in the background
+async function runMigrationInBackground(logs) {
+  for (const log of logs) {
+    if (!migrationStatus.inProgress) break;
+    
+    migrationStatus.current++;
+    try {
+      const fullLog = await db.getLogById(log.id);
+      if (!fullLog) {
+        migrationStatus.errorCount++;
+        migrationStatus.errors.push({ id: log.id, date: log.callDate, error: 'Log document not found by ID' });
+        continue;
+      }
+      
+      let pdfBase64 = fullLog.pdfBase64 || '';
+      let excelBase64 = fullLog.excelBase64 || '';
+      let updated = false;
+      let hadPdfError = false;
+      let hadExcelError = false;
+      
+      // 1. Migrate PDF
+      if (!pdfBase64 && fullLog.pdfUrl) {
+        try {
+          console.log(`Downloading PDF for log ${log.id} from ${fullLog.pdfUrl}`);
+          let buffer;
+          if (fullLog.pdfUrl.startsWith('gs://')) {
+            const parts = fullLog.pdfUrl.replace('gs://', '').split('/');
+            const bucketName = parts[0];
+            const filePath = parts.slice(1).join('/');
+            const bucket = admin.storage().bucket(bucketName);
+            const file = bucket.file(filePath);
+            const [fileBuffer] = await file.download();
+            buffer = fileBuffer;
+          } else {
+            buffer = await downloadUrlToBuffer(fullLog.pdfUrl);
+          }
+          if (buffer) {
+            pdfBase64 = buffer.toString('base64');
+            updated = true;
+          }
+        } catch (pdfErr) {
+          hadPdfError = true;
+          console.error(`Failed to migrate PDF for log ${log.id}:`, pdfErr.message);
+          migrationStatus.errorCount++;
+          migrationStatus.errors.push({ id: log.id, date: log.callDate, field: 'pdf', error: pdfErr.message });
+        }
+      }
+      
+      // 2. Migrate Excel
+      if (!excelBase64 && fullLog.excelUrl) {
+        try {
+          console.log(`Downloading Excel for log ${log.id} from ${fullLog.excelUrl}`);
+          let buffer;
+          if (fullLog.excelUrl.startsWith('gs://')) {
+            const parts = fullLog.excelUrl.replace('gs://', '').split('/');
+            const bucketName = parts[0];
+            const filePath = parts.slice(1).join('/');
+            const bucket = admin.storage().bucket(bucketName);
+            const file = bucket.file(filePath);
+            const [fileBuffer] = await file.download();
+            buffer = fileBuffer;
+          } else {
+            buffer = await downloadUrlToBuffer(fullLog.excelUrl);
+          }
+          if (buffer) {
+            excelBase64 = buffer.toString('base64');
+            updated = true;
+          }
+        } catch (excelErr) {
+          hadExcelError = true;
+          console.error(`Failed to migrate Excel for log ${log.id}:`, excelErr.message);
+          migrationStatus.errorCount++;
+          migrationStatus.errors.push({ id: log.id, date: log.callDate, field: 'excel', error: excelErr.message });
+        }
+      }
+      
+      if (updated) {
+        await db.updateLog(log.id, { pdfBase64, excelBase64 });
+        migrationStatus.successCount++;
+      } else if (fullLog.pdfBase64 || fullLog.excelBase64) {
+        if (!hadPdfError && !hadExcelError) {
+          migrationStatus.alreadyMigrated++;
+        }
+      }
+    } catch (logErr) {
+      console.error(`Error processing log ${log.id}:`, logErr);
+      migrationStatus.errorCount++;
+      migrationStatus.errors.push({ id: log.id, date: log.callDate, error: logErr.message });
+    }
+  }
+  
+  migrationStatus.inProgress = false;
+  console.log(`Migration finished in background.`);
+}
+
 // Migrate Cloudinary/Firebase links to Base64 in Firestore (Admin only)
 app.post('/api/admin/migrate-to-base64', authenticateToken, requireAdmin, async (req, res) => {
-  // Increase timeout to 10 minutes for this request
-  req.setTimeout(600000);
-  
+  if (migrationStatus.inProgress) {
+    return res.status(400).json({ error: 'Migration is already in progress' });
+  }
+
   try {
     const logs = await db.getAllLogs();
-    let totalLogs = logs.length;
-    let migratedCount = 0;
-    let alreadyMigrated = 0;
-    let errorsCount = 0;
-    const errorsList = [];
     
-    console.log(`Starting migration for ${totalLogs} logs...`);
-    
-    for (const log of logs) {
-      try {
-        const fullLog = await db.getLogById(log.id);
-        if (!fullLog) {
-          errorsCount++;
-          errorsList.push({ id: log.id, error: 'Log document not found by ID' });
-          continue;
-        }
-        
-        let pdfBase64 = fullLog.pdfBase64 || '';
-        let excelBase64 = fullLog.excelBase64 || '';
-        let updated = false;
-        
-        // 1. Migrate PDF
-        if (!pdfBase64 && fullLog.pdfUrl) {
-          try {
-            console.log(`Downloading PDF for log ${log.id} from ${fullLog.pdfUrl}`);
-            let buffer;
-            if (fullLog.pdfUrl.startsWith('gs://')) {
-              const parts = fullLog.pdfUrl.replace('gs://', '').split('/');
-              const bucketName = parts[0];
-              const filePath = parts.slice(1).join('/');
-              const bucket = admin.storage().bucket(bucketName);
-              const file = bucket.file(filePath);
-              const [fileBuffer] = await file.download();
-              buffer = fileBuffer;
-            } else {
-              buffer = await downloadUrlToBuffer(fullLog.pdfUrl);
-            }
-            if (buffer) {
-              pdfBase64 = buffer.toString('base64');
-              updated = true;
-            }
-          } catch (pdfErr) {
-            console.error(`Failed to migrate PDF for log ${log.id}:`, pdfErr.message);
-            errorsCount++;
-            errorsList.push({ id: log.id, date: log.callDate, field: 'pdf', error: pdfErr.message });
-          }
-        }
-        
-        // 2. Migrate Excel
-        if (!excelBase64 && fullLog.excelUrl) {
-          try {
-            console.log(`Downloading Excel for log ${log.id} from ${fullLog.excelUrl}`);
-            let buffer;
-            if (fullLog.excelUrl.startsWith('gs://')) {
-              const parts = fullLog.excelUrl.replace('gs://', '').split('/');
-              const bucketName = parts[0];
-              const filePath = parts.slice(1).join('/');
-              const bucket = admin.storage().bucket(bucketName);
-              const file = bucket.file(filePath);
-              const [fileBuffer] = await file.download();
-              buffer = fileBuffer;
-            } else {
-              buffer = await downloadUrlToBuffer(fullLog.excelUrl);
-            }
-            if (buffer) {
-              excelBase64 = buffer.toString('base64');
-              updated = true;
-            }
-          } catch (excelErr) {
-            console.error(`Failed to migrate Excel for log ${log.id}:`, excelErr.message);
-            errorsCount++;
-            errorsList.push({ id: log.id, date: log.callDate, field: 'excel', error: excelErr.message });
-          }
-        }
-        
-        if (updated) {
-          await db.updateLog(log.id, { pdfBase64, excelBase64 });
-          migratedCount++;
-        } else if (fullLog.pdfBase64 || fullLog.excelBase64) {
-          alreadyMigrated++;
-        }
-      } catch (logErr) {
-        console.error(`Error processing log ${log.id}:`, logErr);
-        errorsCount++;
-        errorsList.push({ id: log.id, error: logErr.message });
-      }
-    }
-    
-    console.log(`Migration completed. Total: ${totalLogs}, Already Migrated: ${alreadyMigrated}, Migrated Now: ${migratedCount}, Errors: ${errorsCount}`);
-    return res.json({
-      message: 'Migration process finished',
-      totalLogs,
-      alreadyMigrated,
-      migratedCount,
-      errorsCount,
-      errors: errorsList
-    });
+    migrationStatus = {
+      inProgress: true,
+      total: logs.length,
+      current: 0,
+      successCount: 0,
+      alreadyMigrated: 0,
+      errorCount: 0,
+      errors: []
+    };
+
+    // Run in background
+    runMigrationInBackground(logs);
+
+    return res.json({ message: 'Migration started successfully', status: migrationStatus });
   } catch (err) {
-    console.error('Fatal error during migration:', err);
-    return res.status(500).json({ error: 'Fatal migration error: ' + err.message });
+    console.error('Failed to start migration:', err);
+    return res.status(500).json({ error: 'Failed to start migration: ' + err.message });
   }
+});
+
+// Get migration status (Admin only)
+app.get('/api/admin/migration-status', authenticateToken, requireAdmin, (req, res) => {
+  return res.json(migrationStatus);
 });
 
 

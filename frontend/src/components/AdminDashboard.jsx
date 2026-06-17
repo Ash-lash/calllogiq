@@ -51,6 +51,7 @@ function AdminDashboard({ user, token }) {
   const [migrateSuccess, setMigrateSuccess] = useState('');
   const [migrateError, setMigrateError] = useState('');
   const [migrateLoading, setMigrateLoading] = useState(false);
+  const [migrationProgress, setMigrationProgress] = useState(null);
 
   // Download loading states: { [logId_type]: true/false }
   const [downloadingStates, setDownloadingStates] = useState({});
@@ -66,6 +67,36 @@ function AdminDashboard({ user, token }) {
     fetchLogs();
     fetchTasks();
   }, [token]);
+
+  // Auto-detect running migration on Settings Tab mount
+  useEffect(() => {
+    if (adminTab === 'settings') {
+      const checkStatus = async () => {
+        try {
+          const res = await fetch(`${API_BASE}/api/admin/migration-status`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.inProgress) {
+              setMigrateLoading(true);
+              setMigrationProgress(data);
+              pollMigrationStatus();
+            }
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      };
+      checkStatus();
+    }
+    return () => {
+      if (window.migrationIntervalId) {
+        clearInterval(window.migrationIntervalId);
+        window.migrationIntervalId = null;
+      }
+    };
+  }, [adminTab, token]);
 
   // Fetch Attendance when user changes
   useEffect(() => {
@@ -295,6 +326,35 @@ function AdminDashboard({ user, token }) {
     }
   };
 
+  const pollMigrationStatus = () => {
+    if (window.migrationIntervalId) {
+      clearInterval(window.migrationIntervalId);
+    }
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/migration-status`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        setMigrationProgress(data);
+        
+        if (!data.inProgress) {
+          clearInterval(interval);
+          window.migrationIntervalId = null;
+          setMigrateLoading(false);
+          setMigrateSuccess(`Migration finished! Total logs processed: ${data.total}. Migrated: ${data.successCount}. Already up-to-date: ${data.alreadyMigrated}. Errors: ${data.errorCount}.`);
+        }
+      } catch (err) {
+        console.error('Error polling migration status:', err);
+      }
+    }, 1500);
+
+    window.migrationIntervalId = interval;
+  };
+
   const handleMigrateToBase64 = async () => {
     if (!window.confirm("Are you sure you want to migrate Cloudinary/Firebase links to Base64 in Firestore? This might take a few minutes if you have many logs. Make sure Cloudinary has PDF delivery restriction disabled!")) {
       return;
@@ -303,6 +363,15 @@ function AdminDashboard({ user, token }) {
     setMigrateLoading(true);
     setMigrateSuccess('');
     setMigrateError('');
+    setMigrationProgress({
+      inProgress: true,
+      total: 0,
+      current: 0,
+      successCount: 0,
+      alreadyMigrated: 0,
+      errorCount: 0,
+      errors: []
+    });
 
     try {
       const res = await fetch(`${API_BASE}/api/admin/migrate-to-base64`, {
@@ -315,14 +384,14 @@ function AdminDashboard({ user, token }) {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to migrate assets');
+        throw new Error(data.error || 'Failed to start migration');
       }
 
-      setMigrateSuccess(`Migration finished! Total logs processed: ${data.totalLogs}. Migrated: ${data.migratedCount}. Already up-to-date: ${data.alreadyMigrated}. Errors: ${data.errorsCount}.`);
+      pollMigrationStatus();
     } catch (err) {
       setMigrateError(err.message);
-    } finally {
       setMigrateLoading(false);
+      setMigrationProgress(null);
     }
   };
 
@@ -1387,6 +1456,72 @@ function AdminDashboard({ user, token }) {
             <div style={{ padding: '0.75rem', borderRadius: '8px', backgroundColor: 'var(--warning-light)', color: '#856404', fontSize: '0.8rem', fontWeight: 500, marginBottom: '1rem', border: '1px solid #ffeeba' }}>
               IMPORTANT: Ensure that you have logged into Cloudinary and disabled the <strong>"Restrict PDF and ZIP files delivery"</strong> option in Settings -&gt; Security before starting the migration.
             </div>
+
+            {/* Migration progress bar */}
+            {migrationProgress && (
+              <div style={{ marginBottom: '1.25rem', padding: '1rem', border: '2px solid var(--border-color)', borderRadius: '8px', backgroundColor: 'var(--bg-main)' }}>
+                <div style={{
+                  width: '100%',
+                  backgroundColor: '#e2e8f0',
+                  borderRadius: '4px',
+                  height: '14px',
+                  overflow: 'hidden',
+                  marginBottom: '0.5rem',
+                  border: '2px solid var(--border-color)',
+                  boxShadow: '1px 1px 0px var(--border-color)'
+                }}>
+                  <div style={{
+                    width: `${migrationProgress.total > 0 ? (migrationProgress.current / migrationProgress.total) * 100 : 0}%`,
+                    backgroundColor: 'var(--text-primary)',
+                    height: '100%',
+                    transition: 'width 0.3s ease'
+                  }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+                  <span>Progress: {migrationProgress.current} / {migrationProgress.total} logs</span>
+                  <span>{migrationProgress.total > 0 ? Math.round((migrationProgress.current / migrationProgress.total) * 100) : 0}%</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', fontSize: '0.75rem', fontWeight: 700 }}>
+                  <div style={{ backgroundColor: '#f1f5f9', padding: '0.4rem', borderRadius: '4px', textAlign: 'center', border: '1px solid var(--border-color)' }}>
+                    Migrated: <span style={{ color: 'var(--success)' }}>{migrationProgress.successCount}</span>
+                  </div>
+                  <div style={{ backgroundColor: '#f1f5f9', padding: '0.4rem', borderRadius: '4px', textAlign: 'center', border: '1px solid var(--border-color)' }}>
+                    Skipped: <span style={{ color: 'var(--text-secondary)' }}>{migrationProgress.alreadyMigrated}</span>
+                  </div>
+                  <div style={{ backgroundColor: '#f1f5f9', padding: '0.4rem', borderRadius: '4px', textAlign: 'center', border: '1px solid var(--border-color)' }}>
+                    Errors: <span style={{ color: migrationProgress.errorCount > 0 ? 'var(--danger)' : 'inherit' }}>{migrationProgress.errorCount}</span>
+                  </div>
+                </div>
+
+                {migrationProgress.errors && migrationProgress.errors.length > 0 && (
+                  <div style={{
+                    marginTop: '1rem',
+                    border: '2px solid var(--border-color)',
+                    backgroundColor: 'var(--danger-light)',
+                    borderRadius: '6px',
+                    padding: '0.5rem',
+                    boxShadow: '1px 1px 0px var(--border-color)'
+                  }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--danger)', marginBottom: '0.25rem' }}>
+                      Migration Errors ({migrationProgress.errors.length}):
+                    </div>
+                    <div style={{
+                      maxHeight: '100px',
+                      overflowY: 'auto',
+                      fontSize: '0.7rem',
+                      lineHeight: 1.3,
+                      color: 'var(--danger)'
+                    }}>
+                      {migrationProgress.errors.map((e, idx) => (
+                        <div key={idx} style={{ marginBottom: '0.2rem', borderBottom: '1px dashed rgba(239, 68, 68, 0.2)', paddingBottom: '0.2rem' }}>
+                          <strong>{e.date || 'Log'}</strong> ({e.field || 'General'}): {e.error}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {migrateSuccess && (
               <div className="alert success-alert" style={{ marginBottom: '1rem' }}>

@@ -278,7 +278,8 @@ const db = {
       return data.logs
         .map(({ pdfBase64, excelBase64, ...l }) => l)
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    },
+    }
+  },
 
   updateLog: async (id, updatedFields) => {
     const firestore = getFirestore();

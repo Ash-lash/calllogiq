@@ -34,11 +34,81 @@ try {
 const https = require('https');
 const http = require('http');
 
+// Cloudinary SDK Configuration
+const cloudinary = require('cloudinary').v2;
+const isCloudinaryConfigured = process.env.CLOUDINARY_CLOUD_NAME && 
+                               process.env.CLOUDINARY_API_KEY && 
+                               !process.env.CLOUDINARY_API_KEY.includes('YOUR_') &&
+                               process.env.CLOUDINARY_API_SECRET;
+
+if (isCloudinaryConfigured) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+  });
+  console.log('Cloudinary SDK configured successfully.');
+} else {
+  console.log('Cloudinary configuration incomplete or using default placeholders. Running in Local file storage fallback mode.');
+}
+
+// Helper to extract Cloudinary public ID from URL
+function extractCloudinaryPublicId(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.includes('cloudinary.com')) {
+      const pathname = parsed.pathname;
+      const parts = pathname.split('/');
+      const rawIdx = parts.indexOf('raw');
+      const uploadIdx = parts.indexOf('upload');
+      
+      let startIdx = -1;
+      if (rawIdx !== -1 && uploadIdx !== -1) {
+        startIdx = Math.max(rawIdx, uploadIdx) + 1;
+      } else if (uploadIdx !== -1) {
+        startIdx = uploadIdx + 1;
+      } else if (rawIdx !== -1) {
+        startIdx = rawIdx + 1;
+      }
+      
+      if (startIdx !== -1) {
+        // Skip the version folder if it starts with 'v' and is numeric
+        if (parts[startIdx] && parts[startIdx].startsWith('v') && !isNaN(parts[startIdx].substring(1))) {
+          startIdx++;
+        }
+        return parts.slice(startIdx).join('/');
+      }
+    }
+  } catch (err) {
+    console.error('Error parsing Cloudinary URL:', err);
+  }
+  return null;
+}
+
 // Helper to fetch resource from URL following up to 5 redirects
 function getStreamWithRedirects(url, callback, redirectCount = 0) {
   if (redirectCount > 5) {
     return callback(new Error('Too many redirects'));
   }
+  
+  // Auto-sign Cloudinary URLs to bypass Restricted PDF/ZIP delivery security check
+  try {
+    if (url.includes('cloudinary.com') && isCloudinaryConfigured && !url.includes('signature=')) {
+      const pubId = extractCloudinaryPublicId(url);
+      if (pubId) {
+        const signedUrl = cloudinary.utils.private_download_url(pubId, null, {
+          resource_type: 'raw',
+          type: 'upload',
+          expires_at: Math.floor(Date.now() / 1000) + 3600
+        });
+        console.log(`Auto-signed Cloudinary URL: ${signedUrl}`);
+        return getStreamWithRedirects(signedUrl, callback, redirectCount + 1);
+      }
+    }
+  } catch (signErr) {
+    console.error('Failed to sign Cloudinary URL during stream:', signErr);
+  }
+
   try {
     const parsedUrl = new URL(url);
     const protocol = parsedUrl.protocol === 'https:' ? https : http;
@@ -330,23 +400,7 @@ if (!firebaseInitialized) {
   console.log('Firebase service account key is missing (neither FIREBASE_SERVICE_ACCOUNT env var nor firebase-service-account.json file). Using local database fallback (db.json).');
 }
 
-// Cloudinary SDK Configuration
-const cloudinary = require('cloudinary').v2;
-const isCloudinaryConfigured = process.env.CLOUDINARY_CLOUD_NAME && 
-                               process.env.CLOUDINARY_API_KEY && 
-                               !process.env.CLOUDINARY_API_KEY.includes('YOUR_') &&
-                               process.env.CLOUDINARY_API_SECRET;
-
-if (isCloudinaryConfigured) {
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET
-  });
-  console.log('Cloudinary SDK configured successfully.');
-} else {
-  console.log('Cloudinary configuration incomplete or using default placeholders. Running in Local file storage fallback mode.');
-}
+// redundant config removed
 
 // Upload File to Cloudinary helper
 async function uploadToCloudinary(filePath, publicId, isRaw = false) {

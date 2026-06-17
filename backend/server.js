@@ -44,6 +44,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Configure Multer for PDF uploads
 const storage = multer.diskStorage({
@@ -63,6 +64,31 @@ const upload = multer({
       cb(null, true);
     } else {
       cb(new Error('Only PDF files are allowed!'), false);
+    }
+  }
+});
+
+// Configure Multer for image uploads
+const imageStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, UPLOADS_DIR);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, 'asset-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const imageUpload = multer({
+  storage: imageStorage,
+  fileFilter: (req, file, cb) => {
+    const filetypes = /jpeg|jpg|png|webp/i;
+    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = filetypes.test(file.mimetype);
+    if (mimetype && extname) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only images (jpg, jpeg, png, webp) are allowed!'), false);
     }
   }
 });
@@ -911,6 +937,39 @@ app.post('/api/auth/seed-admin', async (req, res) => {
 
 // --- ASSET MANAGER ENDPOINTS ---
 
+// Upload image endpoint for assets (available to authenticated users)
+app.post('/api/assets/upload-image', authenticateToken, imageUpload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file uploaded' });
+    }
+    
+    const localPath = req.file.path;
+    const filename = req.file.filename;
+    const publicId = `assets/${filename.split('.')[0]}`;
+    
+    // Upload to Cloudinary if configured
+    let imageUrl = await uploadToCloudinary(localPath, publicId, false);
+    
+    if (!imageUrl) {
+      // Fallback to local URL path
+      imageUrl = `/uploads/${filename}`;
+    } else {
+      // Cleanup local file if Cloudinary succeeds
+      try {
+        fs.unlinkSync(localPath);
+      } catch (unlinkErr) {
+        console.error('Error deleting temp file:', unlinkErr);
+      }
+    }
+    
+    return res.json({ imageUrl });
+  } catch (err) {
+    console.error('Error uploading asset image:', err);
+    return res.status(500).json({ error: 'Failed to upload image' });
+  }
+});
+
 // Get all assets (available to authenticated users to populate dropdowns / see assignments)
 app.get('/api/assets', authenticateToken, async (req, res) => {
   try {
@@ -1044,7 +1103,7 @@ app.get('/api/assets/verifications/my-latest', authenticateToken, async (req, re
 // Submit user verification/declaration
 app.post('/api/assets/verifications', authenticateToken, async (req, res) => {
   try {
-    const { 
+    let { 
       month, 
       assets, 
       hasIssues, 
@@ -1059,6 +1118,24 @@ app.post('/api/assets/verifications', authenticateToken, async (req, res) => {
 
     if (!month) {
       return res.status(400).json({ error: 'Month parameter is required' });
+    }
+
+    // Sanitize assets codes and phone numbers (remove spaces, uppercase)
+    if (assets && Array.isArray(assets)) {
+      assets = assets.map(item => {
+        const cleaned = { ...item };
+        if (cleaned.code) {
+          cleaned.code = cleaned.code.replace(/\s+/g, '').toUpperCase();
+        }
+        if (cleaned.phoneNumber) {
+          cleaned.phoneNumber = cleaned.phoneNumber.replace(/\s+/g, '');
+        }
+        return cleaned;
+      });
+    }
+
+    if (newAssetTagId) {
+      newAssetTagId = newAssetTagId.replace(/\s+/g, '').toUpperCase();
     }
 
     // Save verification entry
@@ -1087,10 +1164,15 @@ app.post('/api/assets/verifications', authenticateToken, async (req, res) => {
           laptopDetail = item.code;
           let asset = await db.getAssetByTagId(item.code);
           if (asset) {
-            await db.updateAsset(item.code, { status: 'Checked out', assignedTo: userEmail, assignedToName: userName });
+            await db.updateAsset(item.code, { 
+              status: 'Checked out', 
+              assignedTo: userEmail, 
+              assignedToName: userName,
+              assetPhoto: item.photo || asset.assetPhoto || ''
+            });
           } else {
             await db.createAsset({
-              assetPhoto: '',
+              assetPhoto: item.photo || '',
               assetTagId: item.code,
               description: 'Laptop (Auto-created on declaration)',
               brand: 'Laptop',
@@ -1103,10 +1185,15 @@ app.post('/api/assets/verifications', authenticateToken, async (req, res) => {
           mobileDetail = item.code;
           let asset = await db.getAssetByTagId(item.code);
           if (asset) {
-            await db.updateAsset(item.code, { status: 'Checked out', assignedTo: userEmail, assignedToName: userName });
+            await db.updateAsset(item.code, { 
+              status: 'Checked out', 
+              assignedTo: userEmail, 
+              assignedToName: userName,
+              assetPhoto: item.photo || asset.assetPhoto || ''
+            });
           } else {
             await db.createAsset({
-              assetPhoto: '',
+              assetPhoto: item.photo || '',
               assetTagId: item.code,
               description: 'Mobile (Auto-created on declaration)',
               brand: 'Mobile',
@@ -1120,15 +1207,25 @@ app.post('/api/assets/verifications', authenticateToken, async (req, res) => {
           simDetailsList.push(`${item.phoneNumber} (${providerStr})`);
           
           const simTagId = `SIM-${item.phoneNumber}`;
-          await db.createAsset({
-            assetPhoto: '',
-            assetTagId: simTagId,
-            description: `SIM Card - ${providerStr} (${item.phoneNumber})`,
-            brand: providerStr,
-            status: 'Checked out',
-            assignedTo: userEmail,
-            assignedToName: userName
-          });
+          let asset = await db.getAssetByTagId(simTagId);
+          if (asset) {
+            await db.updateAsset(simTagId, {
+              status: 'Checked out',
+              assignedTo: userEmail,
+              assignedToName: userName,
+              assetPhoto: item.photo || asset.assetPhoto || ''
+            });
+          } else {
+            await db.createAsset({
+              assetPhoto: item.photo || '',
+              assetTagId: simTagId,
+              description: `SIM Card - ${providerStr} (${item.phoneNumber})`,
+              brand: providerStr,
+              status: 'Checked out',
+              assignedTo: userEmail,
+              assignedToName: userName
+            });
+          }
         }
       }
 
@@ -1199,10 +1296,15 @@ app.post('/api/assets/verifications', authenticateToken, async (req, res) => {
 
           let newAsset = await db.getAssetByTagId(newAssetTagId);
           if (newAsset) {
-            await db.updateAsset(newAssetTagId, { status: 'Checked out', assignedTo: userEmail, assignedToName: userName });
+            await db.updateAsset(newAssetTagId, { 
+              status: 'Checked out', 
+              assignedTo: userEmail, 
+              assignedToName: userName,
+              assetPhoto: req.body.newDevicePhoto || newAsset.assetPhoto || ''
+            });
           } else {
             await db.createAsset({
-              assetPhoto: '',
+              assetPhoto: req.body.newDevicePhoto || '',
               assetTagId: newAssetTagId,
               description: 'Replacement Device (Auto-created on verification)',
               brand: 'Replacement',

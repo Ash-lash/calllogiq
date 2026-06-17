@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Laptop, Phone, Wifi, AlertTriangle, CheckCircle, Trash2, Edit2, 
-  Plus, Download, User, Calendar, ArrowRight, Search, FileText, X, Check
+  Download, User, Calendar, ArrowRight, Search, FileText, X, Check, UploadCloud
 } from 'lucide-react';
 
 function AssetManager({ user, token }) {
@@ -26,8 +26,7 @@ function AssetManager({ user, token }) {
   const [allVerifications, setAllVerifications] = useState([]);
   const [allNotifications, setAllNotifications] = useState([]);
   
-  // Form/Modal States
-  const [showAddModal, setShowAddModal] = useState(false);
+  // Modal States (Add Asset modal removed as requested, keeping Edit modal for adjustments)
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState(null);
   
@@ -41,19 +40,27 @@ function AssetManager({ user, token }) {
   // --- Employee Declaration Form States ---
   const [hasLaptop, setHasLaptop] = useState(false);
   const [laptopCode, setLaptopCode] = useState('');
+  const [laptopPhoto, setLaptopPhoto] = useState('');
+  
   const [hasMobile, setHasMobile] = useState(false);
   const [mobileCode, setMobileCode] = useState('');
-  const [hasSim, setHasSim] = useState(false);
-  const [sims, setSims] = useState([{ id: 1, phoneNumber: '', provider: 'Airtel' }]);
+  const [mobilePhoto, setMobilePhoto] = useState('');
   
+  const [hasSim, setHasSim] = useState(false);
+  const [sims, setSims] = useState([{ id: 1, phoneNumber: '', provider: 'Airtel', photo: '' }]);
+  
+  // Upload progress states
+  const [uploadingStates, setUploadingStates] = useState({});
+
   // --- Employee Verification Dialog States ---
   const [verificationStep, setVerificationStep] = useState(1); // 1 = Question, 2 = Yes-Follow-up, 3 = Confirm No
   const [verificationHasIssues, setVerificationHasIssues] = useState(null);
   const [repairedHandedOver, setRepairedHandedOver] = useState(null); // 'yes' or 'no'
   const [newDeviceReceived, setNewDeviceReceived] = useState(null); // 'yes' or 'no'
   const [newAssetTagId, setNewAssetTagId] = useState('');
+  const [newDevicePhoto, setNewDevicePhoto] = useState('');
 
-  // Add/Edit Asset Form States
+  // Edit Asset Form States
   const [assetForm, setAssetForm] = useState({
     assetPhoto: '',
     assetTagId: '',
@@ -91,23 +98,26 @@ function AssetManager({ user, token }) {
           if (laptop) {
             setHasLaptop(true);
             setLaptopCode(laptop.assetTagId);
+            setLaptopPhoto(laptop.assetPhoto || '');
           }
           if (mobile) {
             setHasMobile(true);
             setMobileCode(mobile.assetTagId);
+            setMobilePhoto(mobile.assetPhoto || '');
           }
           if (simsList.length > 0) {
             setHasSim(true);
             setSims(simsList.map((s, idx) => ({
               id: idx + 1,
               phoneNumber: s.assetTagId.replace('SIM-', ''),
-              provider: s.brand || 'Airtel'
+              provider: s.brand || 'Airtel',
+              photo: s.assetPhoto || ''
             })));
           }
         }
       }
 
-      // 2. Fetch all assets for dropdowns/inventory
+      // 2. Fetch all assets for warnings / inventory
       const assetsRes = await fetch('/api/assets', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -149,9 +159,64 @@ function AssetManager({ user, token }) {
     }
   };
 
+  // Image Upload handler
+  const handleImageUpload = async (e, type, simId = null) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const uploadKey = simId ? `sim-${simId}` : type;
+    setUploadingStates(prev => ({ ...prev, [uploadKey]: true }));
+    
+    const formData = new FormData();
+    formData.append('image', file);
+    
+    try {
+      const res = await fetch('/api/assets/upload-image', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to upload image');
+      
+      if (type === 'laptop') {
+        setLaptopPhoto(data.imageUrl);
+      } else if (type === 'mobile') {
+        setMobilePhoto(data.imageUrl);
+      } else if (type === 'sim') {
+        setSims(prev => prev.map(s => s.id === simId ? { ...s, photo: data.imageUrl } : s));
+      } else if (type === 'newDevice') {
+        setNewDevicePhoto(data.imageUrl);
+      }
+    } catch (err) {
+      alert(`Upload error: ${err.message}`);
+    } finally {
+      setUploadingStates(prev => ({ ...prev, [uploadKey]: false }));
+    }
+  };
+
+  // Warning check: checks if an asset tag ID is already checked out to another user
+  const getAssetWarning = (code, type) => {
+    if (!code) return null;
+    const clean = code.replace(/\s+/g, '').toUpperCase();
+    if (!clean) return null;
+    
+    const targetId = type === 'SIM' ? `SIM-${clean}` : clean;
+    const matched = assets.find(a => a.assetTagId === targetId);
+    
+    if (matched && matched.status === 'Checked out') {
+      if (matched.assignedTo && matched.assignedTo.toLowerCase() !== user.email.toLowerCase()) {
+        return `⚠️ Already assigned to ${matched.assignedToName || matched.assignedTo}`;
+      }
+    }
+    return null;
+  };
+
   // Add SIM field
   const handleAddSimField = () => {
-    setSims([...sims, { id: Date.now(), phoneNumber: '', provider: 'Airtel' }]);
+    setSims([...sims, { id: Date.now(), phoneNumber: '', provider: 'Airtel', photo: '' }]);
   };
 
   // Remove SIM field
@@ -175,32 +240,36 @@ function AssetManager({ user, token }) {
         setError('Please enter your Laptop Asset ID / Code.');
         return;
       }
-      assetsPayload.push({ type: 'Laptop', code: laptopCode.trim() });
+      const cleanLaptop = laptopCode.replace(/\s+/g, '').toUpperCase();
+      assetsPayload.push({ type: 'Laptop', code: cleanLaptop, photo: laptopPhoto });
     }
     if (hasMobile) {
       if (!mobileCode.trim()) {
         setError('Please enter your Mobile Asset ID / Code.');
         return;
       }
-      assetsPayload.push({ type: 'Mobile', code: mobileCode.trim() });
+      const cleanMobile = mobileCode.replace(/\s+/g, '').toUpperCase();
+      assetsPayload.push({ type: 'Mobile', code: cleanMobile, photo: mobilePhoto });
     }
     if (hasSim) {
       const validSims = sims.filter(s => s.phoneNumber.trim());
       if (validSims.length === 0) {
-        setError('Please enter your SIM card phone number.');
+        setError('Please enter your SIM phone number.');
         return;
       }
       for (const sim of validSims) {
+        const cleanPhone = sim.phoneNumber.replace(/\s+/g, '');
         assetsPayload.push({
           type: 'SIM',
-          phoneNumber: sim.phoneNumber.trim(),
-          provider: sim.provider
+          phoneNumber: cleanPhone,
+          provider: sim.provider,
+          photo: sim.photo
         });
       }
     }
 
     if (assetsPayload.length === 0) {
-      setError('Please select and fill out at least one asset you hold.');
+      setError('Please select and fill out at least one asset.');
       return;
     }
 
@@ -238,6 +307,8 @@ function AssetManager({ user, token }) {
     setError('');
     setLoading(true);
     try {
+      const sanitizedNewAssetTag = newAssetTagId ? newAssetTagId.replace(/\s+/g, '').toUpperCase() : '';
+      
       const payload = {
         month: currentMonthStr,
         isInitialDeclaration: false,
@@ -247,12 +318,14 @@ function AssetManager({ user, token }) {
             return {
               type: 'SIM',
               phoneNumber: a.assetTagId.replace('SIM-', ''),
-              provider: a.brand
+              provider: a.brand,
+              photo: a.assetPhoto || ''
             };
           }
           return {
             type: a.description.toLowerCase().includes('laptop') ? 'Laptop' : 'Mobile',
-            code: a.assetTagId
+            code: a.assetTagId,
+            photo: a.assetPhoto || ''
           };
         })
       };
@@ -261,10 +334,11 @@ function AssetManager({ user, token }) {
         payload.repairedHandedOver = repairedHandedOver === 'yes';
         payload.newDeviceReceived = newDeviceReceived === 'yes';
         if (newDeviceReceived === 'yes') {
-          if (!newAssetTagId.trim()) {
+          if (!sanitizedNewAssetTag.trim()) {
             throw new Error('Please enter the new Asset ID received.');
           }
-          payload.newAssetTagId = newAssetTagId.trim();
+          payload.newAssetTagId = sanitizedNewAssetTag.trim();
+          payload.newDevicePhoto = newDevicePhoto;
         }
       }
 
@@ -287,6 +361,7 @@ function AssetManager({ user, token }) {
       setRepairedHandedOver(null);
       setNewDeviceReceived(null);
       setNewAssetTagId('');
+      setNewDevicePhoto('');
       
       // Reload
       await fetchInitialData();
@@ -321,7 +396,7 @@ function AssetManager({ user, token }) {
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.setAttribute('download', `AssetTigerReport-${selectedYear}-${selectedMonth}.xlsx`);
+      link.setAttribute('download', `AssetReport-${selectedYear}-${selectedMonth}.xlsx`);
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
@@ -339,7 +414,6 @@ function AssetManager({ user, token }) {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
-        // Refresh admin data
         await fetchAdminData();
       }
     } catch (err) {
@@ -347,40 +421,18 @@ function AssetManager({ user, token }) {
     }
   };
 
-  // Add new Asset (Admin)
-  const handleAddAssetSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch('/api/assets', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(assetForm)
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to add asset');
-      
-      setShowAddModal(false);
-      setAssetForm({ assetPhoto: '', assetTagId: '', description: '', brand: '', status: 'Available', assignedTo: '' });
-      await fetchInitialData();
-    } catch (err) {
-      alert(err.message);
-    }
-  };
-
   // Edit Asset (Admin)
   const handleEditAssetSubmit = async (e) => {
     e.preventDefault();
     try {
+      const sanitizedTag = assetForm.assetTagId.replace(/\s+/g, '').toUpperCase();
       const res = await fetch(`/api/assets/${editingAsset.assetTagId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(assetForm)
+        body: JSON.stringify({ ...assetForm, assetTagId: sanitizedTag })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to edit asset');
@@ -427,19 +479,48 @@ function AssetManager({ user, token }) {
     setShowEditModal(true);
   };
 
-  // Filtering assets locally for search
-  const filteredAssets = assets.filter(asset => {
+  // Grouping Assets by Employee (Admin View)
+  const groupedEmployees = React.useMemo(() => {
     const term = searchTerm.toLowerCase();
-    return (
-      (asset.assetTagId || '').toLowerCase().includes(term) ||
-      (asset.description || '').toLowerCase().includes(term) ||
-      (asset.brand || '').toLowerCase().includes(term) ||
-      (asset.status || '').toLowerCase().includes(term) ||
-      (asset.assignedTo || '').toLowerCase().includes(term)
-    );
-  });
+    
+    // Filter assets first
+    const filtered = assets.filter(asset => {
+      return (
+        (asset.assetTagId || '').toLowerCase().includes(term) ||
+        (asset.description || '').toLowerCase().includes(term) ||
+        (asset.brand || '').toLowerCase().includes(term) ||
+        (asset.status || '').toLowerCase().includes(term) ||
+        (asset.assignedTo || '').toLowerCase().includes(term)
+      );
+    });
 
-  // KPI Calculations (Admin)
+    const groups = {};
+    const unassignedList = [];
+
+    filtered.forEach(asset => {
+      if (asset.assignedTo) {
+        const email = asset.assignedTo.toLowerCase();
+        const name = asset.assignedToName || asset.assignedTo;
+        if (!groups[email]) {
+          groups[email] = {
+            name,
+            email,
+            assets: []
+          };
+        }
+        groups[email].assets.push(asset);
+      } else {
+        unassignedList.push(asset);
+      }
+    });
+
+    return {
+      assigned: Object.values(groups),
+      unassigned: unassignedList
+    };
+  }, [assets, searchTerm]);
+
+  // KPI calculations
   const totalAssetsCount = assets.length;
   const checkedOutCount = assets.filter(a => a.status === 'Checked out').length;
   const underRepairCount = assets.filter(a => a.status === 'Under repair').length;
@@ -514,9 +595,9 @@ function AssetManager({ user, token }) {
       {/* ========================================== */}
       {!isUserAdmin && (
         <div>
-          {/* Case 1: Already Verified This Month */}
           {myAssetData.verifiedThisMonth ? (
-            <div style={{ background: '#fff', border: '2px solid var(--border-color)', padding: '2rem', boxShadow: 'var(--shadow-flat)', borderRadius: '0px' }}>
+            /* Case 1: Verified state */
+            <div style={{ background: '#fff', border: '2px solid var(--border-color)', padding: '2rem', boxShadow: 'var(--shadow-flat)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
                 <div style={{ background: 'var(--success-light)', border: '2px solid var(--success)', padding: '0.6rem', borderRadius: '50%' }}>
                   <CheckCircle size={36} color="var(--success)" />
@@ -574,14 +655,14 @@ function AssetManager({ user, token }) {
           ) : (
             /* Case 2: Unverified/Declaration needed */
             <div>
-              {/* If user has no previous verifications, show Initial Setup Declaration Form */}
               {!myAssetData.latestVerification && myAssetData.myAssets.length === 0 ? (
+                /* Initial Setup Declaration Form */
                 <div style={{ background: '#fff', border: '2px solid var(--border-color)', padding: '2rem', boxShadow: 'var(--shadow-flat)' }}>
                   <h2 style={{ fontFamily: 'var(--font-family-title)', fontSize: '1.6rem', fontWeight: 900, textTransform: 'uppercase', marginBottom: '0.5rem' }}>
                     Asset Profile Initialization
                   </h2>
                   <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.95rem' }}>
-                    Please declare the assets currently provided to you by the organization. This information will update the asset database and admin workspace.
+                    Please declare the assets currently provided to you by the organization. This information will update the asset database.
                   </p>
 
                   <form onSubmit={handleDeclarationSubmit}>
@@ -599,17 +680,47 @@ function AssetManager({ user, token }) {
                         I have a Laptop assigned to me
                       </label>
                       {hasLaptop && (
-                        <div style={{ marginTop: '0.8rem', paddingLeft: '1.8rem' }}>
-                          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.3rem' }}>
-                            ENTER LAPTOP ASSET ID (CODE)
-                          </label>
-                          <input 
-                            type="text" 
-                            placeholder="e.g. L-005"
-                            value={laptopCode}
-                            onChange={(e) => setLaptopCode(e.target.value)}
-                            style={{ width: '100%', maxWidth: '300px', padding: '0.5rem', border: '2px solid var(--border-color)', fontFamily: 'inherit', fontWeight: 600 }}
-                          />
+                        <div style={{ marginTop: '0.8rem', paddingLeft: '1.8rem', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-start' }}>
+                          <div style={{ flex: '1 1 300px' }}>
+                            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.3rem' }}>
+                              ENTER LAPTOP ASSET ID (CODE)
+                            </label>
+                            <input 
+                              type="text" 
+                              placeholder="e.g. L-005"
+                              value={laptopCode}
+                              onChange={(e) => setLaptopCode(e.target.value)}
+                              style={{ width: '100%', padding: '0.5rem', border: '2px solid var(--border-color)', fontFamily: 'inherit', fontWeight: 600 }}
+                            />
+                            {/* Warnings check */}
+                            {getAssetWarning(laptopCode, 'Laptop') && (
+                              <div style={{ color: 'var(--danger)', fontSize: '0.82rem', fontWeight: 700, marginTop: '0.3rem' }}>
+                                {getAssetWarning(laptopCode, 'Laptop')}
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div style={{ flex: '1 1 250px' }}>
+                            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.3rem' }}>
+                              UPLOAD LAPTOP IMAGE
+                            </label>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                              <input 
+                                type="file" 
+                                accept="image/*"
+                                onChange={(e) => handleImageUpload(e, 'laptop')}
+                                style={{ display: 'none' }}
+                                id="laptop-img-input"
+                              />
+                              <label htmlFor="laptop-img-input" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: '#fff', border: '2px solid var(--border-color)', padding: '0.5rem 0.8rem', fontWeight: 700, cursor: 'pointer', boxShadow: 'var(--shadow-flat-sm)' }}>
+                                <UploadCloud size={16} /> 
+                                {uploadingStates['laptop'] ? 'Uploading...' : 'Choose Image'}
+                              </label>
+                              {laptopPhoto && (
+                                <img src={laptopPhoto} alt="laptop-thumb" style={{ width: '42px', height: '42px', objectFit: 'cover', border: '1px solid var(--border-color)' }} />
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -627,17 +738,47 @@ function AssetManager({ user, token }) {
                         I have a Mobile assigned to me
                       </label>
                       {hasMobile && (
-                        <div style={{ marginTop: '0.8rem', paddingLeft: '1.8rem' }}>
-                          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.3rem' }}>
-                            ENTER MOBILE ASSET ID (CODE)
-                          </label>
-                          <input 
-                            type="text" 
-                            placeholder="e.g. M-012"
-                            value={mobileCode}
-                            onChange={(e) => setMobileCode(e.target.value)}
-                            style={{ width: '100%', maxWidth: '300px', padding: '0.5rem', border: '2px solid var(--border-color)', fontFamily: 'inherit', fontWeight: 600 }}
-                          />
+                        <div style={{ marginTop: '0.8rem', paddingLeft: '1.8rem', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-start' }}>
+                          <div style={{ flex: '1 1 300px' }}>
+                            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.3rem' }}>
+                              ENTER MOBILE ASSET ID (CODE)
+                            </label>
+                            <input 
+                              type="text" 
+                              placeholder="e.g. M-012"
+                              value={mobileCode}
+                              onChange={(e) => setMobileCode(e.target.value)}
+                              style={{ width: '100%', padding: '0.5rem', border: '2px solid var(--border-color)', fontFamily: 'inherit', fontWeight: 600 }}
+                            />
+                            {/* Warnings check */}
+                            {getAssetWarning(mobileCode, 'Mobile') && (
+                              <div style={{ color: 'var(--danger)', fontSize: '0.82rem', fontWeight: 700, marginTop: '0.3rem' }}>
+                                {getAssetWarning(mobileCode, 'Mobile')}
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{ flex: '1 1 250px' }}>
+                            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.3rem' }}>
+                              UPLOAD MOBILE IMAGE
+                            </label>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                              <input 
+                                type="file" 
+                                accept="image/*"
+                                onChange={(e) => handleImageUpload(e, 'mobile')}
+                                style={{ display: 'none' }}
+                                id="mobile-img-input"
+                              />
+                              <label htmlFor="mobile-img-input" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: '#fff', border: '2px solid var(--border-color)', padding: '0.5rem 0.8rem', fontWeight: 700, cursor: 'pointer', boxShadow: 'var(--shadow-flat-sm)' }}>
+                                <UploadCloud size={16} /> 
+                                {uploadingStates['mobile'] ? 'Uploading...' : 'Choose Image'}
+                              </label>
+                              {mobilePhoto && (
+                                <img src={mobilePhoto} alt="mobile-thumb" style={{ width: '42px', height: '42px', objectFit: 'cover', border: '1px solid var(--border-color)' }} />
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -662,8 +803,8 @@ function AssetManager({ user, token }) {
                           </p>
                           
                           {sims.map((sim, index) => (
-                            <div key={sim.id} style={{ display: 'flex', flexWrap: 'wrap', gap: '0.8rem', alignItems: 'flex-end', marginBottom: '0.8rem', background: '#fff', padding: '0.8rem', border: '1px solid var(--border-color)' }}>
-                              <div style={{ flex: '1 1 200px' }}>
+                            <div key={sim.id} style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', marginBottom: '1rem', background: '#fff', padding: '1rem', border: '1px solid var(--border-color)' }}>
+                              <div style={{ flex: '2 1 200px' }}>
                                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.2rem' }}>
                                   PHONE NUMBER
                                 </label>
@@ -672,9 +813,15 @@ function AssetManager({ user, token }) {
                                   placeholder="10-digit number"
                                   value={sim.phoneNumber}
                                   onChange={(e) => handleEditSimField(sim.id, 'phoneNumber', e.target.value)}
-                                  style={{ width: '100%', padding: '0.4rem', border: '2px solid var(--border-color)', fontFamily: 'inherit', fontWeight: 600 }}
+                                  style={{ width: '100%', padding: '0.45rem', border: '2px solid var(--border-color)', fontFamily: 'inherit', fontWeight: 600 }}
                                 />
+                                {getAssetWarning(sim.phoneNumber, 'SIM') && (
+                                  <div style={{ color: 'var(--danger)', fontSize: '0.78rem', fontWeight: 700, marginTop: '0.2rem' }}>
+                                    {getAssetWarning(sim.phoneNumber, 'SIM')}
+                                  </div>
+                                )}
                               </div>
+
                               <div style={{ flex: '1 1 150px' }}>
                                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.2rem' }}>
                                   SERVICE PROVIDER
@@ -682,17 +829,40 @@ function AssetManager({ user, token }) {
                                 <select
                                   value={sim.provider}
                                   onChange={(e) => handleEditSimField(sim.id, 'provider', e.target.value)}
-                                  style={{ width: '100%', padding: '0.4rem', border: '2px solid var(--border-color)', fontFamily: 'inherit', fontWeight: 700, background: '#fff' }}
+                                  style={{ width: '100%', padding: '0.45rem', border: '2px solid var(--border-color)', fontFamily: 'inherit', fontWeight: 700, background: '#fff' }}
                                 >
                                   <option value="Airtel">Airtel</option>
                                   <option value="VI-Vodafone">VI-Vodafone</option>
                                 </select>
                               </div>
+
+                              <div style={{ flex: '1 1 180px' }}>
+                                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.2rem' }}>
+                                  SIM CARD PHOTO
+                                </label>
+                                <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                                  <input 
+                                    type="file" 
+                                    accept="image/*"
+                                    onChange={(e) => handleImageUpload(e, 'sim', sim.id)}
+                                    style={{ display: 'none' }}
+                                    id={`sim-img-input-${sim.id}`}
+                                  />
+                                  <label htmlFor={`sim-img-input-${sim.id}`} style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', background: '#fff', border: '2px solid var(--border-color)', padding: '0.4rem 0.6rem', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', boxShadow: 'var(--shadow-flat-sm)' }}>
+                                    <UploadCloud size={14} /> 
+                                    {uploadingStates[`sim-${sim.id}`] ? 'Wait...' : 'Image'}
+                                  </label>
+                                  {sim.photo && (
+                                    <img src={sim.photo} alt="sim-thumb" style={{ width: '36px', height: '36px', objectFit: 'cover', border: '1px solid var(--border-color)' }} />
+                                  )}
+                                </div>
+                              </div>
+
                               {sims.length > 1 && (
                                 <button 
                                   type="button"
                                   onClick={() => handleRemoveSimField(sim.id)}
-                                  style={{ padding: '0.4rem', background: 'var(--danger-light)', border: '2px solid var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                                  style={{ padding: '0.45rem', background: 'var(--danger-light)', border: '2px solid var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center', alignSelf: 'flex-end' }}
                                 >
                                   <Trash2 size={16} color="var(--danger)" />
                                 </button>
@@ -721,10 +891,10 @@ function AssetManager({ user, token }) {
                   </form>
                 </div>
               ) : (
-                /* User already declared in past month, show Monthly Verification Check-In Dialog */
+                /* User monthly verification wizards */
                 <div style={{ background: '#fff', border: '2px solid var(--border-color)', padding: '2rem', boxShadow: 'var(--shadow-flat)', maxWidth: '600px', margin: '2rem auto' }}>
                   
-                  {/* STEP 1: General problem question */}
+                  {/* STEP 1: Verification Dialog Question */}
                   {verificationStep === 1 && (
                     <div>
                       <h2 style={{ fontFamily: 'var(--font-family-title)', fontSize: '1.6rem', fontWeight: 900, textTransform: 'uppercase', marginBottom: '1rem', borderBottom: '2px solid var(--border-color)', paddingBottom: '0.5rem' }}>
@@ -738,20 +908,18 @@ function AssetManager({ user, token }) {
                         <button
                           onClick={() => {
                             setVerificationHasIssues(false);
-                            setVerificationStep(3); // Go to no issues confirm
+                            setVerificationStep(3);
                           }}
-                          style={{ padding: '1.5rem', border: '2px solid var(--border-color)', background: 'var(--success-light)', color: 'var(--success)', fontWeight: 900, fontSize: '1.2rem', textTransform: 'uppercase', cursor: 'pointer', boxShadow: 'var(--shadow-flat-sm)', transition: 'all var(--transition-fast)' }}
-                          className="brutalist-card-btn"
+                          style={{ padding: '1.5rem', border: '2px solid var(--border-color)', background: 'var(--success-light)', color: 'var(--success)', fontWeight: 900, fontSize: '1.2rem', textTransform: 'uppercase', cursor: 'pointer', boxShadow: 'var(--shadow-flat-sm)' }}
                         >
                           No Problems
                         </button>
                         <button
                           onClick={() => {
                             setVerificationHasIssues(true);
-                            setVerificationStep(2); // Go to yes follow-up
+                            setVerificationStep(2);
                           }}
-                          style={{ padding: '1.5rem', border: '2px solid var(--border-color)', background: 'var(--danger-light)', color: 'var(--danger)', fontWeight: 900, fontSize: '1.2rem', textTransform: 'uppercase', cursor: 'pointer', boxShadow: 'var(--shadow-flat-sm)', transition: 'all var(--transition-fast)' }}
-                          className="brutalist-card-btn"
+                          style={{ padding: '1.5rem', border: '2px solid var(--border-color)', background: 'var(--danger-light)', color: 'var(--danger)', fontWeight: 900, fontSize: '1.2rem', textTransform: 'uppercase', cursor: 'pointer', boxShadow: 'var(--shadow-flat-sm)' }}
                         >
                           Yes, I have issues
                         </button>
@@ -759,17 +927,17 @@ function AssetManager({ user, token }) {
                     </div>
                   )}
 
-                  {/* STEP 2: Yes, follow-up questions */}
+                  {/* STEP 2: Issue Reporting Flow */}
                   {verificationStep === 2 && (
                     <div>
-                      <div style={{ display: 'flex', justifySelf: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '2px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '2px solid var(--border-color)', paddingBottom: '0.5rem' }}>
                         <h2 style={{ fontFamily: 'var(--font-family-title)', fontSize: '1.6rem', fontWeight: 900, textTransform: 'uppercase', margin: 0 }}>
                           Report Asset Defect
                         </h2>
                         <button onClick={() => setVerificationStep(1)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 800 }}>Back</button>
                       </div>
 
-                      {/* Repaired Device Handed Over Yes/No */}
+                      {/* Defective Device Handed Over */}
                       <div style={{ marginBottom: '1.2rem' }}>
                         <label style={{ display: 'block', fontWeight: 800, marginBottom: '0.5rem' }}>
                           Have you handed over the repaired/defective device to the admin?
@@ -792,7 +960,7 @@ function AssetManager({ user, token }) {
                         </div>
                       </div>
 
-                      {/* New Device Received Yes/No */}
+                      {/* New Device Received */}
                       <div style={{ marginBottom: '1.2rem' }}>
                         <label style={{ display: 'block', fontWeight: 800, marginBottom: '0.5rem' }}>
                           Have you received a new / replacement device from the admin?
@@ -815,23 +983,50 @@ function AssetManager({ user, token }) {
                         </div>
                       </div>
 
-                      {/* If Yes: enter new asset ID */}
+                      {/* Replacement Details input */}
                       {newDeviceReceived === 'yes' && (
                         <div style={{ marginBottom: '1.5rem', background: 'var(--accent-light)', padding: '1rem', border: '1px solid var(--border-color)' }}>
-                          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 800, marginBottom: '0.3rem' }}>
-                            ENTER NEW ASSET ID (CODE)
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="e.g. C-012, L-054, or SIM number"
-                            value={newAssetTagId}
-                            onChange={(e) => setNewAssetTagId(e.target.value)}
-                            style={{ width: '100%', padding: '0.4rem', border: '2px solid var(--border-color)', fontFamily: 'inherit', fontWeight: 600 }}
-                          />
+                          <div style={{ marginBottom: '0.8rem' }}>
+                            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 800, marginBottom: '0.3rem' }}>
+                              ENTER NEW ASSET ID (CODE)
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. C-012 or L-035"
+                              value={newAssetTagId}
+                              onChange={(e) => setNewAssetTagId(e.target.value)}
+                              style={{ width: '100%', padding: '0.4rem', border: '2px solid var(--border-color)', fontFamily: 'inherit', fontWeight: 600 }}
+                            />
+                            {getAssetWarning(newAssetTagId, 'NewDevice') && (
+                              <div style={{ color: 'var(--danger)', fontSize: '0.78rem', fontWeight: 700, marginTop: '0.2rem' }}>
+                                {getAssetWarning(newAssetTagId, 'NewDevice')}
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 800, marginBottom: '0.3rem' }}>
+                              UPLOAD PHOTO OF NEW DEVICE
+                            </label>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                              <input 
+                                type="file" 
+                                accept="image/*"
+                                onChange={(e) => handleImageUpload(e, 'newDevice')}
+                                style={{ display: 'none' }}
+                                id="newdevice-img-input"
+                              />
+                              <label htmlFor="newdevice-img-input" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: '#fff', border: '2px solid var(--border-color)', padding: '0.4rem 0.6rem', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', boxShadow: 'var(--shadow-flat-sm)' }}>
+                                <UploadCloud size={14} /> 
+                                {uploadingStates['newDevice'] ? 'Uploading...' : 'Choose Image'}
+                              </label>
+                              {newDevicePhoto && (
+                                <img src={newDevicePhoto} alt="new-thumb" style={{ width: '38px', height: '38px', objectFit: 'cover', border: '1px solid var(--border-color)' }} />
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
 
-                      {/* If No: warning message */}
                       {newDeviceReceived === 'no' && (
                         <div style={{ marginBottom: '1.5rem', background: 'var(--danger-light)', padding: '1rem', border: '1px solid var(--danger)', fontWeight: 600 }}>
                           Note: A direct notification will be sent to the Admin to escalate and provide your replacement device.
@@ -848,10 +1043,10 @@ function AssetManager({ user, token }) {
                     </div>
                   )}
 
-                  {/* STEP 3: Confirm No issues */}
+                  {/* STEP 3: No issues confirm */}
                   {verificationStep === 3 && (
                     <div>
-                      <div style={{ display: 'flex', justifySelf: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '2px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '2px solid var(--border-color)', paddingBottom: '0.5rem' }}>
                         <h2 style={{ fontFamily: 'var(--font-family-title)', fontSize: '1.6rem', fontWeight: 900, textTransform: 'uppercase', margin: 0 }}>
                           Confirm Verification
                         </h2>
@@ -931,111 +1126,190 @@ function AssetManager({ user, token }) {
           {adminTab === 'inventory' && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.2rem' }}>
-                
                 {/* Search Bar */}
                 <div style={{ display: 'flex', alignItems: 'center', background: '#fff', border: '2px solid var(--border-color)', padding: '0.4rem 0.8rem', width: '100%', maxWidth: '400px', boxShadow: 'var(--shadow-flat-sm)' }}>
                   <Search size={18} style={{ color: 'var(--text-muted)', marginRight: '0.5rem' }} />
                   <input
                     type="text"
-                    placeholder="Search Tag ID, Brand, Assignee, Status..."
+                    placeholder="Search Tag ID, Brand, Assignee..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     style={{ border: 'none', width: '100%', fontFamily: 'inherit', fontWeight: 600, outline: 'none' }}
                   />
                   {searchTerm && <X size={16} style={{ cursor: 'pointer' }} onClick={() => setSearchTerm('')} />}
                 </div>
-
-                <button 
-                  onClick={() => setShowAddModal(true)}
-                  style={{ background: '#111', color: '#fff', border: 'none', borderBottom: '4px solid #000', padding: '0.6rem 1.2rem', fontWeight: 900, textTransform: 'uppercase', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', boxShadow: 'var(--shadow-flat-sm)' }}
-                >
-                  <Plus size={16} /> Add Asset
-                </button>
+                {/* Manual Add Asset button removed as requested */}
               </div>
 
-              {/* Inventory Table */}
-              <div style={{ border: '2px solid var(--border-color)', background: '#fff', boxShadow: 'var(--shadow-flat)', overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
-                  <thead>
-                    <tr style={{ background: '#111', color: '#fff', borderBottom: '2px solid var(--border-color)' }}>
-                      <th style={{ padding: '0.75rem 1rem', width: '70px', textAlign: 'center' }}>Photo</th>
-                      <th style={{ padding: '0.75rem 1rem' }}>Asset Tag ID</th>
-                      <th style={{ padding: '0.75rem 1rem' }}>Description</th>
-                      <th style={{ padding: '0.75rem 1rem' }}>Brand</th>
-                      <th style={{ padding: '0.75rem 1rem' }}>Status</th>
-                      <th style={{ padding: '0.75rem 1rem' }}>Assigned To</th>
-                      <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredAssets.length === 0 ? (
-                      <tr>
-                        <td colSpan="7" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
-                          No assets found matching the search criteria.
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredAssets.map(asset => (
-                        <tr key={asset.assetTagId} style={{ borderBottom: '1.5px solid var(--border-color)' }} className="table-row-hover">
-                          <td style={{ padding: '0.5rem 1rem', textAlign: 'center' }}>
-                            {asset.assetPhoto ? (
-                              <img 
-                                src={asset.assetPhoto} 
-                                alt={asset.description}
-                                style={{ width: '40px', height: '40px', objectFit: 'cover', border: '1px solid var(--border-color)' }}
-                              />
-                            ) : (
-                              <div style={{ width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)', margin: '0 auto', background: '#f5f5f5' }}>
-                                {asset.assetTagId.startsWith('SIM') ? <Wifi size={18} /> : <Laptop size={18} />}
-                              </div>
-                            )}
-                          </td>
-                          <td style={{ padding: '0.5rem 1rem', fontWeight: 900, fontFamily: 'var(--font-family-title)' }}>
-                            {asset.assetTagId}
-                          </td>
-                          <td style={{ padding: '0.5rem 1rem', fontWeight: 600 }}>
-                            {asset.description}
-                          </td>
-                          <td style={{ padding: '0.5rem 1rem', fontWeight: 600 }}>
-                            {asset.brand}
-                          </td>
-                          <td style={{ padding: '0.5rem 1rem' }}>
-                            <span style={{ 
-                              padding: '0.2rem 0.5rem', 
-                              border: '1.5px solid var(--border-color)',
-                              fontWeight: 800,
-                              fontSize: '0.75rem',
-                              textTransform: 'uppercase',
-                              background: asset.status === 'Available' ? 'var(--success-light)' : asset.status === 'Under repair' ? 'var(--warning-light)' : 'var(--accent-light)',
-                              color: asset.status === 'Available' ? 'var(--success)' : asset.status === 'Under repair' ? 'var(--warning)' : 'var(--accent)'
-                            }}>
-                              {asset.status}
-                            </span>
-                          </td>
-                          <td style={{ padding: '0.5rem 1rem', fontWeight: 600, color: asset.assignedTo ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                            {asset.assignedTo || 'Unassigned'}
-                          </td>
-                          <td style={{ padding: '0.5rem 1rem', textAlign: 'right' }}>
-                            <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
-                              <button 
-                                onClick={() => openEditModal(asset)}
-                                style={{ padding: '0.3rem 0.5rem', border: '1.5px solid var(--border-color)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', boxShadow: 'var(--shadow-flat-sm)' }}
-                              >
-                                <Edit2 size={14} />
-                              </button>
-                              <button 
-                                onClick={() => handleDeleteAsset(asset.assetTagId)}
-                                style={{ padding: '0.3rem 0.5rem', border: '1.5px solid var(--danger)', background: 'var(--danger-light)', cursor: 'pointer', display: 'flex', alignItems: 'center', boxShadow: '1.5px 1.5px 0px var(--danger)' }}
-                              >
-                                <Trash2 size={14} color="var(--danger)" />
-                              </button>
+              {/* Grouped Assets Table */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                
+                {/* 1. Grouped by Employee Section */}
+                <div style={{ border: '2px solid var(--border-color)', background: '#fff', boxShadow: 'var(--shadow-flat)' }}>
+                  <div style={{ background: '#111', color: '#fff', padding: '0.75rem 1rem', fontFamily: 'var(--font-family-title)', fontWeight: 900, textTransform: 'uppercase', fontSize: '1rem' }}>
+                    Assigned Assets (Grouped by Employee)
+                  </div>
+                  
+                  {groupedEmployees.assigned.length === 0 ? (
+                    <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
+                      No assigned assets found.
+                    </div>
+                  ) : (
+                    <div>
+                      {groupedEmployees.assigned.map(group => (
+                        <div key={group.email} style={{ borderBottom: '2.5px solid var(--border-color)', padding: '1rem', background: 'var(--bg-main)' }}>
+                          
+                          {/* Employee Header */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.5rem' }}>
+                            <div>
+                              <span style={{ fontSize: '1.1rem', fontWeight: 900, fontFamily: 'var(--font-family-title)', color: 'var(--accent)', marginRight: '0.8rem' }}>
+                                {group.name}
+                              </span>
+                              <span style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                ({group.email})
+                              </span>
                             </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                            <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', border: '1.5px solid var(--border-color)', background: '#fff', fontWeight: 900, borderRadius: '4px' }}>
+                              {group.assets.length} {group.assets.length === 1 ? 'Device' : 'Devices'}
+                            </span>
+                          </div>
+
+                          {/* Nested Assets List */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '0.8rem' }}>
+                            {group.assets.map(asset => (
+                              <div key={asset.assetTagId} style={{ background: '#fff', border: '2px solid var(--border-color)', padding: '0.8rem', display: 'flex', gap: '0.8rem', alignItems: 'center', boxShadow: 'var(--shadow-flat-sm)' }}>
+                                {asset.assetPhoto ? (
+                                  <img 
+                                    src={asset.assetPhoto} 
+                                    alt={asset.description} 
+                                    style={{ width: '50px', height: '50px', objectFit: 'cover', border: '1px solid var(--border-color)' }}
+                                  />
+                                ) : (
+                                  <div style={{ width: '50px', height: '50px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)', background: 'var(--bg-main)' }}>
+                                    {asset.assetTagId.startsWith('SIM') ? <Wifi size={20} /> : <Laptop size={20} />}
+                                  </div>
+                                )}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.2rem' }}>
+                                    <span style={{ fontWeight: 900, fontFamily: 'var(--font-family-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {asset.assetTagId}
+                                    </span>
+                                    <span style={{ 
+                                      fontSize: '0.65rem', padding: '0.08rem 0.3rem', border: '1px solid var(--border-color)', fontWeight: 800, textTransform: 'uppercase',
+                                      background: asset.status === 'Under repair' ? 'var(--warning-light)' : 'var(--accent-light)',
+                                      color: asset.status === 'Under repair' ? 'var(--warning)' : 'var(--accent)'
+                                    }}>
+                                      {asset.status}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {asset.description}
+                                  </div>
+                                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                                    Brand: {asset.brand}
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                  <button 
+                                    onClick={() => openEditModal(asset)}
+                                    style={{ padding: '0.25rem 0.4rem', border: '1.5px solid var(--border-color)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', boxShadow: '1.5px 1.5px 0px var(--border-color)' }}
+                                  >
+                                    <Edit2 size={12} />
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDeleteAsset(asset.assetTagId)}
+                                    style={{ padding: '0.25rem 0.4rem', border: '1.5px solid var(--danger)', background: 'var(--danger-light)', cursor: 'pointer', display: 'flex', alignItems: 'center', boxShadow: '1.5px 1.5px 0px var(--danger)' }}
+                                  >
+                                    <Trash2 size={12} color="var(--danger)" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Unassigned Available Stock Section */}
+                <div style={{ border: '2px solid var(--border-color)', background: '#fff', boxShadow: 'var(--shadow-flat)' }}>
+                  <div style={{ background: '#111', color: '#fff', padding: '0.75rem 1rem', fontFamily: 'var(--font-family-title)', fontWeight: 900, textTransform: 'uppercase', fontSize: '1rem' }}>
+                    Available Stock / Unassigned Inventory
+                  </div>
+                  
+                  {groupedEmployees.unassigned.length === 0 ? (
+                    <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
+                      No available or unassigned inventory items in stock.
+                    </div>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+                        <thead>
+                          <tr style={{ background: '#f5f5f5', color: '#111', borderBottom: '2px solid var(--border-color)' }}>
+                            <th style={{ padding: '0.6rem 1rem', width: '60px', textAlign: 'center' }}>Photo</th>
+                            <th style={{ padding: '0.6rem 1rem' }}>Asset Tag ID</th>
+                            <th style={{ padding: '0.6rem 1rem' }}>Description</th>
+                            <th style={{ padding: '0.6rem 1rem' }}>Brand</th>
+                            <th style={{ padding: '0.6rem 1rem' }}>Status</th>
+                            <th style={{ padding: '0.6rem 1rem', textAlign: 'right' }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {groupedEmployees.unassigned.map(asset => (
+                            <tr key={asset.assetTagId} style={{ borderBottom: '1.5px solid var(--border-color)' }}>
+                              <td style={{ padding: '0.4rem 1rem', textAlign: 'center' }}>
+                                {asset.assetPhoto ? (
+                                  <img 
+                                    src={asset.assetPhoto} 
+                                    alt={asset.description} 
+                                    style={{ width: '36px', height: '36px', objectFit: 'cover', border: '1px solid var(--border-color)' }}
+                                  />
+                                ) : (
+                                  <div style={{ width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)', margin: '0 auto', background: '#fafafa' }}>
+                                    {asset.assetTagId.startsWith('SIM') ? <Wifi size={16} /> : <Laptop size={16} />}
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{ padding: '0.4rem 1rem', fontWeight: 900, fontFamily: 'var(--font-family-title)' }}>
+                                {asset.assetTagId}
+                              </td>
+                              <td style={{ padding: '0.4rem 1rem', fontWeight: 600 }}>{asset.description}</td>
+                              <td style={{ padding: '0.4rem 1rem', fontWeight: 600 }}>{asset.brand}</td>
+                              <td style={{ padding: '0.4rem 1rem' }}>
+                                <span style={{ 
+                                  padding: '0.15rem 0.4rem', border: '1px solid var(--border-color)', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase',
+                                  background: asset.status === 'Available' ? 'var(--success-light)' : 'var(--warning-light)',
+                                  color: asset.status === 'Available' ? 'var(--success)' : 'var(--warning)'
+                                }}>
+                                  {asset.status}
+                                </span>
+                              </td>
+                              <td style={{ padding: '0.4rem 1rem', textAlign: 'right' }}>
+                                <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'flex-end' }}>
+                                  <button 
+                                    onClick={() => openEditModal(asset)}
+                                    style={{ padding: '0.25rem 0.4rem', border: '1.5px solid var(--border-color)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', boxShadow: 'var(--shadow-flat-sm)' }}
+                                  >
+                                    <Edit2 size={12} />
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDeleteAsset(asset.assetTagId)}
+                                    style={{ padding: '0.25rem 0.4rem', border: '1.5px solid var(--danger)', background: 'var(--danger-light)', cursor: 'pointer', display: 'flex', alignItems: 'center', boxShadow: '1.5px 1.5px 0px var(--danger)' }}
+                                  >
+                                    <Trash2 size={12} color="var(--danger)" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
               </div>
             </div>
           )}
@@ -1071,7 +1345,7 @@ function AssetManager({ user, token }) {
                         const decl_text_list = [];
                         for (const da of decl_assets) {
                           if (da.type === "SIM") {
-                            decl_text_list.append ? decl_text_list.push(`SIM: ${da.phoneNumber} (${da.provider})`) : decl_text_list.push(`SIM: ${da.phoneNumber} (${da.provider})`);
+                            decl_text_list.push(`SIM: ${da.phoneNumber} (${da.provider})`);
                           } else {
                             decl_text_list.push(`${da.type}: ${da.code}`);
                           }
@@ -1256,118 +1530,8 @@ function AssetManager({ user, token }) {
       )}
 
       {/* ========================================== */}
-      {/*        MODALS: ADD / EDIT ASSET            */}
+      {/*              MODAL: EDIT ASSET             */}
       {/* ========================================== */}
-
-      {/* Show Add Asset Modal */}
-      {showAddModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '1rem' }}>
-          <div style={{ background: '#fff', border: '3px solid var(--border-color)', padding: '1.5rem', width: '100%', maxWidth: '500px', boxShadow: 'var(--shadow-flat-lg)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', borderBottom: '2px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-              <h2 style={{ fontFamily: 'var(--font-family-title)', fontSize: '1.5rem', fontWeight: 900, textTransform: 'uppercase', margin: 0 }}>
-                Add New Asset
-              </h2>
-              <button onClick={() => setShowAddModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddAssetSubmit}>
-              <div style={{ marginBottom: '0.8rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 800, marginBottom: '0.2rem' }}>
-                  ASSET TAG ID (REQUIRED)
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={assetForm.assetTagId}
-                  onChange={(e) => setAssetForm({ ...assetForm, assetTagId: e.target.value })}
-                  style={{ width: '100%', padding: '0.4rem', border: '2px solid var(--border-color)', fontFamily: 'inherit', fontWeight: 600 }}
-                  placeholder="e.g. C-150"
-                />
-              </div>
-
-              <div style={{ marginBottom: '0.8rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 800, marginBottom: '0.2rem' }}>
-                  DESCRIPTION
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={assetForm.description}
-                  onChange={(e) => setAssetForm({ ...assetForm, description: e.target.value })}
-                  style={{ width: '100%', padding: '0.4rem', border: '2px solid var(--border-color)', fontFamily: 'inherit', fontWeight: 600 }}
-                  placeholder="e.g. HP Charger / SIM Card"
-                />
-              </div>
-
-              <div style={{ marginBottom: '0.8rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 800, marginBottom: '0.2rem' }}>
-                  BRAND
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={assetForm.brand}
-                  onChange={(e) => setAssetForm({ ...assetForm, brand: e.target.value })}
-                  style={{ width: '100%', padding: '0.4rem', border: '2px solid var(--border-color)', fontFamily: 'inherit', fontWeight: 600 }}
-                  placeholder="e.g. HP, Airtel, Apple"
-                />
-              </div>
-
-              <div style={{ marginBottom: '0.8rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 800, marginBottom: '0.2rem' }}>
-                  PHOTO URL (OPTIONAL)
-                </label>
-                <input
-                  type="text"
-                  value={assetForm.assetPhoto}
-                  onChange={(e) => setAssetForm({ ...assetForm, assetPhoto: e.target.value })}
-                  style={{ width: '100%', padding: '0.4rem', border: '2px solid var(--border-color)', fontFamily: 'inherit', fontWeight: 600 }}
-                  placeholder="https://example.com/photo.jpg"
-                />
-              </div>
-
-              <div style={{ marginBottom: '0.8rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 800, marginBottom: '0.2rem' }}>
-                  STATUS
-                </label>
-                <select
-                  value={assetForm.status}
-                  onChange={(e) => setAssetForm({ ...assetForm, status: e.target.value })}
-                  style={{ width: '100%', padding: '0.4rem', border: '2px solid var(--border-color)', fontFamily: 'inherit', fontWeight: 700, background: '#fff' }}
-                >
-                  <option value="Available">Available</option>
-                  <option value="Checked out">Checked out</option>
-                  <option value="Under repair">Under repair</option>
-                </select>
-              </div>
-
-              <div style={{ marginBottom: '1.2rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 800, marginBottom: '0.2rem' }}>
-                  ASSIGNED TO (EMAIL / BLANK)
-                </label>
-                <input
-                  type="text"
-                  value={assetForm.assignedTo}
-                  onChange={(e) => setAssetForm({ ...assetForm, assignedTo: e.target.value })}
-                  style={{ width: '100%', padding: '0.4rem', border: '2px solid var(--border-color)', fontFamily: 'inherit', fontWeight: 600 }}
-                  placeholder="employee@domain.com"
-                />
-              </div>
-
-              <button
-                type="submit"
-                style={{ width: '100%', background: '#111', color: '#fff', padding: '0.6rem', fontWeight: 900, textTransform: 'uppercase', cursor: 'pointer', border: 'none', borderBottom: '4px solid #000', boxShadow: 'var(--shadow-flat-sm)' }}
-              >
-                Add Asset
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Show Edit Asset Modal */}
       {showEditModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '1rem' }}>
           <div style={{ background: '#fff', border: '3px solid var(--border-color)', padding: '1.5rem', width: '100%', maxWidth: '500px', boxShadow: 'var(--shadow-flat-lg)' }}>

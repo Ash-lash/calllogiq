@@ -1233,15 +1233,57 @@ app.get('/api/admin/attendance/:userId', authenticateToken, requireAdmin, async 
 
 // --- TODO LIST / TASKS ROUTES ---
 
+// Cleanup helper to remove completed tasks from previous days
+async function cleanupOldCompletedTasks() {
+  try {
+    const tasks = await db.getAllTasks();
+    const users = await db.listUsers();
+    const todayStr = new Date().toISOString().split('T')[0];
+    
+    for (const task of tasks) {
+      const taskDateStr = task.createdAt.split('T')[0];
+      if (taskDateStr === todayStr) continue; // Keep today's tasks
+      
+      const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(task.assignedTo.toLowerCase());
+      
+      if (isDomainTask) {
+        // Find all employees in this domain
+        const domainEmployees = users.filter(u => u.domain && u.domain.toLowerCase() === task.assignedTo.toLowerCase() && u.role !== 'admin');
+        
+        // Check if all employees have completed it
+        const allCompleted = domainEmployees.length > 0 && domainEmployees.every(emp => {
+          const stage = task.employeeStages?.[emp.id] || (task.completions?.includes(emp.id) ? 'completed' : 'pending');
+          return stage === 'completed';
+        });
+        
+        if (allCompleted || domainEmployees.length === 0) {
+          await db.deleteTask(task.id);
+        }
+      } else {
+        // Personal task
+        const isCompleted = task.status === 'completed';
+        if (isCompleted) {
+          await db.deleteTask(task.id);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error in cleanupOldCompletedTasks:', err);
+  }
+}
+
 // Get tasks for the current user
 app.get('/api/tasks', authenticateToken, async (req, res) => {
+  await cleanupOldCompletedTasks();
   const tasks = await db.getTasksForUser(req.user.userId, req.user.domain);
+  const todayStr = new Date().toISOString().split('T')[0];
   
   // Format task checklist response
   const formattedTasks = tasks.map(t => {
     const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(t.assignedTo.toLowerCase());
     const status = t.employeeStages?.[req.user.userId] || (isDomainTask ? (t.completions?.includes(req.user.userId) ? 'completed' : 'pending') : (t.status || 'pending'));
     const isCompleted = status === 'completed';
+    const taskDateStr = t.createdAt.split('T')[0];
     
     return {
       id: t.id,
@@ -1251,9 +1293,12 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
       isDomainTask,
       isCompleted,
       status, // 'pending', 'seen', 'doing', 'completed'
-      createdAt: t.createdAt
+      createdAt: t.createdAt,
+      taskDateStr
     };
-  });
+  })
+  // Filter out tasks that are completed AND from a previous day
+  .filter(t => !(t.status === 'completed' && t.taskDateStr !== todayStr));
   
   return res.json(formattedTasks);
 });
@@ -1370,6 +1415,7 @@ app.get('/api/admin/logs', authenticateToken, requireAdmin, async (req, res) => 
 // Get all tasks (Admin only)
 app.get('/api/admin/tasks', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    await cleanupOldCompletedTasks();
     const tasks = await db.getAllTasks();
     return res.json(tasks);
   } catch (err) {

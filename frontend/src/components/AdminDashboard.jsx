@@ -32,6 +32,7 @@ function AdminDashboard({ user, token }) {
   const [taskAssignee, setTaskAssignee] = useState(''); // can be userId or domain name
   const [taskSuccess, setTaskSuccess] = useState('');
   const [taskError, setTaskError] = useState('');
+  const [taskSubTab, setTaskSubTab] = useState('active'); // 'active' or 'grouped'
 
   // Edit User Modal State
   const [editingUser, setEditingUser] = useState(null);
@@ -1223,197 +1224,348 @@ function AdminDashboard({ user, token }) {
         );
       })()}
 
-      {/* SUB-VIEW 3: Task Assignment Form */}
-      {adminTab === 'assign' && (
-        <div className="dashboard-grid-2">
-          {/* Form */}
-          <div className="card">
-            <div className="card-title-bar">
-              <h3>Assign Workload Task</h3>
-            </div>
-            
-            {taskSuccess && <div className="alert alert-success">{taskSuccess}</div>}
-            {taskError && <div className="alert alert-danger">{taskError}</div>}
+      {adminTab === 'assign' && (() => {
+        // Get active users (excluding admin)
+        const activeEmployees = users.filter(u => u.role !== 'admin');
+        
+        // Group tasks by employee
+        const employeeTasksMap = {};
+        
+        activeEmployees.forEach(emp => {
+          // Find all tasks assigned to this user or to their domain
+          const empTasks = tasks.filter(task => {
+            const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(task.assignedTo.toLowerCase());
+            if (isDomainTask) {
+              return emp.domain && emp.domain.toLowerCase() === task.assignedTo.toLowerCase();
+            } else {
+              return task.assignedTo === emp.id;
+            }
+          });
+          
+          if (empTasks.length > 0) {
+            employeeTasksMap[emp.id] = {
+              employee: emp,
+              tasks: empTasks
+            };
+          }
+        });
 
-            <form onSubmit={handleAssignTask}>
-              <div className="form-group">
-                <label className="form-label">Task Title</label>
-                <input 
-                  type="text" 
-                  className="form-input" 
-                  placeholder="e.g. Complete client callbacks list" 
-                  value={taskTitle}
-                  onChange={e => setTaskTitle(e.target.value)}
-                  required 
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Task Description (Optional)</label>
-                <textarea 
-                  className="form-input" 
-                  rows={4}
-                  placeholder="Provide details of the assignment..."
-                  value={taskDesc}
-                  onChange={e => setTaskDesc(e.target.value)}
-                  style={{ resize: 'vertical' }}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Assign To</label>
-                <select 
-                  className="form-select" 
-                  value={taskAssignee}
-                  onChange={e => setTaskAssignee(e.target.value)}
-                  required
-                >
-                  <option value="">-- Select Assignee --</option>
-                  
-                  {/* Domains */}
-                  <optgroup label="Departments (All members in domain)">
-                    <option value="Sales">Sales Domain</option>
-                    <option value="Accounts">Accounts Domain</option>
-                    <option value="Support">Support Domain</option>
-                    <option value="HR">HR Domain</option>
-                    <option value="Operations">Operations Domain</option>
-                  </optgroup>
-                  
-                  {/* Individual Users */}
-                  <optgroup label="Specific Employees">
-                    {users.filter(u => u.role !== 'admin').map(emp => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.name} ({emp.email})
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
-              </div>
-
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>
-                <PlusCircle size={18} />
-                Assign Workload Task
+        return (
+          <div>
+            {/* Sub-tab navigation */}
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.75rem' }}>
+              <button 
+                onClick={() => setTaskSubTab('active')} 
+                style={{
+                  padding: '0.4rem 1rem',
+                  borderRadius: '20px',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  border: 'none',
+                  cursor: 'pointer',
+                  backgroundColor: taskSubTab === 'active' ? 'var(--primary)' : 'transparent',
+                  color: taskSubTab === 'active' ? '#fff' : 'var(--text-secondary)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                📋 Active Workload & Assign
               </button>
-            </form>
-          </div>
-
-          {/* Active Assigned Tasks list */}
-          <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
-            <div className="card-title-bar">
-              <h3>Active Workload Assignments ({tasks.length})</h3>
+              <button 
+                onClick={() => setTaskSubTab('grouped')} 
+                style={{
+                  padding: '0.4rem 1rem',
+                  borderRadius: '20px',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  border: 'none',
+                  cursor: 'pointer',
+                  backgroundColor: taskSubTab === 'grouped' ? 'var(--primary)' : 'transparent',
+                  color: taskSubTab === 'grouped' ? '#fff' : 'var(--text-secondary)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                👥 Grouped by Assignee Name
+              </button>
             </div>
-            
-            {tasks.length > 0 ? (
-              <div style={{ overflowY: 'auto', flex: 1, paddingRight: '0.25rem' }}>
-                {tasks.map(task => {
-                  let assigneeName = task.assignedTo;
-                  // If assignee is a userId, find user name
-                  const targetUser = users.find(u => u.id === task.assignedTo);
-                  if (targetUser) {
-                    assigneeName = targetUser.name;
-                  }
 
-                  const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(task.assignedTo.toLowerCase());
+            {taskSubTab === 'active' ? (
+              <div className="dashboard-grid-2">
+                {/* Form */}
+                <div className="card">
+                  <div className="card-title-bar">
+                    <h3>Assign Workload Task</h3>
+                  </div>
+                  
+                  {taskSuccess && <div className="alert alert-success">{taskSuccess}</div>}
+                  {taskError && <div className="alert alert-danger">{taskError}</div>}
 
-                  return (
-                    <div 
-                      key={task.id} 
-                      style={{ 
-                        padding: '1rem', 
-                        border: '1px solid var(--border-light)', 
-                        borderRadius: '10px', 
-                        marginBottom: '0.75rem',
-                        backgroundColor: 'var(--bg-main)'
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <h4 style={{ fontSize: '0.95rem', fontWeight: 600 }}>{task.title}</h4>
-                        {isDomainTask ? (
-                          <span className="badge badge-primary">Domain: {task.assignedTo}</span>
-                        ) : (
-                          <span className="badge badge-success">Personal</span>
-                        )}
-                      </div>
-                      
-                      {task.description && (
-                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
-                          {task.description}
-                        </p>
-                      )}
-                      
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.6rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>Assigned to: <strong>{assigneeName}</strong></span>
-                        {isDomainTask ? (
-                          <span>Completions: {task.completions?.length || 0}</span>
-                        ) : (
-                          <span style={{ textTransform: 'capitalize', fontWeight: 600, color: task.status === 'completed' ? 'var(--success)' : 'var(--text-secondary)' }}>
-                            {task.status}
-                          </span>
-                        )}
-                      </div>
+                  <form onSubmit={handleAssignTask}>
+                    <div className="form-group">
+                      <label className="form-label">Task Title</label>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        placeholder="e.g. Complete client callbacks list" 
+                        value={taskTitle}
+                        onChange={e => setTaskTitle(e.target.value)}
+                        required 
+                      />
+                    </div>
 
-                      {/* Employee Stage Tracking */}
-                      {(() => {
-                        let assignedUsers = [];
-                        if (isDomainTask) {
-                          assignedUsers = users.filter(u => u.domain && u.domain.toLowerCase() === task.assignedTo.toLowerCase() && u.role !== 'admin');
-                        } else {
-                          const targetUser = users.find(u => u.id === task.assignedTo);
-                          if (targetUser) assignedUsers = [targetUser];
+                    <div className="form-group">
+                      <label className="form-label">Task Description (Optional)</label>
+                      <textarea 
+                        className="form-input" 
+                        rows={4}
+                        placeholder="Provide details of the assignment..."
+                        value={taskDesc}
+                        onChange={e => setTaskDesc(e.target.value)}
+                        style={{ resize: 'vertical' }}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Assign To</label>
+                      <select 
+                        className="form-select" 
+                        value={taskAssignee}
+                        onChange={e => setTaskAssignee(e.target.value)}
+                        required
+                      >
+                        <option value="">-- Select Assignee --</option>
+                        
+                        {/* Domains */}
+                        <optgroup label="Departments (All members in domain)">
+                          <option value="Sales">Sales Domain</option>
+                          <option value="Accounts">Accounts Domain</option>
+                          <option value="Support">Support Domain</option>
+                          <option value="HR">HR Domain</option>
+                          <option value="Operations">Operations Domain</option>
+                        </optgroup>
+                        
+                        {/* Individual Users */}
+                        <optgroup label="Specific Employees">
+                          {users.filter(u => u.role !== 'admin').map(emp => (
+                            <option key={emp.id} value={emp.id}>
+                              {emp.name} ({emp.email})
+                            </option>
+                          ))}
+                        </optgroup>
+                      </select>
+                    </div>
+
+                    <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>
+                      <PlusCircle size={18} />
+                      Assign Workload Task
+                    </button>
+                  </form>
+                </div>
+
+                {/* Active Assigned Tasks list */}
+                <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <div className="card-title-bar">
+                    <h3>Active Workload Assignments ({tasks.length})</h3>
+                  </div>
+                  
+                  {tasks.length > 0 ? (
+                    <div style={{ overflowY: 'auto', flex: 1, paddingRight: '0.25rem' }}>
+                      {tasks.map(task => {
+                        let assigneeName = task.assignedTo;
+                        // If assignee is a userId, find user name
+                        const targetUser = users.find(u => u.id === task.assignedTo);
+                        if (targetUser) {
+                          assigneeName = targetUser.name;
                         }
 
-                        if (assignedUsers.length === 0) return null;
+                        const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(task.assignedTo.toLowerCase());
 
                         return (
-                          <div style={{ marginTop: '0.8rem', borderTop: '1px dashed var(--border-color)', paddingTop: '0.6rem' }}>
-                            <div style={{ fontWeight: 600, fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
-                              Employee Progress Status:
+                          <div 
+                            key={task.id} 
+                            style={{ 
+                              padding: '1rem', 
+                              border: '1px solid var(--border-light)', 
+                              borderRadius: '10px', 
+                              marginBottom: '0.75rem',
+                              backgroundColor: 'var(--bg-main)'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                              <h4 style={{ fontSize: '0.95rem', fontWeight: 600 }}>{task.title}</h4>
+                              {isDomainTask ? (
+                                <span className="badge badge-primary">Domain: {task.assignedTo}</span>
+                              ) : (
+                                <span className="badge badge-success">Personal</span>
+                              )}
                             </div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                              {assignedUsers.map(u => {
-                                const stage = task.employeeStages?.[u.id] || (isDomainTask ? 'pending' : (task.status || 'pending'));
-                                let badgeBg = '#f3f4f6';
-                                let badgeColor = '#4b5563';
-                                if (stage === 'seen') { badgeBg = '#fef3c7'; badgeColor = '#b45309'; }
-                                else if (stage === 'doing') { badgeBg = '#e0f2fe'; badgeColor = '#0369a1'; }
-                                else if (stage === 'completed') { badgeBg = '#d1fae5'; badgeColor = '#047857'; }
-                                
-                                return (
-                                  <span 
-                                    key={u.id} 
-                                    style={{ 
-                                      fontSize: '0.7rem', 
-                                      padding: '0.15rem 0.4rem', 
-                                      borderRadius: '4px', 
-                                      backgroundColor: badgeBg, 
-                                      color: badgeColor,
-                                      fontWeight: 600,
-                                      border: '1px solid rgba(0,0,0,0.05)',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '2px'
-                                    }}
-                                  >
-                                    {u.name}: <strong style={{ textTransform: 'capitalize' }}>{stage}</strong>
-                                  </span>
-                                );
-                              })}
+                            
+                            {task.description && (
+                              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
+                                {task.description}
+                              </p>
+                            )}
+                            
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.6rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>Assigned to: <strong>{assigneeName}</strong></span>
+                              {isDomainTask ? (
+                                <span>Completions: {task.completions?.length || 0}</span>
+                              ) : (
+                                <span style={{ textTransform: 'capitalize', fontWeight: 600, color: task.status === 'completed' ? 'var(--success)' : 'var(--text-secondary)' }}>
+                                  {task.status}
+                                </span>
+                              )}
                             </div>
+
+                            {/* Employee Stage Tracking */}
+                            {(() => {
+                              let assignedUsers = [];
+                              if (isDomainTask) {
+                                assignedUsers = users.filter(u => u.domain && u.domain.toLowerCase() === task.assignedTo.toLowerCase() && u.role !== 'admin');
+                              } else {
+                                const targetUser = users.find(u => u.id === task.assignedTo);
+                                if (targetUser) assignedUsers = [targetUser];
+                              }
+
+                              if (assignedUsers.length === 0) return null;
+
+                              return (
+                                <div style={{ marginTop: '0.8rem', borderTop: '1px dashed var(--border-color)', paddingTop: '0.6rem' }}>
+                                  <div style={{ fontWeight: 600, fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
+                                    Employee Progress Status:
+                                  </div>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                                    {assignedUsers.map(u => {
+                                      const stage = task.employeeStages?.[u.id] || (isDomainTask ? 'pending' : (task.status || 'pending'));
+                                      let badgeBg = '#f3f4f6';
+                                      let badgeColor = '#4b5563';
+                                      if (stage === 'seen') { badgeBg = '#fef3c7'; badgeColor = '#b45309'; }
+                                      else if (stage === 'doing') { badgeBg = '#e0f2fe'; badgeColor = '#0369a1'; }
+                                      else if (stage === 'completed') { badgeBg = '#d1fae5'; badgeColor = '#047857'; }
+                                      
+                                      return (
+                                        <span 
+                                          key={u.id} 
+                                          style={{ 
+                                            fontSize: '0.7rem', 
+                                            padding: '0.15rem 0.4rem', 
+                                            borderRadius: '4px', 
+                                            backgroundColor: badgeBg, 
+                                            color: badgeColor,
+                                            fontWeight: 600,
+                                            border: '1px solid rgba(0,0,0,0.05)',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '2px'
+                                          }}
+                                        >
+                                          {u.name}: <strong style={{ textTransform: 'capitalize' }}>{stage}</strong>
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         );
-                      })()}
+                      })}
                     </div>
-                  );
-                })}
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      No workload tasks assigned yet.
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
-              <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                No workload tasks assigned yet.
+              <div className="card" style={{ padding: '1.5rem' }}>
+                <div className="card-title-bar" style={{ marginBottom: '1.25rem' }}>
+                  <h3>Workload Tasks Grouped by Assignee</h3>
+                </div>
+                
+                {Object.keys(employeeTasksMap).length > 0 ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+                    {Object.values(employeeTasksMap).map(({ employee, tasks: empTasks }) => (
+                      <div 
+                        key={employee.id} 
+                        style={{ 
+                          border: '1.5px solid var(--border-color)', 
+                          borderRadius: '12px', 
+                          padding: '1.25rem',
+                          backgroundColor: '#ffffff',
+                          boxShadow: 'var(--shadow-flat-sm)'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.6rem', marginBottom: '0.75rem' }}>
+                          <h4 style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>
+                            {employee.name}
+                          </h4>
+                          <span className="badge badge-primary" style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', textTransform: 'uppercase' }}>
+                            {employee.domain}
+                          </span>
+                        </div>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                          {empTasks.map(task => {
+                            const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(task.assignedTo.toLowerCase());
+                            const stage = task.employeeStages?.[employee.id] || (isDomainTask ? 'pending' : (task.status || 'pending'));
+                            
+                            let badgeBg = '#f3f4f6';
+                            let badgeColor = '#4b5563';
+                            if (stage === 'seen') { badgeBg = '#fef3c7'; badgeColor = '#b45309'; }
+                            else if (stage === 'doing') { badgeBg = '#e0f2fe'; badgeColor = '#0369a1'; }
+                            else if (stage === 'completed') { badgeBg = '#d1fae5'; badgeColor = '#047857'; }
+
+                            return (
+                              <div 
+                                key={task.id} 
+                                style={{ 
+                                  padding: '0.75rem', 
+                                  border: '1px solid var(--border-light)', 
+                                  borderRadius: '8px', 
+                                  backgroundColor: 'var(--bg-main)' 
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                                  <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{task.title}</div>
+                                  <span style={{ 
+                                    fontSize: '0.65rem', 
+                                    padding: '0.15rem 0.35rem', 
+                                    borderRadius: '4px', 
+                                    backgroundColor: badgeBg, 
+                                    color: badgeColor, 
+                                    fontWeight: 700,
+                                    textTransform: 'uppercase',
+                                    whiteSpace: 'nowrap'
+                                  }}>
+                                    {stage}
+                                  </span>
+                                </div>
+                                {task.description && (
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                                    {task.description}
+                                  </div>
+                                )}
+                                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>
+                                  Type: {isDomainTask ? `Domain (${task.assignedTo})` : 'Personal'}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-muted)' }}>
+                    No active assignments to display.
+                  </div>
+                )}
               </div>
             )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* SUB-VIEW 5: System Settings (Admin only) */}
       {adminTab === 'settings' && (

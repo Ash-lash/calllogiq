@@ -426,6 +426,19 @@ const db = {
     return db.updateTaskStatus(taskId, userId, status);
   },
 
+  deleteTask: async (id) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      await firestore.collection('tasks').doc(id).delete();
+      return true;
+    } else {
+      const data = readLocalDB();
+      data.tasks = data.tasks.filter(t => t.id !== id);
+      writeLocalDB(data);
+      return true;
+    }
+  },
+
   deleteUser: async (id) => {
     const firestore = getFirestore();
     if (firestore) {

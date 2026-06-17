@@ -1367,6 +1367,17 @@ app.get('/api/admin/logs', authenticateToken, requireAdmin, async (req, res) => 
   return res.json(logsWithUsers);
 });
 
+// Get all tasks (Admin only)
+app.get('/api/admin/tasks', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const tasks = await db.getAllTasks();
+    return res.json(tasks);
+  } catch (err) {
+    console.error('Error fetching all tasks:', err);
+    return res.status(500).json({ error: 'Failed to fetch tasks' });
+  }
+});
+
 // Assign a task (Admin only)
 app.post('/api/admin/assign-task', authenticateToken, requireAdmin, async (req, res) => {
   const { title, description, assignedTo } = req.body; // assignedTo can be a userId or a domain

@@ -155,7 +155,7 @@ function AdminDashboard({ user, token }) {
   const fetchTasks = async () => {
     // Admin can see all tasks
     try {
-      const res = await fetch(`${API_BASE}/api/tasks`, {
+      const res = await fetch(`${API_BASE}/api/admin/tasks`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();

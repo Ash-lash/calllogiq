@@ -156,7 +156,7 @@ function AdminDashboard({ user, token }) {
     setEditSuccess('');
     setEditError('');
 
-    if (!editingUser.name || !editingUser.domain || !editingUser.role || !editingUser.email) {
+    if (!editingUser.name || !editingUser.domain || !editingUser.role || !editingUser.email || !editingUser.branch) {
       setEditError('All fields are required.');
       return;
     }
@@ -172,7 +172,8 @@ function AdminDashboard({ user, token }) {
           name: editingUser.name,
           email: editingUser.email,
           domain: editingUser.domain,
-          role: editingUser.role
+          role: editingUser.role,
+          branch: editingUser.branch
         })
       });
       const data = await res.json();
@@ -488,6 +489,7 @@ function AdminDashboard({ user, token }) {
                     <th>Employee Name</th>
                     <th>Email</th>
                     <th>Domain</th>
+                    <th>Branch</th>
                     <th>Uploads</th>
                     <th>Total Calls</th>
                     <th>Avg Calls/Day</th>
@@ -502,6 +504,17 @@ function AdminDashboard({ user, token }) {
                       <td style={{ fontWeight: 600 }}>{emp.name}</td>
                       <td>{emp.email}</td>
                       <td><span className="badge badge-primary">{emp.domain}</span></td>
+                      <td>
+                        <span 
+                          className="badge badge-success" 
+                          style={{ 
+                            background: emp.branch === 'Pending' || !emp.branch ? 'var(--danger-light)' : 'var(--success-light)', 
+                            color: emp.branch === 'Pending' || !emp.branch ? 'var(--danger)' : 'var(--success)' 
+                          }}
+                        >
+                          {emp.branch || 'Pending'}
+                        </span>
+                      </td>
                       <td>{emp.uploads}</td>
                       <td>{emp.totalCalls}</td>
                       <td>{emp.avgCallsPerLog}</td>
@@ -510,7 +523,7 @@ function AdminDashboard({ user, token }) {
                       <td style={{ textAlign: 'right' }}>
                         <button 
                           className="btn btn-outline" 
-                          onClick={() => setEditingUser({ id: emp.id, name: emp.name, email: emp.email, domain: emp.domain, role: emp.role })}
+                          onClick={() => setEditingUser({ id: emp.id, name: emp.name, email: emp.email, domain: emp.domain, branch: emp.branch || 'Pending', role: emp.role })}
                           style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', marginRight: '0.5rem' }}
                         >
                           Edit
@@ -527,7 +540,7 @@ function AdminDashboard({ user, token }) {
                   ))}
                   {leaderboard.filter(u => u.email !== user.email).length === 0 && (
                     <tr>
-                      <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+                      <td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
                         No employee records found in system database.
                       </td>
                     </tr>
@@ -718,7 +731,7 @@ function AdminDashboard({ user, token }) {
                   <BarChart data={aggregatedList}>
                     <XAxis dataKey="period" stroke="var(--text-secondary)" fontSize={10} tickLine={false} />
                     <YAxis stroke="var(--text-secondary)" fontSize={10} tickLine={false} />
-                    <Tooltip contentStyle={{ background: '#fff', border: '1px solid var(--border-light)', borderRadius: '8px' }} />
+                    <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '8px', color: 'var(--text-primary)' }} />
                     <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
                     <Bar dataKey="dialed" name="Dialed Calls" fill="var(--primary)" stackId="a" />
                     <Bar dataKey="incoming" name="Incoming Calls" fill="var(--success)" stackId="a" />
@@ -1133,6 +1146,22 @@ function AdminDashboard({ user, token }) {
                   <option value="Support">Support</option>
                   <option value="HR">HR</option>
                   <option value="Operations">Operations</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Workplace Branch</label>
+                <select 
+                  className="form-select" 
+                  value={editingUser.branch || 'Pending'} 
+                  onChange={e => setEditingUser({ ...editingUser, branch: e.target.value })} 
+                  required
+                >
+                  <option value="Pending" disabled>Pending</option>
+                  <option value="Maduravoyal">Maduravoyal</option>
+                  <option value="Porur">Porur</option>
+                  <option value="Mettur">Mettur</option>
+                  <option value="Tiruvannamalai">Tiruvannamalai</option>
                 </select>
               </div>
 

@@ -204,22 +204,55 @@ def analyze_pdf(pdf_path, username):
     # Calculate talk time
     total_talk_secs = sum(c['duration_secs'] for c in all_calls)
     
-    # Calculate Idle Gaps (> 15 minutes)
+    # Calculate Idle Gaps (excluding 45 min lunch 1:00-1:45 PM and 10 min post-lunch tea break)
     idle_gaps = []
     total_idle_secs = 0
+    tea_break_applied = False
+    
     for i in range(len(all_calls) - 1):
-        call_end_time = all_calls[i]['time'] + timedelta(seconds=all_calls[i]['duration_secs'])
-        next_call_start_time = all_calls[i+1]['time']
+        start_time = all_calls[i]['time'] + timedelta(seconds=all_calls[i]['duration_secs'])
+        end_time = all_calls[i+1]['time']
         
-        gap_secs = int((next_call_start_time - call_end_time).total_seconds())
-        if gap_secs > 900:  # 15 minutes
+        gap_secs = int((end_time - start_time).total_seconds())
+        if gap_secs <= 0:
+            continue
+            
+        # Lunch time boundaries for this day
+        day_date = start_time.date()
+        lunch_start = datetime.combine(day_date, datetime.strptime("13:00", "%H:%M").time())
+        lunch_end = datetime.combine(day_date, datetime.strptime("13:45", "%H:%M").time())
+        
+        # Calculate lunch overlap
+        overlap_start = max(start_time, lunch_start)
+        overlap_end = min(end_time, lunch_end)
+        lunch_overlap = max(0, int((overlap_end - overlap_start).total_seconds()))
+        
+        # Calculate tea break deduction (up to 10 mins / 600 secs post-lunch)
+        tea_deduction = 0
+        if not tea_break_applied:
+            # Check if this gap extends past lunch end
+            post_lunch_start = max(start_time, lunch_end)
+            post_lunch_duration = max(0, int((end_time - post_lunch_start).total_seconds()))
+            if post_lunch_duration > 0:
+                # Deduct up to 600 seconds from remaining gap
+                remaining_gap = gap_secs - lunch_overlap
+                tea_deduction = min(600, remaining_gap)
+                if tea_deduction > 0:
+                    tea_break_applied = True
+                    
+        chargeable_secs = gap_secs - lunch_overlap - tea_deduction
+        
+        if chargeable_secs > 900:  # Only count as idle gap if remaining idle time is > 15 mins
             idle_gaps.append({
-                'start': call_end_time.strftime("%H:%M"),
-                'end': next_call_start_time.strftime("%H:%M"),
-                'duration_secs': gap_secs,
-                'duration_str': format_seconds(gap_secs)
+                'start': start_time.strftime("%H:%M"),
+                'end': end_time.strftime("%H:%M"),
+                'duration_secs': chargeable_secs,
+                'original_duration_secs': gap_secs,
+                'lunch_overlap_secs': lunch_overlap,
+                'tea_deduction_secs': tea_deduction,
+                'duration_str': format_seconds(chargeable_secs)
             })
-            total_idle_secs += gap_secs
+            total_idle_secs += chargeable_secs
             
     # Duration Splitups
     dialed_splits = {r: 0 for r in DURATION_RANGES}

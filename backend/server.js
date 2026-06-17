@@ -318,6 +318,7 @@ app.post('/api/auth/google', async (req, res) => {
         passwordHash: '', // Google users don't have local password
         name: name || email.split('@')[0],
         domain: 'Pending', // Mark as pending to trigger frontend selection modal
+        branch: 'Pending', // Branch is also pending for new users
         role: isEmailAdmin ? 'admin' : 'user'
       });
     }
@@ -328,6 +329,7 @@ app.post('/api/auth/google', async (req, res) => {
       email: user.email,
       name: user.name,
       domain: user.domain,
+      branch: user.branch || 'Pending',
       role: user.role
     }, JWT_SECRET, { expiresIn: '24h' });
 
@@ -338,6 +340,7 @@ app.post('/api/auth/google', async (req, res) => {
         email: user.email,
         name: user.name,
         domain: user.domain,
+        branch: user.branch || 'Pending',
         role: user.role
       }
     });
@@ -366,6 +369,7 @@ app.post('/api/auth/login', async (req, res) => {
           passwordHash,
           name: 'System Admin',
           domain: 'Operations',
+          branch: 'Maduravoyal',
           role: 'admin'
         });
       }
@@ -376,6 +380,7 @@ app.post('/api/auth/login', async (req, res) => {
         email: user.email,
         name: user.name,
         domain: user.domain,
+        branch: user.branch || 'Maduravoyal',
         role: user.role
       }, JWT_SECRET, { expiresIn: '24h' });
 
@@ -386,6 +391,7 @@ app.post('/api/auth/login', async (req, res) => {
           email: user.email,
           name: user.name,
           domain: user.domain,
+          branch: user.branch || 'Maduravoyal',
           role: user.role
         }
       });
@@ -399,9 +405,9 @@ app.post('/api/auth/login', async (req, res) => {
 
 // 3. Update User Profile (Name and Domain selection)
 app.post('/api/users/update-profile', authenticateToken, async (req, res) => {
-  const { name, domain } = req.body;
-  if (!name || !domain) {
-    return res.status(400).json({ error: 'Name and Domain are required' });
+  const { name, domain, branch } = req.body;
+  if (!name || !domain || !branch) {
+    return res.status(400).json({ error: 'Name, Domain, and Branch are required' });
   }
 
   const validDomains = ['Sales', 'Accounts', 'Support', 'HR', 'Operations'];
@@ -409,9 +415,14 @@ app.post('/api/users/update-profile', authenticateToken, async (req, res) => {
     return res.status(400).json({ error: 'Invalid department domain' });
   }
 
+  const validBranches = ['Maduravoyal', 'Porur', 'Mettur', 'Tiruvannamalai'];
+  if (!validBranches.includes(branch)) {
+    return res.status(400).json({ error: 'Invalid branch selection' });
+  }
+
   try {
     const userId = req.user.userId;
-    const updatedUser = await db.updateUser(userId, { name, domain });
+    const updatedUser = await db.updateUser(userId, { name, domain, branch });
     if (!updatedUser) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -422,6 +433,7 @@ app.post('/api/users/update-profile', authenticateToken, async (req, res) => {
       email: updatedUser.email,
       name: updatedUser.name,
       domain: updatedUser.domain,
+      branch: updatedUser.branch || 'Pending',
       role: updatedUser.role
     }, JWT_SECRET, { expiresIn: '24h' });
 
@@ -432,6 +444,7 @@ app.post('/api/users/update-profile', authenticateToken, async (req, res) => {
         email: updatedUser.email,
         name: updatedUser.name,
         domain: updatedUser.domain,
+        branch: updatedUser.branch || 'Pending',
         role: updatedUser.role
       }
     });
@@ -781,7 +794,7 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
 // Update a user (Admin only)
 app.put('/api/admin/users/:userId', authenticateToken, requireAdmin, async (req, res) => {
   const { userId } = req.params;
-  const { name, domain, role, email } = req.body;
+  const { name, domain, role, email, branch } = req.body;
   
   if (!name || !domain || !role || !email) {
     return res.status(400).json({ error: 'All fields are required' });
@@ -793,7 +806,11 @@ app.put('/api/admin/users/:userId', authenticateToken, requireAdmin, async (req,
   }
   
   try {
-    const updatedUser = await db.updateUser(userId, { name, domain, role, email });
+    const updateFields = { name, domain, role, email };
+    if (branch) {
+      updateFields.branch = branch;
+    }
+    const updatedUser = await db.updateUser(userId, updateFields);
     if (!updatedUser) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -885,6 +902,7 @@ app.post('/api/auth/seed-admin', async (req, res) => {
     passwordHash,
     name: 'Administrator',
     domain: 'Operations',
+    branch: 'Maduravoyal',
     role: 'admin'
   });
   

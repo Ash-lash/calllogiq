@@ -22,15 +22,16 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
   const [tasks, setTasks] = useState([]);
   
   // Profile Setup States
-  const [showSetupModal, setShowSetupModal] = useState(user?.domain === 'Pending' && !previewMode);
+  const [showSetupModal, setShowSetupModal] = useState((user?.domain === 'Pending' || user?.branch === 'Pending') && !previewMode);
   const [profileName, setProfileName] = useState(user?.name || '');
   const [selectedSetupDomain, setSelectedSetupDomain] = useState('');
+  const [selectedSetupBranch, setSelectedSetupBranch] = useState('');
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState('');
 
   useEffect(() => {
     if (user) {
-      setShowSetupModal(user.domain === 'Pending' && !previewMode);
+      setShowSetupModal((user.domain === 'Pending' || user.branch === 'Pending') && !previewMode);
       setProfileName(user.name || '');
     }
   }, [user, previewMode]);
@@ -45,6 +46,10 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
       setSetupError('Please select a domain.');
       return;
     }
+    if (!selectedSetupBranch) {
+      setSetupError('Please select a branch.');
+      return;
+    }
 
     setSetupLoading(true);
     setSetupError('');
@@ -55,7 +60,11 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ name: profileName, domain: selectedSetupDomain })
+        body: JSON.stringify({ 
+          name: profileName, 
+          domain: selectedSetupDomain, 
+          branch: selectedSetupBranch 
+        })
       });
       const data = await res.json();
       if (!res.ok) {
@@ -259,7 +268,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
 
         <div className="timeline-bar-wrapper">
           {/* Base Workday bar */}
-          <div style={{ width: '100%', height: '100%', position: 'absolute', left: 0, top: 0, background: '#f1f5f9' }}></div>
+          <div style={{ width: '100%', height: '100%', position: 'absolute', left: 0, top: 0, background: 'var(--bg-input)' }}></div>
           
           {/* Render work intervals (when caller is actually in call) */}
           {calls.map((c, idx) => {
@@ -314,7 +323,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
             <span>Idle Breaks &gt; 15 mins ({sum.idle_gaps_count})</span>
           </div>
           <div className="legend-item">
-            <span className="legend-dot empty" style={{ background: '#f1f5f9', border: '1px solid var(--border-light)' }} />
+            <span className="legend-dot empty" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-light)' }} />
             <span>Gaps &lt; 15 mins</span>
           </div>
         </div>
@@ -499,7 +508,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                       <BarChart data={getBarData()}>
                         <XAxis dataKey="name" stroke="var(--text-secondary)" fontSize={10} tickLine={false} />
                         <YAxis stroke="var(--text-secondary)" fontSize={10} tickLine={false} />
-                        <Tooltip contentStyle={{ background: '#fff', border: '1px solid var(--border-light)', borderRadius: '8px' }} />
+                        <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '8px', color: 'var(--text-primary)' }} />
                         <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
                         <Bar dataKey="Dialed" fill="var(--primary)" radius={[4, 4, 0, 0]} />
                         <Bar dataKey="Incoming" fill="var(--success)" radius={[4, 4, 0, 0]} />
@@ -750,9 +759,47 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                 </div>
               </div>
 
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                  Workplace Branch
+                </label>
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: '1fr 1fr', 
+                  gap: '0.6rem' 
+                }}>
+                  {['Maduravoyal', 'Porur', 'Mettur', 'Tiruvannamalai'].map((br) => {
+                    const isSelected = selectedSetupBranch === br;
+                    return (
+                      <div
+                        key={br}
+                        onClick={() => setSelectedSetupBranch(br)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: '12px 8px',
+                          background: isSelected ? 'rgba(99, 102, 241, 0.15)' : 'rgba(31, 41, 55, 0.4)',
+                          border: `1px solid ${isSelected ? '#6366f1' : 'rgba(255, 255, 255, 0.08)'}`,
+                          borderRadius: '12px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                          fontWeight: isSelected ? 600 : 500,
+                          fontSize: '0.85rem',
+                          textAlign: 'center',
+                          color: isSelected ? '#ffffff' : '#e5e7eb'
+                        }}
+                      >
+                        {br}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               <button
                 type="submit"
-                disabled={setupLoading || !profileName.trim() || !selectedSetupDomain}
+                disabled={setupLoading || !profileName.trim() || !selectedSetupDomain || !selectedSetupBranch}
                 style={{
                   width: '100%',
                   padding: '14px',
@@ -765,7 +812,8 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                   borderRadius: '12px',
                   cursor: 'pointer',
                   boxShadow: '0 10px 20px -10px rgba(99, 102, 241, 0.4)',
-                  transition: 'all 0.3s'
+                  transition: 'all 0.3s',
+                  marginTop: '0.5rem'
                 }}
               >
                 {setupLoading ? 'Saving Profile...' : 'Save & Enter Workspace'}

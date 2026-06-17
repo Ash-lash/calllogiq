@@ -20,6 +20,7 @@ function App() {
           email: payload.email,
           name: payload.name,
           domain: payload.domain,
+          branch: payload.branch,
           role: payload.role
         });
         
@@ -108,8 +109,17 @@ function App() {
             <div style={{ fontWeight: 600, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {user.name}
             </div>
-            <div className="user-meta-domain" style={{ alignSelf: 'flex-start' }}>
-              {user.domain}
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+              {user.domain && user.domain !== 'Pending' && (
+                <div className="user-meta-domain">
+                  {user.domain}
+                </div>
+              )}
+              {user.branch && user.branch !== 'Pending' && (
+                <div className="user-meta-domain" style={{ background: 'var(--success-light)', color: 'var(--success)' }}>
+                  {user.branch}
+                </div>
+              )}
             </div>
           </div>
           

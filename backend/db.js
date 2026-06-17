@@ -10,17 +10,24 @@ if (!fs.existsSync(DB_FILE)) {
     users: [],
     logs: [],
     tasks: [],
-    otps: []
+    otps: [],
+    assets: [],
+    assetVerifications: [],
+    assetNotifications: []
   }, null, 2), 'utf8');
 }
 
 function readLocalDB() {
   try {
     const data = fs.readFileSync(DB_FILE, 'utf8');
-    return JSON.parse(data);
+    const parsed = JSON.parse(data);
+    if (!parsed.assets) parsed.assets = [];
+    if (!parsed.assetVerifications) parsed.assetVerifications = [];
+    if (!parsed.assetNotifications) parsed.assetNotifications = [];
+    return parsed;
   } catch (err) {
     console.error('Error reading database file:', err);
-    return { users: [], logs: [], tasks: [], otps: [] };
+    return { users: [], logs: [], tasks: [], otps: [], assets: [], assetVerifications: [], assetNotifications: [] };
   }
 }
 
@@ -414,10 +421,208 @@ const db = {
     }
   },
 
+  // --- ASSETS ---
+  createAsset: async (asset) => {
+    const firestore = getFirestore();
+    const tagId = asset.assetTagId;
+    if (firestore) {
+      await firestore.collection('assets').doc(tagId).set(asset);
+      return asset;
+    } else {
+      const data = readLocalDB();
+      // Remove if exists
+      data.assets = data.assets.filter(a => a.assetTagId !== tagId);
+      data.assets.push(asset);
+      writeLocalDB(data);
+      return asset;
+    }
+  },
+
+  updateAsset: async (tagId, updatedFields) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      await firestore.collection('assets').doc(tagId).update(updatedFields);
+      const doc = await firestore.collection('assets').doc(tagId).get();
+      return { assetTagId: doc.id, ...doc.data() };
+    } else {
+      const data = readLocalDB();
+      const idx = data.assets.findIndex(a => a.assetTagId === tagId);
+      if (idx === -1) return null;
+      data.assets[idx] = { ...data.assets[idx], ...updatedFields };
+      writeLocalDB(data);
+      return data.assets[idx];
+    }
+  },
+
+  deleteAsset: async (tagId) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      await firestore.collection('assets').doc(tagId).delete();
+    } else {
+      const data = readLocalDB();
+      data.assets = data.assets.filter(a => a.assetTagId !== tagId);
+      writeLocalDB(data);
+    }
+  },
+
+  listAllAssets: async () => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const snapshot = await firestore.collection('assets').get();
+      const list = [];
+      snapshot.forEach(doc => list.push({ assetTagId: doc.id, ...doc.data() }));
+      return list;
+    } else {
+      const data = readLocalDB();
+      return data.assets;
+    }
+  },
+
+  getAssetByTagId: async (tagId) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const doc = await firestore.collection('assets').doc(tagId).get();
+      if (!doc.exists) return null;
+      return { assetTagId: doc.id, ...doc.data() };
+    } else {
+      const data = readLocalDB();
+      return data.assets.find(a => a.assetTagId === tagId) || null;
+    }
+  },
+
+  // --- ASSET VERIFICATIONS ---
+  createAssetVerification: async (verification) => {
+    const firestore = getFirestore();
+    const id = 'verification_' + Date.now().toString() + Math.random().toString(36).substr(2, 5);
+    const newVer = {
+      submittedAt: new Date().toISOString(),
+      ...verification,
+      id
+    };
+    if (firestore) {
+      await firestore.collection('asset_verifications').doc(id).set(newVer);
+      return newVer;
+    } else {
+      const data = readLocalDB();
+      data.assetVerifications.push(newVer);
+      writeLocalDB(data);
+      return newVer;
+    }
+  },
+
+  listAssetVerifications: async () => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const snapshot = await firestore.collection('asset_verifications').get();
+      const list = [];
+      snapshot.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+      return list.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+    } else {
+      const data = readLocalDB();
+      return data.assetVerifications.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+    }
+  },
+
+  // --- ASSET NOTIFICATIONS / ALERTS ---
+  createAssetNotification: async (notification) => {
+    const firestore = getFirestore();
+    const id = 'notification_' + Date.now().toString() + Math.random().toString(36).substr(2, 5);
+    const newNotif = {
+      createdAt: new Date().toISOString(),
+      resolved: false,
+      ...notification,
+      id
+    };
+    if (firestore) {
+      await firestore.collection('asset_notifications').doc(id).set(newNotif);
+      return newNotif;
+    } else {
+      const data = readLocalDB();
+      data.assetNotifications.push(newNotif);
+      writeLocalDB(data);
+      return newNotif;
+    }
+  },
+
+  listAssetNotifications: async () => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const snapshot = await firestore.collection('asset_notifications').get();
+      const list = [];
+      snapshot.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+      return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    } else {
+      const data = readLocalDB();
+      return data.assetNotifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+  },
+
+  resolveAssetNotification: async (id) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      await firestore.collection('asset_notifications').doc(id).update({ resolved: true });
+      const doc = await firestore.collection('asset_notifications').doc(id).get();
+      return { id: doc.id, ...doc.data() };
+    } else {
+      const data = readLocalDB();
+      const idx = data.assetNotifications.findIndex(n => n.id === id);
+      if (idx !== -1) {
+        data.assetNotifications[idx].resolved = true;
+        writeLocalDB(data);
+        return data.assetNotifications[idx];
+      }
+      return null;
+    }
+  },
+
+  seedAssets: async () => {
+    const firestore = getFirestore();
+    const { execSync } = require('child_process');
+    try {
+      let alreadyHasAssets = false;
+      if (firestore) {
+        const snapshot = await firestore.collection('assets').limit(1).get();
+        alreadyHasAssets = !snapshot.empty;
+      } else {
+        const data = readLocalDB();
+        alreadyHasAssets = data.assets && data.assets.length > 0;
+      }
+
+      if (alreadyHasAssets) {
+        console.log('Database already has assets. Skipping seeding.');
+        return;
+      }
+
+      console.log('Seeding assets from asset.xlsx...');
+      const pyScript = path.join(__dirname, 'seed_assets.py');
+      const stdout = execSync(`python "${pyScript}"`, { encoding: 'utf8' });
+      const assets = JSON.parse(stdout);
+
+      if (assets && assets.length > 0) {
+        if (firestore) {
+          const batch = firestore.batch();
+          assets.forEach(asset => {
+            const docRef = firestore.collection('assets').doc(asset.assetTagId);
+            batch.set(docRef, asset);
+          });
+          await batch.commit();
+          console.log(`Seeded ${assets.length} assets to Firestore.`);
+        } else {
+          const data = readLocalDB();
+          data.assets = assets;
+          writeLocalDB(data);
+          console.log(`Seeded ${assets.length} assets to local JSON DB.`);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to seed assets:', err);
+    }
+  },
+
   flushDatabase: async () => {
     const firestore = getFirestore();
     if (firestore) {
-      const collections = ['users', 'logs', 'tasks', 'otps'];
+      const collections = ['users', 'logs', 'tasks', 'otps', 'assets', 'asset_verifications', 'asset_notifications'];
       for (const colName of collections) {
         const snapshot = await firestore.collection(colName).get();
         const batch = firestore.batch();
@@ -431,7 +636,10 @@ const db = {
         users: [],
         logs: [],
         tasks: [],
-        otps: []
+        otps: [],
+        assets: [],
+        assetVerifications: [],
+        assetNotifications: []
       };
       writeLocalDB(emptyData);
     }

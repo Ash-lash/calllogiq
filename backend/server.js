@@ -909,9 +909,403 @@ app.post('/api/auth/seed-admin', async (req, res) => {
   return res.json({ message: 'Admin account seeded successfully', admin: { email: newAdmin.email } });
 });
 
+// --- ASSET MANAGER ENDPOINTS ---
+
+// Get all assets (available to authenticated users to populate dropdowns / see assignments)
+app.get('/api/assets', authenticateToken, async (req, res) => {
+  try {
+    const assets = await db.listAllAssets();
+    return res.json(assets);
+  } catch (err) {
+    console.error('Error fetching assets:', err);
+    return res.status(500).json({ error: 'Failed to fetch assets' });
+  }
+});
+
+// Create asset (Admin only)
+app.post('/api/assets', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const asset = req.body;
+    if (!asset.assetTagId) {
+      return res.status(400).json({ error: 'Asset Tag ID is required' });
+    }
+    const existing = await db.getAssetByTagId(asset.assetTagId);
+    if (existing) {
+      return res.status(400).json({ error: 'Asset Tag ID already exists' });
+    }
+    const newAsset = await db.createAsset({
+      assetPhoto: asset.assetPhoto || '',
+      assetTagId: asset.assetTagId,
+      description: asset.description || '',
+      brand: asset.brand || '',
+      status: asset.status || 'Available',
+      assignedTo: asset.assignedTo || '',
+      assignedToName: asset.assignedToName || asset.assignedTo || ''
+    });
+    return res.status(201).json(newAsset);
+  } catch (err) {
+    console.error('Error creating asset:', err);
+    return res.status(500).json({ error: 'Failed to create asset' });
+  }
+});
+
+// Update asset (Admin only)
+app.put('/api/assets/:tagId', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { tagId } = req.params;
+    const updated = await db.updateAsset(tagId, req.body);
+    if (!updated) {
+      return res.status(404).json({ error: 'Asset not found' });
+    }
+    return res.json(updated);
+  } catch (err) {
+    console.error('Error updating asset:', err);
+    return res.status(500).json({ error: 'Failed to update asset' });
+  }
+});
+
+// Delete asset (Admin only)
+app.delete('/api/assets/:tagId', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { tagId } = req.params;
+    await db.deleteAsset(tagId);
+    return res.json({ message: 'Asset deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting asset:', err);
+    return res.status(500).json({ error: 'Failed to delete asset' });
+  }
+});
+
+// List all verifications (Admin only)
+app.get('/api/assets/verifications', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const verifications = await db.listAssetVerifications();
+    return res.json(verifications);
+  } catch (err) {
+    console.error('Error fetching verifications:', err);
+    return res.status(500).json({ error: 'Failed to fetch verifications' });
+  }
+});
+
+// List all notifications/alerts (Admin only)
+app.get('/api/assets/notifications', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const notifications = await db.listAssetNotifications();
+    return res.json(notifications);
+  } catch (err) {
+    console.error('Error fetching notifications:', err);
+    return res.status(500).json({ error: 'Failed to fetch notifications' });
+  }
+});
+
+// Resolve notification (Admin only)
+app.post('/api/assets/notifications/:id/resolve', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const resolved = await db.resolveAssetNotification(id);
+    if (!resolved) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+    return res.json(resolved);
+  } catch (err) {
+    console.error('Error resolving notification:', err);
+    return res.status(500).json({ error: 'Failed to resolve notification' });
+  }
+});
+
+// Get user's latest verification for the current calendar month
+app.get('/api/assets/verifications/my-latest', authenticateToken, async (req, res) => {
+  try {
+    const userEmail = req.user.email.toLowerCase();
+    const verifications = await db.listAssetVerifications();
+    
+    // Find verifications matching this user's email
+    const userVers = verifications.filter(v => v.email && v.email.toLowerCase() === userEmail);
+    
+    // Check if any matches the current month (format YYYY-MM)
+    const currentMonth = new Date().toISOString().substring(0, 7); // e.g. "2026-06"
+    const currentVer = userVers.find(v => v.month === currentMonth);
+    
+    // Extract currently checked-out assets from inventory
+    const allAssets = await db.listAllAssets();
+    const myAssets = allAssets.filter(a => a.assignedTo && a.assignedTo.toLowerCase() === userEmail);
+    
+    return res.json({
+      verifiedThisMonth: !!currentVer,
+      latestVerification: currentVer || null,
+      myAssets
+    });
+  } catch (err) {
+    console.error('Error fetching latest verification:', err);
+    return res.status(500).json({ error: 'Failed to fetch latest verification' });
+  }
+});
+
+// Submit user verification/declaration
+app.post('/api/assets/verifications', authenticateToken, async (req, res) => {
+  try {
+    const { 
+      month, 
+      assets, 
+      hasIssues, 
+      repairedHandedOver, 
+      newDeviceReceived, 
+      newAssetTagId,
+      isInitialDeclaration 
+    } = req.body;
+
+    const userEmail = req.user.email.toLowerCase();
+    const userName = req.user.name;
+
+    if (!month) {
+      return res.status(400).json({ error: 'Month parameter is required' });
+    }
+
+    // Save verification entry
+    const verification = await db.createAssetVerification({
+      userId: req.user.userId,
+      name: userName,
+      email: userEmail,
+      month,
+      assets: assets || [],
+      hasIssues: !!hasIssues,
+      repairedHandedOver: repairedHandedOver !== undefined ? repairedHandedOver : null,
+      newDeviceReceived: newDeviceReceived !== undefined ? newDeviceReceived : null,
+      newAssetTagId: newAssetTagId || null
+    });
+
+    const notificationsCreated = [];
+
+    if (isInitialDeclaration) {
+      // 1. First-time declaration logic
+      let simDetailsList = [];
+      let laptopDetail = 'None';
+      let mobileDetail = 'None';
+
+      for (const item of (assets || [])) {
+        if (item.type === 'Laptop') {
+          laptopDetail = item.code;
+          let asset = await db.getAssetByTagId(item.code);
+          if (asset) {
+            await db.updateAsset(item.code, { status: 'Checked out', assignedTo: userEmail, assignedToName: userName });
+          } else {
+            await db.createAsset({
+              assetPhoto: '',
+              assetTagId: item.code,
+              description: 'Laptop (Auto-created on declaration)',
+              brand: 'Laptop',
+              status: 'Checked out',
+              assignedTo: userEmail,
+              assignedToName: userName
+            });
+          }
+        } else if (item.type === 'Mobile') {
+          mobileDetail = item.code;
+          let asset = await db.getAssetByTagId(item.code);
+          if (asset) {
+            await db.updateAsset(item.code, { status: 'Checked out', assignedTo: userEmail, assignedToName: userName });
+          } else {
+            await db.createAsset({
+              assetPhoto: '',
+              assetTagId: item.code,
+              description: 'Mobile (Auto-created on declaration)',
+              brand: 'Mobile',
+              status: 'Checked out',
+              assignedTo: userEmail,
+              assignedToName: userName
+            });
+          }
+        } else if (item.type === 'SIM') {
+          const providerStr = item.provider || 'Airtel';
+          simDetailsList.push(`${item.phoneNumber} (${providerStr})`);
+          
+          const simTagId = `SIM-${item.phoneNumber}`;
+          await db.createAsset({
+            assetPhoto: '',
+            assetTagId: simTagId,
+            description: `SIM Card - ${providerStr} (${item.phoneNumber})`,
+            brand: providerStr,
+            status: 'Checked out',
+            assignedTo: userEmail,
+            assignedToName: userName
+          });
+        }
+      }
+
+      const simDetailsText = simDetailsList.length > 0 ? simDetailsList.join(', ') : 'None';
+      const msg = `User ${userName} submitted asset declaration for ${month}. Laptop: ${laptopDetail}, Mobile: ${mobileDetail}, SIMs: ${simDetailsText}.`;
+      
+      const notif = await db.createAssetNotification({
+        userEmail,
+        userName,
+        type: 'declaration',
+        message: msg,
+        details: { verificationId: verification.id, assets }
+      });
+      notificationsCreated.push(notif);
+
+    } else {
+      // 2. Monthly check-in verification logic
+      if (!hasIssues) {
+        const msg = `User ${userName} verified assets for ${month}. Status: All assets are working fine (no repairs, no defects).`;
+        const notif = await db.createAssetNotification({
+          userEmail,
+          userName,
+          type: 'verification_ok',
+          message: msg,
+          details: { verificationId: verification.id }
+        });
+        notificationsCreated.push(notif);
+      } else {
+        let issueMsg = `User ${userName} reported asset issues for ${month}.`;
+        issueMsg += ` Repaired device handed over: ${repairedHandedOver ? 'Yes' : 'No'}.`;
+        issueMsg += ` New device received: ${newDeviceReceived ? 'Yes' : 'No'}.`;
+        
+        if (newDeviceReceived && newAssetTagId) {
+          issueMsg += ` New Asset ID entered: ${newAssetTagId}.`;
+        }
+
+        const notifType = newDeviceReceived ? 'verification_issue' : 'no_device_alert';
+        
+        const notif = await db.createAssetNotification({
+          userEmail,
+          userName,
+          type: notifType,
+          message: issueMsg,
+          details: { 
+            verificationId: verification.id, 
+            repairedHandedOver, 
+            newDeviceReceived, 
+            newAssetTagId 
+          }
+        });
+        notificationsCreated.push(notif);
+
+        const allAssets = await db.listAllAssets();
+        const userAssigned = allAssets.filter(a => a.assignedTo && a.assignedTo.toLowerCase() === userEmail);
+
+        if (repairedHandedOver) {
+          for (const asset of userAssigned) {
+            await db.updateAsset(asset.assetTagId, { status: 'Under repair' });
+          }
+        }
+
+        if (newDeviceReceived && newAssetTagId) {
+          if (repairedHandedOver) {
+            for (const asset of userAssigned) {
+              await db.updateAsset(asset.assetTagId, { status: 'Under repair', assignedTo: '', assignedToName: '' });
+            }
+          }
+
+          let newAsset = await db.getAssetByTagId(newAssetTagId);
+          if (newAsset) {
+            await db.updateAsset(newAssetTagId, { status: 'Checked out', assignedTo: userEmail, assignedToName: userName });
+          } else {
+            await db.createAsset({
+              assetPhoto: '',
+              assetTagId: newAssetTagId,
+              description: 'Replacement Device (Auto-created on verification)',
+              brand: 'Replacement',
+              status: 'Checked out',
+              assignedTo: userEmail,
+              assignedToName: userName
+            });
+          }
+        }
+      }
+    }
+
+    return res.status(201).json({
+      message: 'Verification submitted successfully',
+      verification,
+      notifications: notificationsCreated
+    });
+  } catch (err) {
+    console.error('Error submitting verification:', err);
+    return res.status(500).json({ error: 'Failed to submit verification' });
+  }
+});
+
+// Download Excel Report (Admin only)
+app.get('/api/assets/reports/download', authenticateToken, requireAdmin, async (req, res) => {
+  const { year, month } = req.query;
+  try {
+    const assets = await db.listAllAssets();
+    const verifications = await db.listAssetVerifications();
+    const notifications = await db.listAssetNotifications();
+
+    const dataPayload = {
+      assets,
+      verifications,
+      notifications
+    };
+
+    const outputFilename = `AssetReport-${year || 'ALL'}-${month || 'ALL'}-${Date.now()}.xlsx`;
+    const outputPath = path.join(__dirname, 'uploads', outputFilename);
+
+    const pyScript = path.join(__dirname, 'generate_asset_report.py');
+    
+    let pythonCmd = 'python';
+    try {
+      execSync('python --version', { stdio: 'ignore' });
+    } catch (e) {
+      pythonCmd = 'python3';
+    }
+
+    const { spawn } = require('child_process');
+    const args = ['-u', pyScript, '--output', outputPath];
+    if (year) args.push('--year', year);
+    if (month) args.push('--month', month);
+
+    const pyProcess = spawn(pythonCmd, args);
+
+    let stderr = '';
+    
+    pyProcess.stdin.write(JSON.stringify(dataPayload));
+    pyProcess.stdin.end();
+
+    pyProcess.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    pyProcess.on('close', (code) => {
+      if (code !== 0) {
+        console.error(`Python script failed with code ${code}. Stderr: ${stderr}`);
+        return res.status(500).json({ error: `Python report generation failed: ${stderr}` });
+      }
+
+      if (!fs.existsSync(outputPath)) {
+        return res.status(500).json({ error: 'Failed to generate report file' });
+      }
+
+      res.download(outputPath, outputFilename, (err) => {
+        if (err) {
+          console.error('Error downloading report file:', err);
+        }
+        try {
+          fs.unlinkSync(outputPath);
+        } catch (unlinkErr) {
+          console.error('Error deleting temp report file:', unlinkErr);
+        }
+      });
+    });
+
+  } catch (err) {
+    console.error('Error generating download report:', err);
+    return res.status(500).json({ error: 'Failed to generate download report' });
+  }
+});
+
 // Start Express server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`CallLogIQ backend running on port ${PORT}`);
   console.log(`Admin email configured as: ${ADMIN_EMAIL}`);
   console.log(`Create admin by registering or logging in with this email.`);
+  
+  // Run startup assets seeder
+  try {
+    await db.seedAssets();
+  } catch (err) {
+    console.error('Failed to run startup assets seeder:', err);
+  }
 });

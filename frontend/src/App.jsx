@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import Auth from './components/Auth';
 import UserDashboard from './components/UserDashboard';
 import AdminDashboard from './components/AdminDashboard';
-import { LogOut, LayoutDashboard, CheckSquare, ShieldAlert } from 'lucide-react';
+import AssetManager from './components/AssetManager';
+import { LogOut, LayoutDashboard, CheckSquare, ShieldAlert, Laptop } from 'lucide-react';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
@@ -86,6 +87,13 @@ function App() {
                 <LayoutDashboard size={18} />
                 Dashboard
               </button>
+              <button 
+                onClick={() => setActiveTab('assets')} 
+                className={`sidebar-item-btn ${activeTab === 'assets' ? 'active' : ''}`}
+              >
+                <Laptop size={18} />
+                Asset Manager
+              </button>
             </>
           )}
 
@@ -97,6 +105,13 @@ function App() {
               >
                 <ShieldAlert size={18} />
                 Admin Panel
+              </button>
+              <button 
+                onClick={() => setActiveTab('assets')} 
+                className={`sidebar-item-btn ${activeTab === 'assets' ? 'active' : ''}`}
+              >
+                <Laptop size={18} />
+                Asset Manager
               </button>
               <button 
                 onClick={() => setActiveTab('dashboard')} 
@@ -139,6 +154,8 @@ function App() {
       <main className="main-content">
         {activeTab === 'admin' && isUserAdmin ? (
           <AdminDashboard user={user} token={token} />
+        ) : activeTab === 'assets' ? (
+          <AssetManager user={user} token={token} />
         ) : (
           <UserDashboard user={user} token={token} previewMode={isUserAdmin} onProfileUpdate={handleLoginSuccess} />
         )}

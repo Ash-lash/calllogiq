@@ -31,6 +31,35 @@ try {
   console.warn('Warning: Auto-installation of Python dependencies skipped or failed:', err.message);
 }
 
+const https = require('https');
+const http = require('http');
+
+// Helper to fetch resource from URL following up to 5 redirects
+function getStreamWithRedirects(url, callback, redirectCount = 0) {
+  if (redirectCount > 5) {
+    return callback(new Error('Too many redirects'));
+  }
+  try {
+    const parsedUrl = new URL(url);
+    const protocol = parsedUrl.protocol === 'https:' ? https : http;
+    protocol.get(url, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        let redirectUrl = res.headers.location;
+        if (!redirectUrl.startsWith('http')) {
+          redirectUrl = new URL(redirectUrl, url).toString();
+        }
+        getStreamWithRedirects(redirectUrl, callback, redirectCount + 1);
+      } else {
+        callback(null, res);
+      }
+    }).on('error', (err) => {
+      callback(err);
+    });
+  } catch (err) {
+    callback(err);
+  }
+}
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'calllogiq_super_secret_jwt_key_123';
@@ -657,18 +686,17 @@ app.get('/api/calls/download/:logId', authenticateToken, requireAdmin, async (re
   // Fall back: proxy from Cloudinary excelUrl
   if (log.excelUrl) {
     try {
-      const https = require('https');
-      const http = require('http');
-      const protocol = log.excelUrl.startsWith('https') ? https : http;
       res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      protocol.get(log.excelUrl, (fileRes) => {
-        fileRes.pipe(res);
-      }).on('error', (err) => {
-        console.error('Error proxying Excel from Cloudinary:', err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'Failed to stream Excel from cloud storage' });
+      getStreamWithRedirects(log.excelUrl, (err, fileRes) => {
+        if (err) {
+          console.error('Error proxying Excel from Cloudinary:', err);
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to stream Excel from cloud storage' });
+          }
+          return;
         }
+        fileRes.pipe(res);
       });
     } catch (err) {
       console.error('Error setting up Excel proxy:', err);
@@ -694,9 +722,6 @@ app.get('/api/calls/pdf/:logId', authenticateToken, requireAdmin, async (req, re
   }
   
   try {
-    const https = require('https');
-    const http = require('http');
-    const protocol = log.pdfUrl.startsWith('https') ? https : http;
     const logUser = await db.findUserById(log.userId);
     const filename = `${logUser ? logUser.name.replace(/\s+/g, '_') : 'User'}_${log.callDate.replace(/\s+/g, '')}.pdf`;
     
@@ -704,13 +729,15 @@ app.get('/api/calls/pdf/:logId', authenticateToken, requireAdmin, async (req, re
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
     
-    protocol.get(log.pdfUrl, (fileRes) => {
-      fileRes.pipe(res);
-    }).on('error', (err) => {
-      console.error('Error proxying PDF from Cloudinary:', err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Failed to stream PDF from cloud storage' });
+    getStreamWithRedirects(log.pdfUrl, (err, fileRes) => {
+      if (err) {
+        console.error('Error proxying PDF from Cloudinary:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to stream PDF from cloud storage' });
+        }
+        return;
       }
+      fileRes.pipe(res);
     });
   } catch (err) {
     console.error('Error setting up PDF proxy:', err);

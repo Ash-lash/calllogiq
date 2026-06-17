@@ -719,6 +719,62 @@ app.get('/api/calls/pdf/:logId', authenticateToken, requireAdmin, async (req, re
 });
 
 
+// Generate & Download Aggregate Excel for a single user (Admin only)
+app.get('/api/calls/aggregate-excel/:userId', authenticateToken, requireAdmin, async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const targetUser = await db.findUserById(userId);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const userLogs = await db.getLogsByUserId(userId);
+    if (!userLogs || userLogs.length === 0) {
+      return res.status(404).json({ error: 'No call logs found for this user' });
+    }
+
+    const safeUserName = targetUser.name.replace(/\s+/g, '_');
+    const outputFilename = `${safeUserName}_AllCallLogs_${Date.now()}.xlsx`;
+    const outputPath = path.join(__dirname, 'uploads', outputFilename);
+
+    const pyScript = path.join(__dirname, 'generate_user_report.py');
+
+    let pythonCmd = 'python';
+    try {
+      execSync('python --version', { stdio: 'ignore' });
+    } catch (e) {
+      pythonCmd = 'python3';
+    }
+
+    const { spawn } = require('child_process');
+    const pyProcess = spawn(pythonCmd, ['-u', pyScript, '--output', outputPath]);
+
+    let stderr = '';
+    pyProcess.stdin.write(JSON.stringify({ userName: targetUser.name, logs: userLogs }));
+    pyProcess.stdin.end();
+
+    pyProcess.stderr.on('data', (data) => { stderr += data.toString(); });
+
+    pyProcess.on('close', (code) => {
+      if (code !== 0) {
+        console.error(`Aggregate report python failed (code ${code}): ${stderr}`);
+        return res.status(500).json({ error: `Report generation failed: ${stderr}` });
+      }
+      if (!fs.existsSync(outputPath)) {
+        return res.status(500).json({ error: 'Report file was not created' });
+      }
+      const downloadName = `${safeUserName}_Aggregate_CallLog_Report.xlsx`;
+      res.download(outputPath, downloadName, (err) => {
+        if (err) console.error('Error sending aggregate report:', err);
+        try { fs.unlinkSync(outputPath); } catch (e) {}
+      });
+    });
+  } catch (err) {
+    console.error('Error generating aggregate report:', err);
+    return res.status(500).json({ error: 'Failed to generate aggregate report' });
+  }
+});
+
 // Get Attendance Report for a specific user (Admin only)
 app.get('/api/admin/attendance/:userId', authenticateToken, requireAdmin, async (req, res) => {
   const { userId } = req.params;

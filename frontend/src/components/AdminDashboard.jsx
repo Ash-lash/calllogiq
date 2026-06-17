@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, Calendar, FileSpreadsheet, PlusCircle, CheckCircle, Clock, 
   PhoneCall, AlertTriangle, Download, ArrowRight, ClipboardList, Settings, RotateCcw,
-  ChevronUp, ChevronDown, ChevronsUpDown, FileText
+  ChevronUp, ChevronDown, ChevronsUpDown, FileText, Folder, FolderOpen
 } from 'lucide-react';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
@@ -48,6 +48,11 @@ function AdminDashboard({ user, token }) {
 
   // Download loading states: { [logId_type]: true/false }
   const [downloadingStates, setDownloadingStates] = useState({});
+
+  // Reports Directory: which employee accordion sections are expanded
+  const [expandedEmployees, setExpandedEmployees] = useState({});
+  // Aggregate download loading per userId
+  const [aggregateLoading, setAggregateLoading] = useState({});
 
   // Fetch Admin Data
   useEffect(() => {
@@ -329,6 +334,41 @@ function AdminDashboard({ user, token }) {
     }
   };
 
+  // Toggle employee accordion in Reports Directory
+  const toggleEmployee = (userId) => {
+    setExpandedEmployees(prev => ({ ...prev, [userId]: !prev[userId] }));
+  };
+
+  // Download aggregate Excel for a single user (all their dates combined)
+  const handleAggregateDownload = async (userId, userName) => {
+    setAggregateLoading(prev => ({ ...prev, [userId]: true }));
+    try {
+      const res = await fetch(`/api/calls/aggregate-excel/${userId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to generate aggregate report');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const cd = res.headers.get('Content-Disposition') || '';
+      const match = cd.match(/filename="(.+?)"/);
+      a.download = match ? match[1] : `${userName.replace(/\s+/g,'_')}_Aggregate_Report.xlsx`;
+      a.href = url;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setAggregateLoading(prev => ({ ...prev, [userId]: false }));
+    }
+  };
+
   // Helper: Get employee productivity metrics
   const getEmployeeLeaderboard = () => {
     // Group logs by user
@@ -492,6 +532,13 @@ function AdminDashboard({ user, token }) {
         >
           <FileSpreadsheet size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
           Aggregate Call Reports
+        </button>
+        <button 
+          onClick={() => setAdminTab('reports')} 
+          className={`tab-btn ${adminTab === 'reports' ? 'active' : ''}`}
+        >
+          <Folder size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
+          Reports Directory
         </button>
         <button 
           onClick={() => setAdminTab('assign')} 
@@ -891,76 +938,184 @@ function AdminDashboard({ user, token }) {
               </table>
             </div>
             
-            {/* Raw downloads directory */}
-            <div style={{ marginTop: '2.5rem' }}>
-              <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>Individual Excel Reports Directory</h3>
-              <div className="table-wrapper">
-                <table className="table" style={{ fontSize: '0.85rem' }}>
-                  <thead>
-                    <tr>
-                      <th className="name-col">Telecaller</th>
-                      <th>Date</th>
-                      <th>Dialed</th>
-                      <th>Incoming</th>
-                      <th>Missed</th>
-                      <th>Span</th>
-                      <th>Idle</th>
-                      <th>PDF</th>
-                      <th>Excel</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {logs.map(log => {
-                      const logUser = users.find(u => u.id === log.userId);
-                      return (
-                        <tr key={log.id}>
-                          <td className="name-col" style={{ fontWeight: 600 }}>{logUser ? logUser.name : 'Unknown User'}</td>
-                          <td>{log.callDate}</td>
-                          <td>{log.summary.total_dialed}</td>
-                          <td>{log.summary.total_incoming}</td>
-                          <td>{log.summary.total_missed}</td>
-                          <td>{log.summary.workday_span_str}</td>
-                          <td>{log.summary.total_idle_str} ({log.summary.idle_gaps_count} breaks)</td>
-                          <td>
-                            <button
-                              onClick={() => handleFileAction(log.id, 'pdf')}
-                              disabled={downloadingStates[`${log.id}_pdf`] || !log.pdfUrl}
-                              className="btn btn-outline" 
-                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '3px', opacity: log.pdfUrl ? 1 : 0.4, cursor: log.pdfUrl ? 'pointer' : 'not-allowed' }}
-                              title={log.pdfUrl ? 'View original PDF' : 'No PDF available'}
-                            >
-                              <FileText size={12} />
-                              {downloadingStates[`${log.id}_pdf`] ? 'Loading...' : 'View PDF'}
-                            </button>
-                          </td>
-                          <td>
-                            <button 
-                              onClick={() => handleFileAction(log.id, 'excel')}
-                              disabled={downloadingStates[`${log.id}_excel`]}
-                              className="btn btn-outline" 
-                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
-                            >
-                              <Download size={12} />
-                              {downloadingStates[`${log.id}_excel`] ? 'Loading...' : 'Download XLSX'}
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {logs.length === 0 && (
-                      <tr>
-                        <td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
-                          No call sheets found in database.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+            {/* Aggregated stats table only — individual reports moved to its own tab */}
+            {aggregatedList.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                No aggregated reports compiled yet.
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}
+
+      {/* SUB-VIEW: Reports Directory (per-employee grouped) */}
+      {adminTab === 'reports' && (() => {
+        // Group logs by userId
+        const nonAdminUsers = users.filter(u => u.role !== 'admin');
+        const logsByUser = {};
+        nonAdminUsers.forEach(u => {
+          logsByUser[u.id] = logs
+            .filter(l => l.userId === u.id)
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        });
+
+        return (
+          <div>
+            {/* Header KPI */}
+            <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
+              <div className="kpi-card">
+                <div className="kpi-icon primary"><Users size={20} /></div>
+                <div>
+                  <div className="kpi-label">Telecallers with Uploads</div>
+                  <div className="kpi-value">{nonAdminUsers.filter(u => (logsByUser[u.id] || []).length > 0).length}</div>
+                </div>
+              </div>
+              <div className="kpi-card">
+                <div className="kpi-icon success"><FileSpreadsheet size={20} /></div>
+                <div>
+                  <div className="kpi-label">Total Call Log Files</div>
+                  <div className="kpi-value">{logs.length}</div>
+                </div>
+              </div>
+            </div>
+
+            {nonAdminUsers.length === 0 && (
+              <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <Folder size={48} style={{ marginBottom: '1rem', opacity: 0.3 }} />
+                <p>No employee records found.</p>
+              </div>
+            )}
+
+            {nonAdminUsers.map(emp => {
+              const empLogs = logsByUser[emp.id] || [];
+              const isExpanded = !!expandedEmployees[emp.id];
+              const totalCalls = empLogs.reduce((s, l) => s + (l.summary?.grand_total || 0), 0);
+              const totalTalkSecs = empLogs.reduce((s, l) => s + (l.summary?.talk_time_secs || 0), 0);
+
+              return (
+                <div key={emp.id} className="card" style={{ marginBottom: '1rem', padding: 0, overflow: 'hidden' }}>
+                  {/* Employee accordion header */}
+                  <div
+                    onClick={() => toggleEmployee(emp.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '1rem 1.25rem', cursor: 'pointer',
+                      background: isExpanded ? 'var(--primary-light)' : 'var(--bg-card)',
+                      borderBottom: isExpanded ? '2px solid var(--primary)' : '2px solid transparent',
+                      transition: 'background 0.2s'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      {isExpanded
+                        ? <FolderOpen size={20} style={{ color: 'var(--primary)' }} />
+                        : <Folder size={20} style={{ color: 'var(--text-secondary)' }} />}
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{emp.name}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                          {emp.email} &nbsp;·&nbsp; {emp.domain} &nbsp;·&nbsp;
+                          <strong>{empLogs.length}</strong> log{empLogs.length !== 1 ? 's' : ''} &nbsp;·&nbsp;
+                          <strong>{totalCalls}</strong> total calls &nbsp;·&nbsp;
+                          Talk: <strong>{formatSeconds(totalTalkSecs)}</strong>
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      {/* Aggregate Excel download */}
+                      {empLogs.length > 0 && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleAggregateDownload(emp.id, emp.name); }}
+                          disabled={aggregateLoading[emp.id]}
+                          className="btn btn-primary"
+                          style={{ padding: '0.35rem 0.8rem', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}
+                          title="Download all call logs combined into one Excel file"
+                        >
+                          <Download size={14} />
+                          {aggregateLoading[emp.id] ? 'Generating...' : 'Download Aggregate Excel'}
+                        </button>
+                      )}
+                      {empLogs.length === 0 && (
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No uploads yet</span>
+                      )}
+                      {isExpanded
+                        ? <ChevronUp size={18} style={{ color: 'var(--primary)' }} />
+                        : <ChevronDown size={18} style={{ color: 'var(--text-secondary)' }} />}
+                    </div>
+                  </div>
+
+                  {/* Expanded: per-date log table */}
+                  {isExpanded && (
+                    <div style={{ padding: '0' }}>
+                      {empLogs.length === 0 ? (
+                        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                          No call logs uploaded by this employee yet.
+                        </div>
+                      ) : (
+                        <div className="table-wrapper" style={{ margin: 0, borderRadius: 0 }}>
+                          <table className="table" style={{ fontSize: '0.85rem', margin: 0 }}>
+                            <thead>
+                              <tr>
+                                <th>#</th>
+                                <th>Date</th>
+                                <th>Dialed</th>
+                                <th>Incoming</th>
+                                <th>Missed</th>
+                                <th>Total</th>
+                                <th>Talk Time</th>
+                                <th>Span</th>
+                                <th>Idle</th>
+                                <th>PDF</th>
+                                <th>Excel</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {empLogs.map((log, idx) => (
+                                <tr key={log.id}>
+                                  <td style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{idx + 1}</td>
+                                  <td style={{ fontWeight: 600 }}>{log.callDate}</td>
+                                  <td>{log.summary?.total_dialed ?? '-'}</td>
+                                  <td>{log.summary?.total_incoming ?? '-'}</td>
+                                  <td>{log.summary?.total_missed ?? '-'}</td>
+                                  <td style={{ fontWeight: 600 }}>{log.summary?.grand_total ?? '-'}</td>
+                                  <td style={{ color: 'var(--success)', fontWeight: 600 }}>{log.summary?.talk_time_str || '-'}</td>
+                                  <td>{log.summary?.workday_span_str || '-'}</td>
+                                  <td style={{ color: 'var(--warning)' }}>{log.summary?.total_idle_str ? `${log.summary.total_idle_str} (${log.summary.idle_gaps_count ?? 0} gaps)` : '-'}</td>
+                                  <td>
+                                    <button
+                                      onClick={() => handleFileAction(log.id, 'pdf')}
+                                      disabled={downloadingStates[`${log.id}_pdf`] || !log.pdfUrl}
+                                      className="btn btn-outline"
+                                      style={{ padding: '0.2rem 0.5rem', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '3px', opacity: log.pdfUrl ? 1 : 0.35, cursor: log.pdfUrl ? 'pointer' : 'not-allowed' }}
+                                      title={log.pdfUrl ? 'View original PDF' : 'No PDF stored'}
+                                    >
+                                      <FileText size={11} />
+                                      {downloadingStates[`${log.id}_pdf`] ? '...' : 'PDF'}
+                                    </button>
+                                  </td>
+                                  <td>
+                                    <button
+                                      onClick={() => handleFileAction(log.id, 'excel')}
+                                      disabled={downloadingStates[`${log.id}_excel`]}
+                                      className="btn btn-outline"
+                                      style={{ padding: '0.2rem 0.5rem', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                    >
+                                      <Download size={11} />
+                                      {downloadingStates[`${log.id}_excel`] ? '...' : 'XLSX'}
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* SUB-VIEW 3: Task Assignment Form */}
       {adminTab === 'assign' && (

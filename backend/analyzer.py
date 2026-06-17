@@ -68,6 +68,27 @@ def format_seconds(seconds):
     s = seconds % 60
     return f"{h:02d}:{m:02d}:{s:02d}"
 
+def parse_datetime_str(full_time_str):
+    full_time_str = (full_time_str or '').strip()
+    dt = None
+    # Support multiple formats including abbreviated month names (e.g. 16-Jun-2026)
+    for fmt in ["%H:%M %d-%m-%Y", "%H:%M %d-%b-%Y", "%H:%M %d-%m-%y", "%H:%M %d-%b-%y"]:
+        try:
+            dt = datetime.strptime(full_time_str, fmt)
+            break
+        except ValueError:
+            continue
+            
+    if not dt:
+        # Fallback to appending default year 2026
+        for fmt in ["%H:%M %d-%m-%Y", "%H:%M %d-%b-%Y"]:
+            try:
+                dt = datetime.strptime(f"{full_time_str}-2026", fmt)
+                break
+            except ValueError:
+                continue
+    return dt
+
 def analyze_pdf(pdf_path, username):
     all_calls = []
     
@@ -101,15 +122,9 @@ def analyze_pdf(pdf_path, username):
                     duration_secs = parse_duration(duration_str)
                     
                     # Parse time
-                    try:
-                        dt = datetime.strptime(time_str, "%H:%M %d-%m-%Y")
-                    except ValueError:
-                        try:
-                            # Try parsing fallback - append year to suppress Python 3.15 deprecation warnings
-                            dt = datetime.strptime(f"{time_str}-2026", "%H:%M %d-%m-%Y")
-                        except ValueError:
-                            # Skip if time format is unparseable
-                            continue
+                    dt = parse_datetime_str(time_str)
+                    if not dt:
+                        continue
                             
                     all_calls.append({
                         'name': name or phone,
@@ -124,12 +139,12 @@ def analyze_pdf(pdf_path, username):
     # Fallback to regex-based text parsing if table extraction yielded nothing
     if not all_calls:
         import re
-        # Pattern matching: Name/Prefix, Phone, Time, Date, Duration, Call Type
+        # Pattern matching: Name/Prefix, Phone, Time, Date (supports Jun/06), Duration, Call Type
         pattern = re.compile(
             r'(.*?)\s+'
             r'(\+?\d[\d\s\-]{7,15})\s+'
             r'(\d{1,2}:\d{2})\s+'
-            r'(\d{2}-\d{2}(?:-\d{4})?)\s+'
+            r'(\d{2}-(?:[a-zA-Z]{3}|\d{2})(?:-\d{4})?)\s+'
             r'(\d{2}:\d{2}:\d{2}|\d{2}:\d{2}|\d+)\s+'
             r'(Dialed|Received|Missed|Rejected)',
             re.IGNORECASE
@@ -157,13 +172,9 @@ def analyze_pdf(pdf_path, username):
                         duration_secs = parse_duration(duration_str)
                         
                         # Parse time
-                        try:
-                            dt = datetime.strptime(full_time_str, "%H:%M %d-%m-%Y")
-                        except ValueError:
-                            try:
-                                dt = datetime.strptime(f"{full_time_str}-2026", "%H:%M %d-%m-%Y")
-                            except ValueError:
-                                continue
+                        dt = parse_datetime_str(full_time_str)
+                        if not dt:
+                            continue
                                 
                         all_calls.append({
                             'name': name or phone,

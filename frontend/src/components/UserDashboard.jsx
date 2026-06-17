@@ -653,46 +653,46 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(11, 15, 25, 0.9)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
+          background: 'rgba(15, 23, 42, 0.3)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 9999,
           padding: '1rem'
         }}>
-          <div className="futuristic-card" style={{
-            background: 'rgba(17, 24, 39, 0.95)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+          <div className="card" style={{
+            background: '#ffffff',
+            border: '1px solid rgba(99, 102, 241, 0.15)',
             borderRadius: '24px',
             padding: '2.5rem',
             width: '460px',
             maxWidth: '100%',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-            color: '#ffffff',
+            boxShadow: 'var(--shadow-xl), var(--shadow-glow)',
+            color: 'var(--text-primary)',
             boxSizing: 'border-box'
           }}>
             <h2 style={{ 
               fontSize: '1.8rem', 
-              fontWeight: 800, 
+              fontWeight: 900, 
               margin: '0 0 0.5rem 0', 
-              background: 'linear-gradient(135deg, #ffffff 30%, #a5b4fc 100%)', 
+              background: 'linear-gradient(135deg, #1e293b 30%, #475569 100%)', 
               WebkitBackgroundClip: 'text', 
               WebkitTextFillColor: 'transparent',
               fontFamily: "'Outfit', sans-serif" 
             }}>
               Complete Your Profile
             </h2>
-            <p style={{ color: '#9ca3af', fontSize: '0.9rem', margin: '0 0 1.5rem 0' }}>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', margin: '0 0 1.5rem 0', fontWeight: 500 }}>
               Confirm your display name and choose your department domain to configure your new workspace.
             </p>
 
             {setupError && (
               <div style={{ 
-                background: 'rgba(220, 38, 38, 0.15)', 
-                border: '1px solid rgba(220, 38, 38, 0.3)', 
-                color: '#f87171', 
+                background: 'rgba(220, 38, 38, 0.08)', 
+                border: '1px solid rgba(220, 38, 38, 0.2)', 
+                color: 'var(--danger)', 
                 borderRadius: '12px', 
                 padding: '10px', 
                 fontSize: '0.85rem', 
@@ -705,7 +705,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
 
             <form onSubmit={handleSetupSubmit}>
               <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
                   Full Name
                 </label>
                 <input
@@ -717,19 +717,30 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                   style={{ 
                     width: '100%', 
                     padding: '14px', 
-                    background: 'rgba(31, 41, 55, 0.4)', 
-                    border: '1px solid rgba(255, 255, 255, 0.08)', 
+                    background: '#f1f5f9', 
+                    border: '1px solid rgba(99, 102, 241, 0.08)', 
                     borderRadius: '12px', 
-                    color: '#ffffff', 
+                    color: '#0f172a', 
                     outline: 'none', 
                     boxSizing: 'border-box',
-                    fontSize: '0.95rem'
+                    fontSize: '0.95rem',
+                    transition: 'all 0.3s ease'
+                  }}
+                  onFocus={e => {
+                    e.target.style.background = '#ffffff';
+                    e.target.style.borderColor = 'var(--primary)';
+                    e.target.style.boxShadow = '0 0 15px rgba(79, 70, 229, 0.15)';
+                  }}
+                  onBlur={e => {
+                    e.target.style.background = '#f1f5f9';
+                    e.target.style.borderColor = 'rgba(99, 102, 241, 0.08)';
+                    e.target.style.boxShadow = 'none';
                   }}
                 />
               </div>
 
               <div style={{ marginBottom: '2rem' }}>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
                   Department Domain
                 </label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '180px', overflowY: 'auto', paddingRight: '4px' }}>
@@ -743,16 +754,16 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                           display: 'flex',
                           alignItems: 'center',
                           padding: '12px 14px',
-                          background: isSelected ? 'rgba(99, 102, 241, 0.15)' : 'rgba(31, 41, 55, 0.4)',
-                          border: `1px solid ${isSelected ? '#6366f1' : 'rgba(255, 255, 255, 0.08)'}`,
+                          background: isSelected ? 'var(--primary-light)' : '#f1f5f9',
+                          border: `1px solid ${isSelected ? 'var(--primary)' : 'rgba(99, 102, 241, 0.08)'}`,
                           borderRadius: '12px',
                           cursor: 'pointer',
-                          transition: 'all 0.2s',
-                          fontWeight: isSelected ? 600 : 500
+                          transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+                          fontWeight: isSelected ? 700 : 500
                         }}
                       >
-                        <span style={{ flex: 1, color: isSelected ? '#ffffff' : '#e5e7eb', fontSize: '0.9rem' }}>{dom}</span>
-                        {isSelected && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#6366f1', boxShadow: '0 0 8px #6366f1' }}></span>}
+                        <span style={{ flex: 1, color: isSelected ? 'var(--primary)' : 'var(--text-secondary)', fontSize: '0.95rem' }}>{dom}</span>
+                        {isSelected && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary)', boxShadow: 'var(--shadow-glow)' }}></span>}
                       </div>
                     );
                   })}
@@ -760,7 +771,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
               </div>
 
               <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
                   Workplace Branch
                 </label>
                 <div style={{ 
@@ -779,15 +790,15 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                           alignItems: 'center',
                           justifyContent: 'center',
                           padding: '12px 8px',
-                          background: isSelected ? 'rgba(99, 102, 241, 0.15)' : 'rgba(31, 41, 55, 0.4)',
-                          border: `1px solid ${isSelected ? '#6366f1' : 'rgba(255, 255, 255, 0.08)'}`,
+                          background: isSelected ? 'var(--primary-light)' : '#f1f5f9',
+                          border: `1px solid ${isSelected ? 'var(--primary)' : 'rgba(99, 102, 241, 0.08)'}`,
                           borderRadius: '12px',
                           cursor: 'pointer',
-                          transition: 'all 0.2s',
-                          fontWeight: isSelected ? 600 : 500,
-                          fontSize: '0.85rem',
+                          transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+                          fontWeight: isSelected ? 700 : 500,
+                          fontSize: '0.9rem',
                           textAlign: 'center',
-                          color: isSelected ? '#ffffff' : '#e5e7eb'
+                          color: isSelected ? 'var(--primary)' : 'var(--text-secondary)'
                         }}
                       >
                         {br}
@@ -803,7 +814,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                 style={{
                   width: '100%',
                   padding: '14px',
-                  background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+                  background: 'var(--gradient-primary)',
                   border: 'none',
                   outline: 'none',
                   color: '#ffffff',
@@ -811,7 +822,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                   fontSize: '1rem',
                   borderRadius: '12px',
                   cursor: 'pointer',
-                  boxShadow: '0 10px 20px -10px rgba(99, 102, 241, 0.4)',
+                  boxShadow: '0 10px 20px -10px rgba(79, 70, 229, 0.4)',
                   transition: 'all 0.3s',
                   marginTop: '0.5rem'
                 }}

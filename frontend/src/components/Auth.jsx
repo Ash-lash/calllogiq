@@ -178,7 +178,7 @@ function Auth({ onLoginSuccess }) {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: #0b0f19;
+          background: #f4f6fc;
           font-family: 'Outfit', sans-serif;
           overflow: hidden;
         }
@@ -188,7 +188,7 @@ function Auth({ onLoginSuccess }) {
           width: 600px;
           height: 600px;
           border-radius: 50%;
-          background: radial-gradient(circle, rgba(79, 70, 229, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
+          background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
           top: -200px;
           left: -100px;
           animation: floatBlob 15s infinite alternate ease-in-out;
@@ -200,7 +200,7 @@ function Auth({ onLoginSuccess }) {
           width: 500px;
           height: 500px;
           border-radius: 50%;
-          background: radial-gradient(circle, rgba(124, 58, 237, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
+          background: radial-gradient(circle, rgba(6, 182, 212, 0.12) 0%, rgba(0, 0, 0, 0) 70%);
           bottom: -150px;
           right: -100px;
           animation: floatBlob 20s infinite alternate-reverse ease-in-out;
@@ -209,21 +209,21 @@ function Auth({ onLoginSuccess }) {
 
         @keyframes floatBlob {
           0% { transform: translate(0, 0) scale(1); }
-          100% { transform: translate(100px, 50px) scale(1.1); }
+          100% { transform: translate(80px, 40px) scale(1.1); }
         }
 
         .futuristic-card {
           position: relative;
           width: 480px;
-          padding: 2.5rem;
-          background: rgba(17, 24, 39, 0.7);
+          padding: 2.75rem 2.5rem;
+          background: rgba(255, 255, 255, 0.85);
           backdrop-filter: blur(25px);
           -webkit-backdrop-filter: blur(25px);
-          border: 1px solid rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(99, 102, 241, 0.15);
           border-radius: 28px;
-          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+          box-shadow: 0 25px 50px -12px rgba(79, 70, 229, 0.08);
           z-index: 10;
-          transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+          transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .futuristic-card::before {
@@ -232,7 +232,7 @@ function Auth({ onLoginSuccess }) {
           inset: 0;
           border-radius: 28px;
           padding: 1.5px;
-          background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.02) 100%);
+          background: linear-gradient(135deg, rgba(79, 70, 229, 0.15) 0%, rgba(255, 255, 255, 0.4) 100%);
           -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
           -webkit-mask-composite: xor;
           mask-composite: exclude;
@@ -246,37 +246,34 @@ function Auth({ onLoginSuccess }) {
           transition: all 0.4s ease;
         }
 
-        .lottie-logo-wrapper {
-          filter: drop-shadow(0 0 20px rgba(99, 102, 241, 0.2));
-        }
-
         .brand-title {
           font-family: 'Outfit', sans-serif;
-          font-size: 2.2rem;
-          font-weight: 800;
+          font-size: 2.35rem;
+          font-weight: 900;
           text-align: center;
-          letter-spacing: -0.02em;
-          background: linear-gradient(135deg, #ffffff 30%, #a5b4fc 100%);
+          letter-spacing: -0.035em;
+          background: linear-gradient(135deg, #1e293b 30%, #475569 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           margin-bottom: 0.25rem;
         }
 
         .brand-subtitle {
-          font-size: 0.95rem;
-          color: #9ca3af;
+          font-size: 0.98rem;
+          color: #475569;
           text-align: center;
           margin-bottom: 2rem;
+          font-weight: 500;
         }
 
-        /* 2030 iOS Style Capsule Switcher */
+        /* Capsule Switcher */
         .capsule-switcher {
           display: flex;
           position: relative;
-          background: rgba(31, 41, 55, 0.6);
+          background: rgba(241, 245, 249, 0.9);
           padding: 4px;
           border-radius: 9999px;
-          border: 1px solid rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(99, 102, 241, 0.08);
           margin-bottom: 2.5rem;
           cursor: pointer;
         }
@@ -285,10 +282,10 @@ function Auth({ onLoginSuccess }) {
           position: absolute;
           width: calc(50% - 4px);
           height: calc(100% - 8px);
-          background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+          background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%);
           border-radius: 9999px;
-          transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+          transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          box-shadow: 0 4px 15px rgba(79, 70, 229, 0.35);
         }
 
         .switcher-slider.admin-active {
@@ -299,9 +296,9 @@ function Auth({ onLoginSuccess }) {
           flex: 1;
           text-align: center;
           padding: 10px 0;
-          font-size: 0.9rem;
-          font-weight: 600;
-          color: #9ca3af;
+          font-size: 0.95rem;
+          font-weight: 700;
+          color: #64748b;
           z-index: 2;
           transition: color 0.3s ease;
           background: none;
@@ -321,11 +318,11 @@ function Auth({ onLoginSuccess }) {
 
         .input-label {
           display: block;
-          font-size: 0.8rem;
-          font-weight: 600;
-          color: #9ca3af;
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: #475569;
           text-transform: uppercase;
-          letter-spacing: 0.05em;
+          letter-spacing: 0.08em;
           margin-bottom: 0.5rem;
         }
 
@@ -338,10 +335,10 @@ function Auth({ onLoginSuccess }) {
         .input-field {
           width: 100%;
           padding: 14px 14px 14px 44px;
-          background: rgba(31, 41, 55, 0.4);
-          border: 1px solid rgba(255, 255, 255, 0.08);
+          background: #f1f5f9;
+          border: 1px solid rgba(99, 102, 241, 0.08);
           border-radius: 14px;
-          color: #ffffff;
+          color: #0f172a;
           font-size: 0.95rem;
           outline: none;
           transition: all 0.3s ease;
@@ -349,19 +346,19 @@ function Auth({ onLoginSuccess }) {
 
         .input-field:focus {
           border-color: #6366f1;
-          background: rgba(31, 41, 55, 0.7);
-          box-shadow: 0 0 15px rgba(99, 102, 241, 0.15);
+          background: #ffffff;
+          box-shadow: 0 0 15px rgba(79, 70, 229, 0.15);
         }
 
         .input-icon {
           position: absolute;
           left: 14px;
-          color: #6b7280;
+          color: #64748b;
           transition: color 0.3s ease;
         }
 
         .input-field:focus + .input-icon {
-          color: #818cf8;
+          color: #4f46e5;
         }
 
         /* Interactive Domain Cards */
@@ -379,7 +376,7 @@ function Auth({ onLoginSuccess }) {
           width: 4px;
         }
         .domain-grid::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.1);
+          background: rgba(79, 70, 229, 0.15);
           border-radius: 99px;
         }
 
@@ -387,17 +384,18 @@ function Auth({ onLoginSuccess }) {
           display: flex;
           align-items: center;
           padding: 14px;
-          background: rgba(31, 41, 55, 0.4);
-          border: 1px solid rgba(255, 255, 255, 0.08);
+          background: #f1f5f9;
+          border: 1px solid rgba(99, 102, 241, 0.08);
           border-radius: 16px;
           cursor: pointer;
-          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .domain-item-card:hover {
-          background: rgba(31, 41, 55, 0.7);
+          background: #ffffff;
           transform: translateY(-2px);
-          border-color: rgba(255, 255, 255, 0.15);
+          border-color: rgba(99, 102, 241, 0.25);
+          box-shadow: var(--shadow-sm);
         }
 
         .domain-icon-wrapper {
@@ -412,22 +410,23 @@ function Auth({ onLoginSuccess }) {
         }
 
         .domain-label {
-          font-weight: 700;
+          font-weight: 800;
           font-size: 1rem;
-          color: #ffffff;
+          color: #0f172a;
+          letter-spacing: -0.015em;
         }
 
         .domain-desc {
-          font-size: 0.75rem;
-          color: #9ca3af;
-          margin-top: 1px;
+          font-size: 0.78rem;
+          color: #475569;
+          margin-top: 2px;
         }
 
-        /* 2030 Sign In Button */
+        /* Sign In Button */
         .glowing-btn {
           width: 100%;
           padding: 15px;
-          background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+          background: var(--gradient-primary);
           border: none;
           outline: none;
           color: #ffffff;
@@ -436,12 +435,12 @@ function Auth({ onLoginSuccess }) {
           border-radius: 16px;
           cursor: pointer;
           transition: all 0.3s ease;
-          box-shadow: 0 10px 20px -10px rgba(99, 102, 241, 0.4);
+          box-shadow: 0 10px 20px -10px rgba(79, 70, 229, 0.4);
         }
 
         .glowing-btn:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: 0 15px 25px -5px rgba(99, 102, 241, 0.6);
+          box-shadow: 0 15px 25px -5px rgba(79, 70, 229, 0.55);
         }
 
         .glowing-btn:active:not(:disabled) {
@@ -458,7 +457,7 @@ function Auth({ onLoginSuccess }) {
           display: flex;
           justify-content: center;
           margin: 1.5rem 0;
-          filter: drop-shadow(0 4px 15px rgba(37, 99, 235, 0.2));
+          filter: drop-shadow(0 4px 12px rgba(79, 70, 229, 0.12));
           transition: transform 0.25s ease;
         }
         
@@ -470,7 +469,7 @@ function Auth({ onLoginSuccess }) {
           text-align: center;
           font-size: 0.72rem;
           line-height: 1.4;
-          color: #6b7280;
+          color: #64748b;
           margin-top: 2rem;
         }
       `}</style>

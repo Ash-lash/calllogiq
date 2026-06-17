@@ -58,6 +58,30 @@ function App() {
     setActiveTab('dashboard');
   };
 
+  // Automatically log out if backend returns 401 Unauthorized or 403 Forbidden
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      try {
+        const response = await originalFetch(...args);
+        if (response.status === 401 || response.status === 403) {
+          const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+          // Avoid logging out on login/google auth endpoints themselves
+          if (!url.includes('/api/auth/login') && !url.includes('/api/auth/google')) {
+            console.warn('Session expired or unauthorized (401/403). Logging out...');
+            handleLogout();
+          }
+        }
+        return response;
+      } catch (err) {
+        throw err;
+      }
+    };
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, []);
+
   if (!token || !user) {
     return <Auth onLoginSuccess={handleLoginSuccess} />;
   }

@@ -234,12 +234,18 @@ const db = {
         .get();
       const logsList = [];
       snapshot.forEach(doc => {
-        logsList.push({ id: doc.id, ...doc.data() });
+        const data = doc.data();
+        delete data.pdfBase64;
+        delete data.excelBase64;
+        logsList.push({ id: doc.id, ...data });
       });
       return logsList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     } else {
       const data = readLocalDB();
-      return data.logs.filter(l => l.userId === userId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      return data.logs
+        .filter(l => l.userId === userId)
+        .map(({ pdfBase64, excelBase64, ...l }) => l)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     }
   },
 
@@ -261,12 +267,32 @@ const db = {
       const snapshot = await firestore.collection('logs').get();
       const logsList = [];
       snapshot.forEach(doc => {
-        logsList.push({ id: doc.id, ...doc.data() });
+        const data = doc.data();
+        delete data.pdfBase64;
+        delete data.excelBase64;
+        logsList.push({ id: doc.id, ...data });
       });
       return logsList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     } else {
       const data = readLocalDB();
-      return data.logs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      return data.logs
+        .map(({ pdfBase64, excelBase64, ...l }) => l)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    },
+
+  updateLog: async (id, updatedFields) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      await firestore.collection('logs').doc(id).update(updatedFields);
+      const doc = await firestore.collection('logs').doc(id).get();
+      return { id: doc.id, ...doc.data() };
+    } else {
+      const data = readLocalDB();
+      const idx = data.logs.findIndex(l => l.id === id);
+      if (idx === -1) return null;
+      data.logs[idx] = { ...data.logs[idx], ...updatedFields };
+      writeLocalDB(data);
+      return data.logs[idx];
     }
   },
 

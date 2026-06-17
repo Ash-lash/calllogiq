@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, Calendar, FileSpreadsheet, PlusCircle, CheckCircle, Clock, 
   PhoneCall, AlertTriangle, Download, ArrowRight, ClipboardList, Settings, RotateCcw,
-  ChevronUp, ChevronDown, ChevronsUpDown, FileText, Folder, FolderOpen
+  ChevronUp, ChevronDown, ChevronsUpDown, FileText, Folder, FolderOpen, RefreshCw
 } from 'lucide-react';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
@@ -46,6 +46,11 @@ function AdminDashboard({ user, token }) {
   const [flushSuccess, setFlushSuccess] = useState('');
   const [flushError, setFlushError] = useState('');
   const [flushLoading, setFlushLoading] = useState(false);
+
+  // Cloudinary to Base64 Migration State
+  const [migrateSuccess, setMigrateSuccess] = useState('');
+  const [migrateError, setMigrateError] = useState('');
+  const [migrateLoading, setMigrateLoading] = useState(false);
 
   // Download loading states: { [logId_type]: true/false }
   const [downloadingStates, setDownloadingStates] = useState({});
@@ -287,6 +292,37 @@ function AdminDashboard({ user, token }) {
       setFlushError(err.message);
     } finally {
       setFlushLoading(false);
+    }
+  };
+
+  const handleMigrateToBase64 = async () => {
+    if (!window.confirm("Are you sure you want to migrate Cloudinary/Firebase links to Base64 in Firestore? This might take a few minutes if you have many logs. Make sure Cloudinary has PDF delivery restriction disabled!")) {
+      return;
+    }
+
+    setMigrateLoading(true);
+    setMigrateSuccess('');
+    setMigrateError('');
+
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/migrate-to-base64`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to migrate assets');
+      }
+
+      setMigrateSuccess(`Migration finished! Total logs processed: ${data.totalLogs}. Migrated: ${data.migratedCount}. Already up-to-date: ${data.alreadyMigrated}. Errors: ${data.errorsCount}.`);
+    } catch (err) {
+      setMigrateError(err.message);
+    } finally {
+      setMigrateLoading(false);
     }
   };
 
@@ -1333,6 +1369,60 @@ function AdminDashboard({ user, token }) {
             >
               <RotateCcw size={18} />
               {flushLoading ? 'Flushing Database...' : 'Flush All Database Data'}
+            </button>
+          </div>
+
+          <div style={{
+            border: '1px solid var(--border-light)',
+            borderRadius: '12px',
+            padding: '1.25rem',
+            backgroundColor: 'var(--bg-main)'
+          }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem' }}>
+              Migrate Cloudinary & Firebase Links to Base64
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '1rem' }}>
+              This will download all historical call log PDFs and Excel sheets currently stored as Cloudinary or Firebase links, convert them to inline Base64 data, and store them directly in Firestore. This fixes accessibility errors (e.g. 401 Unauthorized errors from Cloudinary).
+            </p>
+            <div style={{ padding: '0.75rem', borderRadius: '8px', backgroundColor: 'var(--warning-light)', color: '#856404', fontSize: '0.8rem', fontWeight: 500, marginBottom: '1rem', border: '1px solid #ffeeba' }}>
+              IMPORTANT: Ensure that you have logged into Cloudinary and disabled the <strong>"Restrict PDF and ZIP files delivery"</strong> option in Settings -&gt; Security before starting the migration.
+            </div>
+
+            {migrateSuccess && (
+              <div className="alert success-alert" style={{ marginBottom: '1rem' }}>
+                <CheckCircle size={16} />
+                <span>{migrateSuccess}</span>
+              </div>
+            )}
+            {migrateError && (
+              <div className="alert error-alert" style={{ marginBottom: '1rem' }}>
+                <AlertTriangle size={16} />
+                <span>{migrateError}</span>
+              </div>
+            )}
+
+            <button
+              onClick={handleMigrateToBase64}
+              disabled={migrateLoading}
+              className="btn btn-primary"
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                backgroundColor: 'var(--text-primary)',
+                color: 'white',
+                padding: '0.75rem',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: 600,
+                cursor: migrateLoading ? 'not-allowed' : 'pointer',
+                opacity: migrateLoading ? 0.7 : 1
+              }}
+            >
+              <RefreshCw size={18} className={migrateLoading ? 'spin' : ''} />
+              {migrateLoading ? 'Migrating Assets...' : 'Migrate Assets to Base64'}
             </button>
           </div>
         </div>

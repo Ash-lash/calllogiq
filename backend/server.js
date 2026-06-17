@@ -70,6 +70,27 @@ function getStreamWithRedirects(url, callback, redirectCount = 0) {
   }
 }
 
+// Helper to download a file from a URL to an in-memory buffer, following redirects and using headers
+function downloadUrlToBuffer(url) {
+  return new Promise((resolve, reject) => {
+    getStreamWithRedirects(url, (err, res) => {
+      if (err) return reject(err);
+      if (res.statusCode >= 400) {
+        return reject(new Error(`Server returned status code ${res.statusCode}`));
+      }
+      
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => {
+        resolve(Buffer.concat(chunks));
+      });
+      res.on('error', (streamErr) => {
+        reject(streamErr);
+      });
+    });
+  });
+}
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'calllogiq_super_secret_jwt_key_123';
@@ -335,6 +356,35 @@ async function uploadToCloudinary(filePath, publicId, isRaw = false) {
     return result.secure_url;
   } catch (err) {
     console.error('Cloudinary upload failed:', err);
+    return null;
+  }
+}
+
+// Upload File to Firebase Storage helper
+async function uploadToFirebaseStorage(localFilePath, destinationPath) {
+  // Check if Firebase is initialized
+  if (admin.apps.length === 0) {
+    console.log(`Firebase is not initialized. Skipping Firebase Storage upload for ${destinationPath}.`);
+    return null;
+  }
+
+  try {
+    const bucketName = process.env.FIREBASE_STORAGE_BUCKET || 'callogiq.firebasestorage.app';
+    const bucket = admin.storage().bucket(bucketName);
+    
+    console.log(`Uploading ${localFilePath} to Firebase Storage: ${destinationPath}...`);
+    await bucket.upload(localFilePath, {
+      destination: destinationPath,
+      metadata: {
+        cacheControl: 'public, max-age=31536000'
+      }
+    });
+
+    const gsUrl = `gs://${bucketName}/${destinationPath}`;
+    console.log(`Uploaded to Firebase Storage. GS URL: ${gsUrl}`);
+    return gsUrl;
+  } catch (err) {
+    console.error('Firebase Storage upload failed:', err);
     return null;
   }
 }
@@ -634,39 +684,33 @@ app.post('/api/calls/upload', authenticateToken, upload.single('pdf'), (req, res
             const finalFilename = `${logId}.xlsx`;
             const finalPath = path.join(UPLOADS_DIR, finalFilename);
             
-            // Rename PDF to .dat temporarily before upload to bypass Cloudinary PDF restrictions
-            const tempPdfDatPath = pdfPath.replace(/\.pdf$/i, '.dat');
-            if (fs.existsSync(pdfPath)) {
-              fs.renameSync(pdfPath, tempPdfDatPath);
-            }
-
-            // Upload PDF to Cloudinary
-            const pdfDest = `pdfs/${userId}/${logId}`;
-            const pdfUrl = await uploadToCloudinary(tempPdfDatPath, pdfDest, true) || '';
-            
-            // Delete local temp PDF upload
-            if (fs.existsSync(tempPdfDatPath)) {
-              fs.unlinkSync(tempPdfDatPath);
-            }
-            
             // Rename excel file locally
             if (fs.existsSync(excelPath)) {
               fs.renameSync(excelPath, finalPath);
             }
-            
-            // Copy Excel to .dat temporarily before upload to bypass Cloudinary restrictions
-            const tempExcelDatPath = finalPath.replace(/\.xlsx$/i, '.dat');
-            if (fs.existsSync(finalPath)) {
-              fs.copyFileSync(finalPath, tempExcelDatPath);
+
+            // Convert PDF and Excel to Base64 strings for Firestore storage
+            let pdfBase64 = '';
+            try {
+              if (fs.existsSync(pdfPath)) {
+                pdfBase64 = fs.readFileSync(pdfPath).toString('base64');
+              }
+            } catch (readErr) {
+              console.error('Error reading PDF for Base64 conversion:', readErr);
             }
 
-            // Upload Excel to Cloudinary
-            const excelDest = `excels/${userId}/${logId}`;
-            const excelUrl = await uploadToCloudinary(tempExcelDatPath, excelDest, true) || '';
-            
-            // Delete local temp Excel upload
-            if (fs.existsSync(tempExcelDatPath)) {
-              fs.unlinkSync(tempExcelDatPath);
+            let excelBase64 = '';
+            try {
+              if (fs.existsSync(finalPath)) {
+                excelBase64 = fs.readFileSync(finalPath).toString('base64');
+              }
+            } catch (readErr) {
+              console.error('Error reading Excel for Base64 conversion:', readErr);
+            }
+
+            // Delete local temp PDF upload
+            if (fs.existsSync(pdfPath)) {
+              fs.unlinkSync(pdfPath);
             }
             
             // Save log entry to DB
@@ -679,8 +723,10 @@ app.post('/api/calls/upload', authenticateToken, upload.single('pdf'), (req, res
               calls: analysisData.calls,
               arrivalTime: analysisData.summary.workday_start,
               departureTime: analysisData.summary.workday_end,
-              pdfUrl,
-              excelUrl
+              pdfUrl: '',
+              excelUrl: '',
+              pdfBase64,
+              excelBase64
             });
             
             res.json({
@@ -731,14 +777,59 @@ app.get('/api/calls/download/:logId', authenticateToken, requireAdmin, async (re
   const logUser = await db.findUserById(log.userId);
   const downloadName = `${logUser ? logUser.name.replace(/\s+/g, '_') : 'User'}_Call_Log_Analysis_${log.callDate.replace(/\s+/g, '')}.xlsx`;
   
-  // Try local file first
+  // 1. Try local file first
   const filePath = path.join(UPLOADS_DIR, log.filename);
   if (fs.existsSync(filePath)) {
     return res.download(filePath, downloadName);
   }
   
-  // Fall back: proxy from Cloudinary excelUrl
+  // 2. Try Firestore Base64 next
+  if (log.excelBase64) {
+    try {
+      const excelBuffer = Buffer.from(log.excelBase64, 'base64');
+      res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(excelBuffer);
+    } catch (err) {
+      console.error('Error sending Excel from Base64:', err);
+    }
+  }
+
+  // 3. Fall back: proxy from Firebase Storage or Cloudinary excelUrl
   if (log.excelUrl) {
+    if (log.excelUrl.startsWith('gs://')) {
+      try {
+        const gsUrl = log.excelUrl;
+        const parts = gsUrl.replace('gs://', '').split('/');
+        const bucketName = parts[0];
+        const filePath = parts.slice(1).join('/');
+        
+        const bucket = admin.storage().bucket(bucketName);
+        const file = bucket.file(filePath);
+        
+        const [exists] = await file.exists();
+        if (!exists) {
+          return res.status(404).json({ error: 'Excel file not found in cloud storage' });
+        }
+        
+        res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        
+        file.createReadStream()
+          .on('error', (streamErr) => {
+            console.error('Error reading Excel stream from Firebase Storage:', streamErr);
+            if (!res.headersSent) {
+              res.status(500).json({ error: 'Failed to stream Excel from cloud storage' });
+            }
+          })
+          .pipe(res);
+        return;
+      } catch (err) {
+        console.error('Error streaming Excel from Firebase Storage:', err);
+        return res.status(500).json({ error: 'Failed to retrieve Excel' });
+      }
+    }
+
     try {
       getStreamWithRedirects(log.excelUrl, (err, fileRes) => {
         if (err) {
@@ -771,7 +862,7 @@ app.get('/api/calls/download/:logId', authenticateToken, requireAdmin, async (re
   return res.status(404).json({ error: 'Excel file not available (not on disk and no cloud URL)' });
 });
 
-// View/Download PDF (Admin only) - streams the PDF from Cloudinary with auth
+// View/Download PDF (Admin only) - streams the PDF from Firestore Base64, Firebase Storage, or Cloudinary
 app.get('/api/calls/pdf/:logId', authenticateToken, requireAdmin, async (req, res) => {
   const { logId } = req.params;
   const log = await db.getLogById(logId);
@@ -780,7 +871,8 @@ app.get('/api/calls/pdf/:logId', authenticateToken, requireAdmin, async (req, re
     return res.status(404).json({ error: 'Log record not found' });
   }
   
-  if (!log.pdfUrl) {
+  // Make sure we have a way to fetch the PDF
+  if (!log.pdfBase64 && !log.pdfUrl) {
     return res.status(404).json({ error: 'No PDF available for this log entry' });
   }
   
@@ -788,32 +880,83 @@ app.get('/api/calls/pdf/:logId', authenticateToken, requireAdmin, async (req, re
     const logUser = await db.findUserById(log.userId);
     const filename = `${logUser ? logUser.name.replace(/\s+/g, '_') : 'User'}_${log.callDate.replace(/\s+/g, '')}.pdf`;
     
-    getStreamWithRedirects(log.pdfUrl, (err, fileRes) => {
-      if (err) {
-        console.error('Error proxying PDF from Cloudinary:', err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'Failed to stream PDF from cloud storage' });
+    // 1. Try Firestore Base64 first
+    if (log.pdfBase64) {
+      try {
+        const pdfBuffer = Buffer.from(log.pdfBase64, 'base64');
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+        return res.send(pdfBuffer);
+      } catch (err) {
+        console.error('Error sending PDF from Base64:', err);
+      }
+    }
+
+    // 2. Fall back to Firebase Storage (gs://) or Cloudinary pdfUrl
+    if (log.pdfUrl) {
+      if (log.pdfUrl.startsWith('gs://')) {
+        try {
+          const gsUrl = log.pdfUrl;
+          const parts = gsUrl.replace('gs://', '').split('/');
+          const bucketName = parts[0];
+          const filePath = parts.slice(1).join('/');
+          
+          const bucket = admin.storage().bucket(bucketName);
+          const file = bucket.file(filePath);
+          
+          const [exists] = await file.exists();
+          if (!exists) {
+            return res.status(404).json({ error: 'PDF file not found in cloud storage' });
+          }
+          
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+          
+          file.createReadStream()
+            .on('error', (streamErr) => {
+              console.error('Error reading PDF stream from Firebase Storage:', streamErr);
+              if (!res.headersSent) {
+                res.status(500).json({ error: 'Failed to stream PDF from cloud storage' });
+              }
+            })
+            .pipe(res);
+          return;
+        } catch (err) {
+          console.error('Error streaming PDF from Firebase Storage:', err);
+          return res.status(500).json({ error: 'Failed to retrieve PDF' });
         }
-        return;
       }
 
-      if (fileRes.statusCode >= 400) {
-        console.error(`Cloudinary returned status ${fileRes.statusCode} for PDF`);
-        if (!res.headersSent) {
-          res.status(fileRes.statusCode).json({ error: `PDF file not found or inaccessible in cloud storage (Status ${fileRes.statusCode})` });
+      getStreamWithRedirects(log.pdfUrl, (err, fileRes) => {
+        if (err) {
+          console.error('Error proxying PDF from Cloudinary:', err);
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to stream PDF from cloud storage' });
+          }
+          return;
         }
-        return;
-      }
-      
-      // Only set headers if the source response is 2xx success
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-      fileRes.pipe(res);
-    });
+
+        if (fileRes.statusCode >= 400) {
+          console.error(`Cloudinary returned status ${fileRes.statusCode} for PDF`);
+          if (!res.headersSent) {
+            res.status(fileRes.statusCode).json({ error: `PDF file not found or inaccessible in cloud storage (Status ${fileRes.statusCode})` });
+          }
+          return;
+        }
+        
+        // Only set headers if the source response is 2xx success
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+        fileRes.pipe(res);
+      });
+      return;
+    }
   } catch (err) {
     console.error('Error setting up PDF proxy:', err);
     return res.status(500).json({ error: 'PDF proxy error' });
   }
+  
+  return res.status(404).json({ error: 'PDF file not available' });
 });
 
 
@@ -1118,6 +1261,117 @@ app.post('/api/admin/flush-database', authenticateToken, requireAdmin, async (re
     return res.status(500).json({ error: 'Failed to flush database.' });
   }
 });
+
+// Migrate Cloudinary/Firebase links to Base64 in Firestore (Admin only)
+app.post('/api/admin/migrate-to-base64', authenticateToken, requireAdmin, async (req, res) => {
+  // Increase timeout to 10 minutes for this request
+  req.setTimeout(600000);
+  
+  try {
+    const logs = await db.getAllLogs();
+    let totalLogs = logs.length;
+    let migratedCount = 0;
+    let alreadyMigrated = 0;
+    let errorsCount = 0;
+    const errorsList = [];
+    
+    console.log(`Starting migration for ${totalLogs} logs...`);
+    
+    for (const log of logs) {
+      try {
+        const fullLog = await db.getLogById(log.id);
+        if (!fullLog) {
+          errorsCount++;
+          errorsList.push({ id: log.id, error: 'Log document not found by ID' });
+          continue;
+        }
+        
+        let pdfBase64 = fullLog.pdfBase64 || '';
+        let excelBase64 = fullLog.excelBase64 || '';
+        let updated = false;
+        
+        // 1. Migrate PDF
+        if (!pdfBase64 && fullLog.pdfUrl) {
+          try {
+            console.log(`Downloading PDF for log ${log.id} from ${fullLog.pdfUrl}`);
+            let buffer;
+            if (fullLog.pdfUrl.startsWith('gs://')) {
+              const parts = fullLog.pdfUrl.replace('gs://', '').split('/');
+              const bucketName = parts[0];
+              const filePath = parts.slice(1).join('/');
+              const bucket = admin.storage().bucket(bucketName);
+              const file = bucket.file(filePath);
+              const [fileBuffer] = await file.download();
+              buffer = fileBuffer;
+            } else {
+              buffer = await downloadUrlToBuffer(fullLog.pdfUrl);
+            }
+            if (buffer) {
+              pdfBase64 = buffer.toString('base64');
+              updated = true;
+            }
+          } catch (pdfErr) {
+            console.error(`Failed to migrate PDF for log ${log.id}:`, pdfErr.message);
+            errorsCount++;
+            errorsList.push({ id: log.id, date: log.callDate, field: 'pdf', error: pdfErr.message });
+          }
+        }
+        
+        // 2. Migrate Excel
+        if (!excelBase64 && fullLog.excelUrl) {
+          try {
+            console.log(`Downloading Excel for log ${log.id} from ${fullLog.excelUrl}`);
+            let buffer;
+            if (fullLog.excelUrl.startsWith('gs://')) {
+              const parts = fullLog.excelUrl.replace('gs://', '').split('/');
+              const bucketName = parts[0];
+              const filePath = parts.slice(1).join('/');
+              const bucket = admin.storage().bucket(bucketName);
+              const file = bucket.file(filePath);
+              const [fileBuffer] = await file.download();
+              buffer = fileBuffer;
+            } else {
+              buffer = await downloadUrlToBuffer(fullLog.excelUrl);
+            }
+            if (buffer) {
+              excelBase64 = buffer.toString('base64');
+              updated = true;
+            }
+          } catch (excelErr) {
+            console.error(`Failed to migrate Excel for log ${log.id}:`, excelErr.message);
+            errorsCount++;
+            errorsList.push({ id: log.id, date: log.callDate, field: 'excel', error: excelErr.message });
+          }
+        }
+        
+        if (updated) {
+          await db.updateLog(log.id, { pdfBase64, excelBase64 });
+          migratedCount++;
+        } else if (fullLog.pdfBase64 || fullLog.excelBase64) {
+          alreadyMigrated++;
+        }
+      } catch (logErr) {
+        console.error(`Error processing log ${log.id}:`, logErr);
+        errorsCount++;
+        errorsList.push({ id: log.id, error: logErr.message });
+      }
+    }
+    
+    console.log(`Migration completed. Total: ${totalLogs}, Already Migrated: ${alreadyMigrated}, Migrated Now: ${migratedCount}, Errors: ${errorsCount}`);
+    return res.json({
+      message: 'Migration process finished',
+      totalLogs,
+      alreadyMigrated,
+      migratedCount,
+      errorsCount,
+      errors: errorsList
+    });
+  } catch (err) {
+    console.error('Fatal error during migration:', err);
+    return res.status(500).json({ error: 'Fatal migration error: ' + err.message });
+  }
+});
+
 
 // Seed admin account (Helper route for development testing)
 app.post('/api/auth/seed-admin', async (req, res) => {

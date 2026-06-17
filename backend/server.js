@@ -1201,7 +1201,8 @@ app.get('/api/admin/attendance/:userId', authenticateToken, requireAdmin, async 
           talkTime: log.summary.talk_time_str || '-',
           calls: log.summary.grand_total || 0,
           logId: log.id || '',
-          pdfUrl: log.pdfUrl || ''
+          pdfUrl: log.pdfUrl || '',
+          hasPdf: log.hasPdf || !!log.pdfUrl
         });
       } else {
         absentDays++;

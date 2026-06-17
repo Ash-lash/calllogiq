@@ -235,6 +235,8 @@ const db = {
       const logsList = [];
       snapshot.forEach(doc => {
         const data = doc.data();
+        data.hasPdf = !!data.pdfUrl || !!data.pdfBase64;
+        data.hasExcel = !!data.excelUrl || !!data.excelBase64;
         delete data.pdfBase64;
         delete data.excelBase64;
         logsList.push({ id: doc.id, ...data });
@@ -244,7 +246,11 @@ const db = {
       const data = readLocalDB();
       return data.logs
         .filter(l => l.userId === userId)
-        .map(({ pdfBase64, excelBase64, ...l }) => l)
+        .map(({ pdfBase64, excelBase64, ...l }) => ({
+          ...l,
+          hasPdf: !!l.pdfUrl || !!pdfBase64,
+          hasExcel: !!l.excelUrl || !!excelBase64
+        }))
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     }
   },
@@ -268,6 +274,8 @@ const db = {
       const logsList = [];
       snapshot.forEach(doc => {
         const data = doc.data();
+        data.hasPdf = !!data.pdfUrl || !!data.pdfBase64;
+        data.hasExcel = !!data.excelUrl || !!data.excelBase64;
         delete data.pdfBase64;
         delete data.excelBase64;
         logsList.push({ id: doc.id, ...data });
@@ -276,7 +284,11 @@ const db = {
     } else {
       const data = readLocalDB();
       return data.logs
-        .map(({ pdfBase64, excelBase64, ...l }) => l)
+        .map(({ pdfBase64, excelBase64, ...l }) => ({
+          ...l,
+          hasPdf: !!l.pdfUrl || !!pdfBase64,
+          hasExcel: !!l.excelUrl || !!excelBase64
+        }))
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     }
   },

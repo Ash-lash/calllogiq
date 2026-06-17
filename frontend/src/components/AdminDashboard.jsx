@@ -899,10 +899,10 @@ function AdminDashboard({ user, token }) {
                               {row.status === 'Present' && row.logId && (
                                 <button
                                   onClick={() => handleFileAction(row.logId, 'pdf')}
-                                  disabled={downloadingStates[`${row.logId}_pdf`] || !row.pdfUrl}
+                                  disabled={downloadingStates[`${row.logId}_pdf`] || !(row.hasPdf || row.pdfUrl)}
                                   className="btn btn-outline" 
-                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '3px', opacity: row.pdfUrl ? 1 : 0.4, cursor: row.pdfUrl ? 'pointer' : 'not-allowed' }}
-                                  title={row.pdfUrl ? 'View PDF' : 'No PDF available'}
+                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '3px', opacity: (row.hasPdf || row.pdfUrl) ? 1 : 0.4, cursor: (row.hasPdf || row.pdfUrl) ? 'pointer' : 'not-allowed' }}
+                                  title={(row.hasPdf || row.pdfUrl) ? 'View PDF' : 'No PDF available'}
                                 >
                                   <FileText size={12} />
                                   {downloadingStates[`${row.logId}_pdf`] ? '...' : 'PDF'}
@@ -1188,10 +1188,10 @@ function AdminDashboard({ user, token }) {
                                   <td>
                                     <button
                                       onClick={() => handleFileAction(log.id, 'pdf')}
-                                      disabled={downloadingStates[`${log.id}_pdf`] || !log.pdfUrl}
+                                      disabled={downloadingStates[`${log.id}_pdf`] || !(log.hasPdf || log.pdfUrl)}
                                       className="btn btn-outline"
-                                      style={{ padding: '0.2rem 0.5rem', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '3px', opacity: log.pdfUrl ? 1 : 0.35, cursor: log.pdfUrl ? 'pointer' : 'not-allowed' }}
-                                      title={log.pdfUrl ? 'View original PDF' : 'No PDF stored'}
+                                      style={{ padding: '0.2rem 0.5rem', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '3px', opacity: (log.hasPdf || log.pdfUrl) ? 1 : 0.35, cursor: (log.hasPdf || log.pdfUrl) ? 'pointer' : 'not-allowed' }}
+                                      title={(log.hasPdf || log.pdfUrl) ? 'View original PDF' : 'No PDF stored'}
                                     >
                                       <FileText size={11} />
                                       {downloadingStates[`${log.id}_pdf`] ? '...' : 'PDF'}

@@ -623,42 +623,42 @@ function AdminDashboard({ user, token }) {
           className={`tab-btn ${adminTab === 'leaderboard' ? 'active' : ''}`}
         >
           <Users size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
-          Employee Analytics
+          Analytics
         </button>
         <button 
           onClick={() => setAdminTab('attendance')} 
           className={`tab-btn ${adminTab === 'attendance' ? 'active' : ''}`}
         >
           <Calendar size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
-          Attendance Reports
+          Attendance
         </button>
         <button 
           onClick={() => setAdminTab('aggregate')} 
           className={`tab-btn ${adminTab === 'aggregate' ? 'active' : ''}`}
         >
           <FileSpreadsheet size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
-          Aggregate Call Reports
+          Aggregates
         </button>
         <button 
           onClick={() => setAdminTab('reports')} 
           className={`tab-btn ${adminTab === 'reports' ? 'active' : ''}`}
         >
           <Folder size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
-          Reports Directory
+          Directory
         </button>
         <button 
           onClick={() => setAdminTab('assign')} 
           className={`tab-btn ${adminTab === 'assign' ? 'active' : ''}`}
         >
           <ClipboardList size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
-          Assign Workload Tasks
+          Assign Tasks
         </button>
         <button 
           onClick={() => setAdminTab('settings')} 
           className={`tab-btn ${adminTab === 'settings' ? 'active' : ''}`}
         >
           <Settings size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
-          System Settings
+          Settings
         </button>
       </div>
 

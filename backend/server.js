@@ -658,169 +658,217 @@ async function processQueue() {
 }
 
 // Upload Call Log PDF
-app.post('/api/calls/upload', authenticateToken, upload.single('pdf'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'Please upload a PDF file' });
-  }
+app.post('/api/calls/upload', authenticateToken, (req, res) => {
+  upload.single('pdf')(req, res, (multerErr) => {
+    if (multerErr) {
+      console.error('--- MULTER UPLOAD FAILURE (Developer Log) ---');
+      console.error('Multer Error:', multerErr);
+      console.error('--------------------------------------------');
+      return res.status(400).json({ error: 'Only PDF documents are allowed. Please choose a valid PDF file.' });
+    }
 
-  const pdfPath = req.file.path;
-  const username = req.user.name;
-  const userId = req.user.userId;
-  
-  const excelFilename = `${username.replace(/\s+/g, '_')}_Call_Log_Analysis_${Date.now()}.xlsx`;
-  const excelPath = path.join(UPLOADS_DIR, excelFilename);
-  
-  // Push the analysis function to the queue
-  analysisQueue.push(() => {
-    return new Promise((resolve) => {
-      // Fetch all logs for this user first, then run the analyzer
-      db.getAllLogs().then(async (allLogs) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Please upload a PDF file' });
+    }
 
-        // Call Python analyzer FIRST so we know the PDF's date
-        const pyScript = path.join(__dirname, 'analyzer.py');
-        const command = `python "${pyScript}" --pdf "${pdfPath}" --user "${username}" --out "${excelPath}"`;
-        
-        exec(command, async (error, stdout, stderr) => {
-          if (error) {
-            if (fs.existsSync(pdfPath)) {
-              fs.unlinkSync(pdfPath);
-            }
-            console.error('Python Execution Error:', stderr);
-            res.status(500).json({ 
-              error: 'Failed to analyze PDF', 
-              details: stderr || error.message 
-            });
-            return resolve();
-          }
+    const pdfPath = req.file.path;
+    const username = req.user.name;
+    const userId = req.user.userId;
+    
+    const excelFilename = `${username.replace(/\s+/g, '_')}_Call_Log_Analysis_${Date.now()}.xlsx`;
+    const excelPath = path.join(UPLOADS_DIR, excelFilename);
+    
+    // Push the analysis function to the queue
+    analysisQueue.push(() => {
+      return new Promise((resolve) => {
+        // Fetch all logs for this user first, then run the analyzer
+        db.getAllLogs().then(async (allLogs) => {
+
+          // Call Python analyzer FIRST so we know the PDF's date
+          const pyScript = path.join(__dirname, 'analyzer.py');
+          const command = `python "${pyScript}" --pdf "${pdfPath}" --user "${username}" --out "${excelPath}"`;
           
-          try {
-            const analysisData = JSON.parse(stdout);
-            
-            if (analysisData.error) {
+          exec(command, async (error, stdout, stderr) => {
+            if (error) {
               if (fs.existsSync(pdfPath)) {
                 fs.unlinkSync(pdfPath);
               }
-              res.status(400).json({ error: analysisData.error });
-              return resolve();
-            }
-            
-            // 3 UNIQUE PDFS PER DATE CONSTRAINT CHECK (based on PDF's own callDate)
-            const existingLogsForDate = allLogs.filter(l => l.userId === userId && l.callDate === analysisData.call_date);
-            
-            if (existingLogsForDate.length >= 3) {
-              if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
-              if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
+              // Programmer-friendly detailed log
+              console.error('--- UPLOAD ANALYZER FAILURE (Developer Log) ---');
+              console.error('Command:', command);
+              console.error('Exit Code:', error.code);
+              console.error('Stderr:', stderr);
+              console.error('Error Message:', error.message);
+              console.error('-----------------------------------------------');
+
               res.status(400).json({ 
-                error: `A maximum of 3 call logs can be uploaded for the date ${analysisData.call_date}.` 
+                error: 'The uploaded PDF file could not be parsed. Please check if the file is corrupted, or ensure it is a valid call log PDF exported directly from the call recorder app.'
               });
               return resolve();
             }
-
-            // Helper to check if two call lists are identical
-            const areCallListsIdentical = (listA, listB) => {
-              if (!listA || !listB) return false;
-              if (listA.length !== listB.length) return false;
-              for (let i = 0; i < listA.length; i++) {
-                const cA = listA[i];
-                const cB = listB[i];
-                if (cA.phone !== cB.phone ||
-                    cA.time_str !== cB.time_str ||
-                    cA.duration_secs !== cB.duration_secs ||
-                    cA.type !== cB.type) {
-                  return false;
+            
+            try {
+              let analysisData;
+              try {
+                analysisData = JSON.parse(stdout);
+              } catch (parseErr) {
+                if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
+                if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
+                
+                // Programmer-friendly detailed log
+                console.error('--- UPLOAD JSON PARSE FAILURE (Developer Log) ---');
+                console.error('Raw stdout:', stdout);
+                console.error('Parse Error:', parseErr);
+                console.error('-------------------------------------------------');
+                
+                res.status(400).json({ 
+                  error: 'The system failed to extract data from the call log PDF. Please ensure you uploaded a genuine call log PDF.'
+                });
+                return resolve();
+              }
+              
+              if (analysisData.error) {
+                if (fs.existsSync(pdfPath)) {
+                  fs.unlinkSync(pdfPath);
                 }
+                // Programmer-friendly log
+                console.error('--- ANALYZER RETURNED ERROR (Developer Log) ---');
+                console.error('Error string:', analysisData.error);
+                console.error('------------------------------------------------');
+                
+                let userError = analysisData.error;
+                if (analysisData.error.includes('No call log records found in PDF')) {
+                  userError = 'No call records were found in the uploaded PDF. Please make sure you uploaded the correct call log document.';
+                } else if (analysisData.error.includes('File not found')) {
+                  userError = 'File not found on server during processing. Please try uploading the PDF again.';
+                }
+                
+                res.status(400).json({ error: userError });
+                return resolve();
               }
-              return true;
-            };
+              
+              // 3 UNIQUE PDFS PER DATE CONSTRAINT CHECK (based on PDF's own callDate)
+              const existingLogsForDate = allLogs.filter(l => l.userId === userId && l.callDate === analysisData.call_date);
+              
+              if (existingLogsForDate.length >= 3) {
+                if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
+                if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
+                res.status(400).json({ 
+                  error: `A maximum of 3 call logs can be uploaded for the date ${analysisData.call_date}.` 
+                });
+                return resolve();
+              }
 
-            // Reject if an identical call log content exists for this date
-            const isDuplicate = existingLogsForDate.some(el => areCallListsIdentical(el.calls, analysisData.calls));
-            if (isDuplicate) {
+              // Helper to check if two call lists are identical
+              const areCallListsIdentical = (listA, listB) => {
+                if (!listA || !listB) return false;
+                if (listA.length !== listB.length) return false;
+                for (let i = 0; i < listA.length; i++) {
+                  const cA = listA[i];
+                  const cB = listB[i];
+                  if (cA.phone !== cB.phone ||
+                      cA.time_str !== cB.time_str ||
+                      cA.duration_secs !== cB.duration_secs ||
+                      cA.type !== cB.type) {
+                    return false;
+                  }
+                }
+                return true;
+              };
+
+              // Reject if an identical call log content exists for this date
+              const isDuplicate = existingLogsForDate.some(el => areCallListsIdentical(el.calls, analysisData.calls));
+              if (isDuplicate) {
+                if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
+                if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
+                res.status(400).json({ 
+                  error: `This exact call log for ${analysisData.call_date} has already been uploaded.` 
+                });
+                return resolve();
+              }
+              
+              const logId = 'log_' + Date.now().toString() + Math.random().toString(36).substr(2, 5);
+              const finalFilename = `${logId}.xlsx`;
+              const finalPath = path.join(UPLOADS_DIR, finalFilename);
+              
+              // Rename excel file locally
+              if (fs.existsSync(excelPath)) {
+                fs.renameSync(excelPath, finalPath);
+              }
+
+              // Convert PDF and Excel to Base64 strings for Firestore storage
+              let pdfBase64 = '';
+              try {
+                if (fs.existsSync(pdfPath)) {
+                  pdfBase64 = fs.readFileSync(pdfPath).toString('base64');
+                }
+              } catch (readErr) {
+                console.error('Error reading PDF for Base64 conversion:', readErr);
+              }
+
+              let excelBase64 = '';
+              try {
+                if (fs.existsSync(finalPath)) {
+                  excelBase64 = fs.readFileSync(finalPath).toString('base64');
+                }
+              } catch (readErr) {
+                console.error('Error reading Excel for Base64 conversion:', readErr);
+              }
+
+              // Delete local temp PDF upload
+              if (fs.existsSync(pdfPath)) {
+                fs.unlinkSync(pdfPath);
+              }
+              
+              // Save log entry to DB
+              const logEntry = await db.createLog({
+                id: logId,
+                userId,
+                filename: finalFilename,
+                callDate: analysisData.call_date,
+                summary: analysisData.summary,
+                calls: analysisData.calls,
+                arrivalTime: analysisData.summary.workday_start,
+                departureTime: analysisData.summary.workday_end,
+                pdfUrl: '',
+                excelUrl: '',
+                pdfBase64,
+                excelBase64
+              });
+              
+              res.json({
+                message: 'PDF analyzed and Excel sheet generated successfully!',
+                log: logEntry
+              });
+              resolve();
+              
+            } catch (parseErr) {
               if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
               if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
+              
+              // Programmer-friendly detailed log
+              console.error('--- UPLOAD EXCEPTION (Developer Log) ---');
+              console.error('Error:', parseErr);
+              console.error('----------------------------------------');
+
               res.status(400).json({ 
-                error: `This exact call log for ${analysisData.call_date} has already been uploaded.` 
+                error: 'An unexpected processing error occurred. Please try again.'
               });
-              return resolve();
+              resolve();
             }
-            
-            const logId = 'log_' + Date.now().toString() + Math.random().toString(36).substr(2, 5);
-            const finalFilename = `${logId}.xlsx`;
-            const finalPath = path.join(UPLOADS_DIR, finalFilename);
-            
-            // Rename excel file locally
-            if (fs.existsSync(excelPath)) {
-              fs.renameSync(excelPath, finalPath);
-            }
-
-            // Convert PDF and Excel to Base64 strings for Firestore storage
-            let pdfBase64 = '';
-            try {
-              if (fs.existsSync(pdfPath)) {
-                pdfBase64 = fs.readFileSync(pdfPath).toString('base64');
-              }
-            } catch (readErr) {
-              console.error('Error reading PDF for Base64 conversion:', readErr);
-            }
-
-            let excelBase64 = '';
-            try {
-              if (fs.existsSync(finalPath)) {
-                excelBase64 = fs.readFileSync(finalPath).toString('base64');
-              }
-            } catch (readErr) {
-              console.error('Error reading Excel for Base64 conversion:', readErr);
-            }
-
-            // Delete local temp PDF upload
-            if (fs.existsSync(pdfPath)) {
-              fs.unlinkSync(pdfPath);
-            }
-            
-            // Save log entry to DB
-            const logEntry = await db.createLog({
-              id: logId,
-              userId,
-              filename: finalFilename,
-              callDate: analysisData.call_date,
-              summary: analysisData.summary,
-              calls: analysisData.calls,
-              arrivalTime: analysisData.summary.workday_start,
-              departureTime: analysisData.summary.workday_end,
-              pdfUrl: '',
-              excelUrl: '',
-              pdfBase64,
-              excelBase64
-            });
-            
-            res.json({
-              message: 'PDF analyzed and Excel sheet generated successfully!',
-              log: logEntry
-            });
-            resolve();
-            
-          } catch (parseErr) {
-            if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
-            if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
-            console.error('JSON Parsing Error:', parseErr, stdout);
-            res.status(500).json({ 
-              error: 'Analysis output parsing failed', 
-              details: parseErr.message 
-            });
-            resolve();
-          }
+          });
+        }).catch(err => {
+          if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
+          console.error('Queue database retrieval error:', err);
+          res.status(500).json({ error: 'Database retrieval error' });
+          resolve();
         });
-      }).catch(err => {
-        if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
-        console.error('Queue database retrieval error:', err);
-        res.status(500).json({ error: 'Database retrieval error', details: err.message });
-        resolve();
       });
     });
+    
+    // Trigger processing
+    processQueue();
   });
-
-  // Trigger processing
-  processQueue();
 });
 
 // Get history of uploads

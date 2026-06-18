@@ -32,11 +32,12 @@ const compressImage = (base64Str, maxWidth = 400, maxHeight = 400, quality = 0.7
   });
 };
 
-// Ghibli filter variants: { levels, satBoost, edgeThreshold, litBoost }
+// Ghibli filter variants — Kuwahara radius controls painterly smoothness
+// Higher radius = smoother / more illustrated; lower = more detail retained
 const GHIBLI_VARIANTS = [
-  { levels: 5, satBoost: 1.25, edgeThreshold: 55, litBoost: 1.08 },  // Soft pastel
-  { levels: 6, satBoost: 1.35, edgeThreshold: 65, litBoost: 1.05 },  // Standard
-  { levels: 7, satBoost: 1.50, edgeThreshold: 75, litBoost: 1.02 },  // Bold ink
+  { kuwaharaRadius: 4, levels: 8, satBoost: 1.2, edgeThreshold: 38, litBoost: 1.1,  edgeDark: 0.80 }, // Soft pastel
+  { kuwaharaRadius: 3, levels: 7, satBoost: 1.4, edgeThreshold: 50, litBoost: 1.05, edgeDark: 0.85 }, // Standard
+  { kuwaharaRadius: 2, levels: 6, satBoost: 1.6, edgeThreshold: 40, litBoost: 1.00, edgeDark: 0.90 }, // Bold ink
 ];
 
 const applyGhibliFilter = (base64Str, variant = GHIBLI_VARIANTS[1]) => {
@@ -46,113 +47,157 @@ const applyGhibliFilter = (base64Str, variant = GHIBLI_VARIANTS[1]) => {
     img.onload = () => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      
-      const maxDim = 300;
-      let w = img.width;
-      let h = img.height;
-      if (w > h) {
-        if (w > maxDim) { h = Math.round((h * maxDim) / w); w = maxDim; }
-      } else {
-        if (h > maxDim) { w = Math.round((w * maxDim) / h); h = maxDim; }
-      }
-      
-      canvas.width = w;
-      canvas.height = h;
-      ctx.drawImage(img, 0, 0, w, h);
-      
-      const imgData = ctx.getImageData(0, 0, w, h);
-      const pixels = imgData.data;
-      const width = imgData.width;
-      const height = imgData.height;
-      
-      const { levels, satBoost, edgeThreshold, litBoost } = variant;
 
+      // Scale to 320px max — good balance of quality vs speed
+      const maxDim = 320;
+      let w = img.width, h = img.height;
+      if (w > h) { if (w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; } }
+      else        { if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; } }
+
+      canvas.width = w; canvas.height = h;
+      ctx.drawImage(img, 0, 0, w, h);
+
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const src = imgData.data;
+      const { kuwaharaRadius: kr, levels, satBoost, edgeThreshold, litBoost, edgeDark } = variant;
+
+      // Clamp-safe pixel index
+      const getIdx = (x, y) =>
+        (Math.max(0, Math.min(h - 1, y)) * w + Math.max(0, Math.min(w - 1, x))) * 4;
+
+      // ─── HSL helpers ───────────────────────────────────────────────────────
       const rgbToHsl = (r, g, b) => {
         r /= 255; g /= 255; b /= 255;
         const max = Math.max(r, g, b), min = Math.min(r, g, b);
-        let h, s, l = (max + min) / 2;
-        if (max === min) { h = s = 0; } else {
+        let hue = 0, sat = 0;
+        const lit = (max + min) / 2;
+        if (max !== min) {
           const d = max - min;
-          s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+          sat = lit > 0.5 ? d / (2 - max - min) : d / (max + min);
           switch (max) {
-            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-            case g: h = (b - r) / d + 2; break;
-            case b: h = (r - g) / d + 4; break;
+            case r: hue = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+            case g: hue = ((b - r) / d + 2) / 6; break;
+            case b: hue = ((r - g) / d + 4) / 6; break;
           }
-          h /= 6;
         }
-        return [h, s, l];
+        return [hue, sat, lit];
       };
-      
+
       const hslToRgb = (h, s, l) => {
-        let r, g, b;
-        if (s === 0) { r = g = b = l; } else {
-          const hue2rgb = (p, q, t) => {
-            if (t < 0) t += 1; if (t > 1) t -= 1;
-            if (t < 1/6) return p + (q - p) * 6 * t;
-            if (t < 1/2) return q;
-            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-            return p;
-          };
-          const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-          const p = 2 * l - q;
-          r = hue2rgb(p, q, h + 1/3); g = hue2rgb(p, q, h); b = hue2rgb(p, q, h - 1/3);
-        }
-        return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+        if (s === 0) { const v = Math.round(l * 255); return [v, v, v]; }
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        const hue2rgb = (t) => {
+          if (t < 0) t += 1; if (t > 1) t -= 1;
+          if (t < 1 / 6) return p + (q - p) * 6 * t;
+          if (t < 1 / 2) return q;
+          if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+          return p;
+        };
+        return [
+          Math.round(hue2rgb(h + 1 / 3) * 255),
+          Math.round(hue2rgb(h) * 255),
+          Math.round(hue2rgb(h - 1 / 3) * 255),
+        ];
       };
-      
-      const processed = new Uint8ClampedArray(pixels.length);
-      for (let i = 0; i < pixels.length; i += 4) {
-        let r = pixels[i], g = pixels[i+1], b = pixels[i+2], a = pixels[i+3];
-        r = Math.round(r / 255 * levels) / levels * 255;
-        g = Math.round(g / 255 * levels) / levels * 255;
-        b = Math.round(b / 255 * levels) / levels * 255;
-        let [hue, sat, lit] = rgbToHsl(r, g, b);
-        sat = Math.min(1.0, sat * satBoost);
-        lit = Math.min(1.0, lit * litBoost);
-        const [nr, ng, nb] = hslToRgb(hue, sat, lit);
-        processed[i] = nr; processed[i+1] = ng; processed[i+2] = nb; processed[i+3] = a;
-      }
-      
-      const output = new Uint8ClampedArray(processed.length);
-      const getPixelOffset = (x, y) => (y * width + x) * 4;
-      const getLuminance = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
-      
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const idx = getPixelOffset(x, y);
-          if (x === 0 || x === width - 1 || y === 0 || y === height - 1) {
-            output[idx]=processed[idx]; output[idx+1]=processed[idx+1]; output[idx+2]=processed[idx+2]; output[idx+3]=processed[idx+3];
-            continue;
-          }
-          let gx = 0, gy = 0;
-          for (let ky = -1; ky <= 1; ky++) {
-            for (let kx = -1; kx <= 1; kx++) {
-              const pIdx = getPixelOffset(x + kx, y + ky);
-              const lum = getLuminance(processed[pIdx], processed[pIdx+1], processed[pIdx+2]);
-              let mx = 0, my = 0;
-              if (kx === -1) mx = ky === 0 ? -2 : -1;
-              else if (kx === 1) mx = ky === 0 ? 2 : 1;
-              if (ky === -1) my = kx === 0 ? -2 : -1;
-              else if (ky === 1) my = kx === 0 ? 2 : 1;
-              gx += lum * mx; gy += lum * my;
+
+      // ─── PASS 1: Kuwahara filter ────────────────────────────────────────────
+      // For each pixel, split into 4 overlapping square quadrants.
+      // Pick the quadrant with lowest colour variance → use its mean colour.
+      // This produces smooth painted / illustrated regions like real anime art.
+      const painted = new Uint8ClampedArray(src.length);
+
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const quads = [
+            [[-kr, 0], [-kr, 0]],
+            [[0, kr],  [-kr, 0]],
+            [[-kr, 0], [0, kr]],
+            [[0, kr],  [0, kr]],
+          ];
+
+          let bestVar = Infinity, bestR = 0, bestG = 0, bestB = 0;
+
+          for (const [[x0, x1], [y0, y1]] of quads) {
+            let sR = 0, sG = 0, sB = 0, sR2 = 0, sG2 = 0, sB2 = 0, n = 0;
+            for (let dy = y0; dy <= y1; dy++) {
+              for (let dx = x0; dx <= x1; dx++) {
+                const i = getIdx(x + dx, y + dy);
+                const r = src[i], g = src[i + 1], b = src[i + 2];
+                sR += r; sG += g; sB += b;
+                sR2 += r * r; sG2 += g * g; sB2 += b * b;
+                n++;
+              }
+            }
+            const mR = sR / n, mG = sG / n, mB = sB / n;
+            const variance =
+              (sR2 / n - mR * mR + sG2 / n - mG * mG + sB2 / n - mB * mB) / 3;
+            if (variance < bestVar) {
+              bestVar = variance; bestR = mR; bestG = mG; bestB = mB;
             }
           }
-          const grad = Math.sqrt(gx * gx + gy * gy);
-          if (grad > edgeThreshold) {
-            output[idx] = Math.round(processed[idx] * 0.45);
-            output[idx+1] = Math.round(processed[idx+1] * 0.45);
-            output[idx+2] = Math.round(processed[idx+2] * 0.45);
-            output[idx+3] = processed[idx+3];
-          } else {
-            output[idx]=processed[idx]; output[idx+1]=processed[idx+1]; output[idx+2]=processed[idx+2]; output[idx+3]=processed[idx+3];
-          }
+
+          const i = (y * w + x) * 4;
+          painted[i] = bestR; painted[i + 1] = bestG;
+          painted[i + 2] = bestB; painted[i + 3] = src[i + 3];
         }
       }
-      
-      const outputImgData = new ImageData(output, width, height);
-      ctx.putImageData(outputImgData, 0, 0);
-      resolve(canvas.toDataURL('image/jpeg', 0.85));
+
+      // ─── PASS 2: Colour adjustment + posterization ──────────────────────────
+      // Boost saturation (vivid Ghibli palette), adjust brightness, then
+      // quantize to a small number of colour levels for the flat cel-shading look.
+      const colored = new Uint8ClampedArray(painted.length);
+      for (let i = 0; i < painted.length; i += 4) {
+        let [hue, sat, lit] = rgbToHsl(painted[i], painted[i + 1], painted[i + 2]);
+        sat = Math.min(1, sat * satBoost);
+        lit = Math.min(1, lit * litBoost);
+        const [r, g, b] = hslToRgb(hue, sat, lit);
+        colored[i]     = Math.round(Math.round(r / 255 * levels) / levels * 255);
+        colored[i + 1] = Math.round(Math.round(g / 255 * levels) / levels * 255);
+        colored[i + 2] = Math.round(Math.round(b / 255 * levels) / levels * 255);
+        colored[i + 3] = painted[i + 3];
+      }
+
+      // ─── PASS 3: Edge detection on ORIGINAL pixels ─────────────────────────
+      // Run Sobel on the raw source so edges are crisp (not blurred by Kuwahara).
+      const edges = new Float32Array(w * h);
+      const getLum = (idx) =>
+        0.2126 * src[idx] + 0.7152 * src[idx + 1] + 0.0722 * src[idx + 2];
+
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const tl = getLum(getIdx(x-1,y-1)), tc = getLum(getIdx(x,y-1)), tr = getLum(getIdx(x+1,y-1));
+          const ml = getLum(getIdx(x-1,y  )),                              mr = getLum(getIdx(x+1,y  ));
+          const bl = getLum(getIdx(x-1,y+1)), bc = getLum(getIdx(x,y+1)), br = getLum(getIdx(x+1,y+1));
+          const gx = -tl - 2 * ml - bl + tr + 2 * mr + br;
+          const gy = -tl - 2 * tc - tr + bl + 2 * bc + br;
+          edges[y * w + x] = Math.sqrt(gx * gx + gy * gy);
+        }
+      }
+
+      // ─── PASS 4: Composite — color regions + ink outlines ──────────────────
+      const output = new Uint8ClampedArray(colored.length);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const idx = (y * w + x) * 4;
+          const edge = edges[y * w + x];
+          if (edge > edgeThreshold) {
+            // Gradient darkening: stronger edge = darker ink line
+            const t = Math.min(1, (edge - edgeThreshold) / 90) * edgeDark;
+            output[idx]     = Math.round(colored[idx]     * (1 - t));
+            output[idx + 1] = Math.round(colored[idx + 1] * (1 - t));
+            output[idx + 2] = Math.round(colored[idx + 2] * (1 - t));
+          } else {
+            output[idx]     = colored[idx];
+            output[idx + 1] = colored[idx + 1];
+            output[idx + 2] = colored[idx + 2];
+          }
+          output[idx + 3] = colored[idx + 3];
+        }
+      }
+
+      ctx.putImageData(new ImageData(output, w, h), 0, 0);
+      resolve(canvas.toDataURL('image/jpeg', 0.9));
     };
     img.onerror = () => resolve(base64Str);
   });

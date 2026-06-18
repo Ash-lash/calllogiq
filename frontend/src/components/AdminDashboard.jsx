@@ -20,13 +20,17 @@ function AdminDashboard({ user, token }) {
   const [attendanceData, setAttendanceData] = useState(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   
-  // Active Admin Sub-View: 'leaderboard' | 'aggregate' | 'assign' | 'attendance' | 'fieldvisits'
+  // Active Admin Sub-View: 'leaderboard' | 'aggregate' | 'assign' | 'attendance' | 'fieldvisits' | 'deepanalytics'
   const [adminTab, setAdminTab] = useState('leaderboard');
   
   // Field Visits State
   const [fieldVisits, setFieldVisits] = useState([]);
   const [fieldVisitsLoading, setFieldVisitsLoading] = useState(false);
   const [activePreviewImage, setActivePreviewImage] = useState(null);
+
+  // Deep Analytics State
+  const [deepAnalyticsUserId, setDeepAnalyticsUserId] = useState('');
+  const [deepAnalyticsPeriod, setDeepAnalyticsPeriod] = useState('monthly');
   
   // Filter state for Aggregations: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'
   const [aggPeriod, setAggPeriod] = useState('monthly');
@@ -115,9 +119,46 @@ function AdminDashboard({ user, token }) {
       setAttendanceData(null);
     }
   }, [selectedAttendanceUserId]);
+  const [selectedPeriodOption, setSelectedPeriodOption] = useState('');
+  const [deepAnalyticsSearch, setDeepAnalyticsSearch] = useState('');
 
+  // Get available periods dynamically based on selected employee call logs
+  const getAvailablePeriods = (employeeLogs, periodType) => {
+    const periods = new Set();
+    employeeLogs.forEach(log => {
+      const date = new Date(log.callDate || log.createdAt);
+      if (isNaN(date.getTime())) return;
+      const year = date.getFullYear();
+      const month = date.getMonth();
+      
+      if (periodType === 'monthly') {
+        const monthStr = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        periods.add(monthStr);
+      } else if (periodType === 'quarterly') {
+        const q = Math.floor(month / 3) + 1;
+        periods.add(`${year} - Q${q}`);
+      } else if (periodType === 'halfyearly') {
+        const h = month < 6 ? 1 : 2;
+        periods.add(`${year} - H${h}`);
+      } else if (periodType === 'yearly') {
+        periods.add(String(year));
+      }
+    });
+    return Array.from(periods).sort((a, b) => b.localeCompare(a));
+  };
 
+  const currentEmployeeLogs = logs.filter(l => l.userId === deepAnalyticsUserId);
+  const activePeriods = getAvailablePeriods(currentEmployeeLogs, deepAnalyticsPeriod);
 
+  useEffect(() => {
+    if (activePeriods.length > 0) {
+      if (!activePeriods.includes(selectedPeriodOption)) {
+        setSelectedPeriodOption(activePeriods[0]);
+      }
+    } else {
+      setSelectedPeriodOption('');
+    }
+  }, [deepAnalyticsUserId, deepAnalyticsPeriod, activePeriods.length]);
   const fetchAttendance = async (userId) => {
     setAttendanceLoading(true);
     try {
@@ -672,7 +713,13 @@ function AdminDashboard({ user, token }) {
           <Users size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
           Analytics
         </button>
-
+        <button 
+          onClick={() => setAdminTab('deepanalytics')} 
+          className={`tab-btn ${adminTab === 'deepanalytics' ? 'active' : ''}`}
+        >
+          <FileText size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
+          Deep Analytics
+        </button>
         <button 
           onClick={() => setAdminTab('attendance')} 
           className={`tab-btn ${adminTab === 'attendance' ? 'active' : ''}`}
@@ -2181,6 +2228,309 @@ function AdminDashboard({ user, token }) {
                 <MapPin size={48} style={{ marginBottom: '1rem', color: 'var(--text-muted)' }} />
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111111' }}>No Field Visits Found</h3>
                 <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>Field visit photos uploaded by the Business Development Team will appear here.</p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* SUB-VIEW: Deep Analytics (Admin only) */}
+      {adminTab === 'deepanalytics' && (() => {
+        // Get number frequencies for the chosen employee and period
+        const filteredLogs = currentEmployeeLogs.filter(log => {
+          const date = new Date(log.callDate || log.createdAt);
+          if (isNaN(date.getTime())) return false;
+          const year = date.getFullYear();
+          const month = date.getMonth();
+          
+          if (deepAnalyticsPeriod === 'monthly') {
+            const monthStr = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            return monthStr === selectedPeriodOption;
+          } else if (deepAnalyticsPeriod === 'quarterly') {
+            const q = Math.floor(month / 3) + 1;
+            return `${year} - Q${q}` === selectedPeriodOption;
+          } else if (deepAnalyticsPeriod === 'halfyearly') {
+            const h = month < 6 ? 1 : 2;
+            return `${year} - H${h}` === selectedPeriodOption;
+          } else if (deepAnalyticsPeriod === 'yearly') {
+            return String(year) === selectedPeriodOption;
+          }
+          return false;
+        });
+
+        // Calculate frequencies
+        const freqMap = {};
+        let totalCallsCount = 0;
+        let totalDurationSecs = 0;
+        
+        filteredLogs.forEach(log => {
+          if (log.calls && Array.isArray(log.calls)) {
+            log.calls.forEach(call => {
+              const num = call.phone || 'Unknown';
+              if (!freqMap[num]) {
+                freqMap[num] = {
+                  phone: num,
+                  count: 0,
+                  incoming: 0,
+                  outgoing: 0,
+                  missed: 0,
+                  duration: 0
+                };
+              }
+              freqMap[num].count += 1;
+              totalCallsCount += 1;
+              
+              const type = (call.type || '').toLowerCase();
+              if (type.includes('in') || type === 'incoming') {
+                freqMap[num].incoming += 1;
+              } else if (type.includes('out') || type.includes('dial') || type === 'outgoing') {
+                freqMap[num].outgoing += 1;
+              } else if (type.includes('miss') || type === 'missed') {
+                freqMap[num].missed += 1;
+              }
+              
+              const dur = Number(call.duration_secs || 0);
+              freqMap[num].duration += dur;
+              totalDurationSecs += dur;
+            });
+          }
+        });
+
+        const sortedFreqs = Object.values(freqMap).sort((a, b) => b.count - a.count);
+        const searchedFreqs = sortedFreqs.filter(item => 
+          item.phone.toLowerCase().includes(deepAnalyticsSearch.toLowerCase())
+        );
+
+        const topNumber = sortedFreqs.length > 0 ? sortedFreqs[0] : null;
+
+        return (
+          <div className="card" style={{ padding: '2rem' }}>
+            <div style={{ borderBottom: '2px solid #111111', paddingBottom: '0.75rem', marginBottom: '1.5rem' }}>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.02em', margin: 0 }}>
+                Deep Call Analytics
+              </h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                Analyze caller numbers, contact frequency, call type breakdowns, and call durations for any employee.
+              </p>
+            </div>
+
+            {/* Selectors Panel */}
+            <div style={{ 
+              display: 'flex', 
+              gap: '1.25rem', 
+              marginBottom: '2rem', 
+              flexWrap: 'wrap', 
+              padding: '1.25rem', 
+              border: '2px solid #111111', 
+              borderRadius: '6px', 
+              backgroundColor: '#fafafa',
+              boxShadow: '3px 3px 0px #111111'
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', minWidth: '220px' }}>
+                <label style={{ fontWeight: 800, fontSize: '0.8rem', textTransform: 'uppercase', color: '#111' }}>
+                  👤 Choose Employee
+                </label>
+                <select 
+                  value={deepAnalyticsUserId} 
+                  onChange={e => setDeepAnalyticsUserId(e.target.value)}
+                  style={{
+                    padding: '10px',
+                    fontSize: '0.9rem',
+                    border: '2px solid #111111',
+                    borderRadius: '4px',
+                    fontWeight: 700,
+                    backgroundColor: '#ffffff',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="">-- Select Employee --</option>
+                  {users.map(u => (
+                    <option key={u.id} value={u.id}>{u.name} ({u.domain})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', minWidth: '150px' }}>
+                <label style={{ fontWeight: 800, fontSize: '0.8rem', textTransform: 'uppercase', color: '#111' }}>
+                  📅 Period Type
+                </label>
+                <select 
+                  value={deepAnalyticsPeriod} 
+                  onChange={e => setDeepAnalyticsPeriod(e.target.value)}
+                  disabled={!deepAnalyticsUserId}
+                  style={{
+                    padding: '10px',
+                    fontSize: '0.9rem',
+                    border: '2px solid #111111',
+                    borderRadius: '4px',
+                    fontWeight: 700,
+                    backgroundColor: '#ffffff',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="halfyearly">Half Yearly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', minWidth: '180px' }}>
+                <label style={{ fontWeight: 800, fontSize: '0.8rem', textTransform: 'uppercase', color: '#111' }}>
+                  🔍 Select Specific Period
+                </label>
+                <select 
+                  value={selectedPeriodOption} 
+                  onChange={e => setSelectedPeriodOption(e.target.value)}
+                  disabled={!deepAnalyticsUserId || activePeriods.length === 0}
+                  style={{
+                    padding: '10px',
+                    fontSize: '0.9rem',
+                    border: '2px solid #111111',
+                    borderRadius: '4px',
+                    fontWeight: 700,
+                    backgroundColor: '#ffffff',
+                    outline: 'none'
+                  }}
+                >
+                  {activePeriods.length === 0 ? (
+                    <option value="">-- No Logs Found --</option>
+                  ) : (
+                    activePeriods.map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))
+                  )}
+                </select>
+              </div>
+            </div>
+
+            {/* Analytics Content */}
+            {!deepAnalyticsUserId ? (
+              <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-secondary)', border: '2px dashed #111111', borderRadius: '6px' }}>
+                <Users size={40} style={{ marginBottom: '1rem', color: 'var(--text-muted)' }} />
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 800 }}>Please choose an employee</h3>
+                <p style={{ fontSize: '0.85rem' }}>Select an employee above to analyze number-specific call frequency and logs.</p>
+              </div>
+            ) : activePeriods.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-secondary)', border: '2px dashed #111111', borderRadius: '6px' }}>
+                <AlertTriangle size={40} style={{ marginBottom: '1rem', color: 'var(--text-muted)' }} />
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 800 }}>No Call Logs Found</h3>
+                <p style={{ fontSize: '0.85rem' }}>This employee does not have any call log data recorded.</p>
+              </div>
+            ) : (
+              <div>
+                {/* Period KPI Summary */}
+                <div className="kpi-grid" style={{ marginBottom: '2rem' }}>
+                  <div className="kpi-card">
+                    <div className="kpi-icon primary"><PhoneCall size={20} /></div>
+                    <div>
+                      <div className="kpi-label">Unique Numbers Called</div>
+                      <div className="kpi-value">{sortedFreqs.length}</div>
+                    </div>
+                  </div>
+                  
+                  <div className="kpi-card">
+                    <div className="kpi-icon success"><Users size={20} /></div>
+                    <div>
+                      <div className="kpi-label">Total Period Calls</div>
+                      <div className="kpi-value">{totalCallsCount}</div>
+                    </div>
+                  </div>
+
+                  <div className="kpi-card">
+                    <div className="kpi-icon secondary"><Clock size={20} /></div>
+                    <div>
+                      <div className="kpi-label">Total Duration</div>
+                      <div className="kpi-value" style={{ fontSize: '1.15rem' }}>{formatSeconds(totalDurationSecs)}</div>
+                    </div>
+                  </div>
+
+                  <div className="kpi-card">
+                    <div className="kpi-icon danger"><AlertTriangle size={20} /></div>
+                    <div>
+                      <div className="kpi-label">Top Number (Freq)</div>
+                      <div className="kpi-value" style={{ fontSize: '1rem' }}>
+                        {topNumber ? `${topNumber.phone} (${topNumber.count})` : 'N/A'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Search & Results Table */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: 900, textTransform: 'uppercase', margin: 0 }}>
+                      Call Frequency Table ({searchedFreqs.length})
+                    </h3>
+                    <input 
+                      type="text" 
+                      placeholder="Search phone number..." 
+                      value={deepAnalyticsSearch}
+                      onChange={e => setDeepAnalyticsSearch(e.target.value)}
+                      style={{
+                        padding: '8px 14px',
+                        fontSize: '0.9rem',
+                        border: '2px solid #111111',
+                        borderRadius: '4px',
+                        outline: 'none',
+                        width: '100%',
+                        maxWidth: '280px'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ overflowX: 'auto', border: '2px solid #111111', borderRadius: '4px' }}>
+                    <table className="table" style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: '#ffffff' }}>
+                      <thead>
+                        <tr style={{ backgroundColor: '#111111', color: '#ffffff', textAlign: 'left' }}>
+                          <th style={{ padding: '12px 16px', fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase' }}>Rank</th>
+                          <th style={{ padding: '12px 16px', fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase' }}>Phone Number</th>
+                          <th style={{ padding: '12px 16px', fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase', textAlign: 'center' }}>Total Frequency</th>
+                          <th style={{ padding: '12px 16px', fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase', textAlign: 'center' }}>Breakdown (Out / In / Missed)</th>
+                          <th style={{ padding: '12px 16px', fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase', textAlign: 'right' }}>Total Duration</th>
+                          <th style={{ padding: '12px 16px', fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase', textAlign: 'right' }}>Avg Call Duration</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {searchedFreqs.length > 0 ? (
+                          searchedFreqs.map((item, idx) => {
+                            const avgDur = item.count > 0 ? Math.round(item.duration / item.count) : 0;
+                            return (
+                              <tr key={item.phone} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                <td style={{ padding: '12px 16px', fontWeight: 800, color: 'var(--text-secondary)' }}>#{idx + 1}</td>
+                                <td style={{ padding: '12px 16px', fontWeight: 700, fontFamily: 'monospace', fontSize: '0.95rem' }}>{item.phone}</td>
+                                <td style={{ padding: '12px 16px', fontWeight: 800, textAlign: 'center' }}>
+                                  <span style={{ display: 'inline-block', padding: '4px 8px', borderRadius: '12px', backgroundColor: '#f1f5f9', border: '1px solid #111111', minWidth: '35px' }}>
+                                    {item.count}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: '0.8rem', fontWeight: 700 }}>
+                                  <span style={{ color: '#0369a1' }}>📞 {item.outgoing} Out</span>
+                                  <span style={{ margin: '0 0.4rem', color: '#94a3b8' }}>|</span>
+                                  <span style={{ color: '#047857' }}>📥 {item.incoming} In</span>
+                                  <span style={{ margin: '0 0.4rem', color: '#94a3b8' }}>|</span>
+                                  <span style={{ color: '#b91c1c' }}>❌ {item.missed} Missed</span>
+                                </td>
+                                <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>
+                                  {formatSeconds(item.duration)}
+                                </td>
+                                <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                                  {formatSeconds(avgDur)}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan="6" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                              No phone numbers matched your search filter.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             )}
           </div>

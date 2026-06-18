@@ -32,7 +32,9 @@ function AdminDashboard({ user, token }) {
   const [taskAssignee, setTaskAssignee] = useState(''); // can be userId or domain name
   const [taskSuccess, setTaskSuccess] = useState('');
   const [taskError, setTaskError] = useState('');
-  const [taskSubTab, setTaskSubTab] = useState('active'); // 'active' or 'grouped'
+  const [taskSubTab, setTaskSubTab] = useState('active'); // 'active', 'grouped', or 'all'
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+
 
   // Edit User Modal State
   const [editingUser, setEditingUser] = useState(null);
@@ -1305,82 +1307,27 @@ function AdminDashboard({ user, token }) {
               >
                 👥 Grouped by Assignee Name
               </button>
+              <button 
+                onClick={() => setTaskSubTab('all')} 
+                style={{
+                  padding: '0.4rem 1rem',
+                  borderRadius: '20px',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  border: 'none',
+                  cursor: 'pointer',
+                  backgroundColor: taskSubTab === 'all' ? 'var(--primary)' : 'transparent',
+                  color: taskSubTab === 'all' ? '#fff' : 'var(--text-secondary)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                🗂️ All Assigned Works
+              </button>
             </div>
 
             {taskSubTab === 'active' ? (
               <div className="dashboard-grid-2">
-                {/* Form */}
-                <div className="card">
-                  <div className="card-title-bar">
-                    <h3>Assign Workload Task</h3>
-                  </div>
-                  
-                  {taskSuccess && <div className="alert alert-success">{taskSuccess}</div>}
-                  {taskError && <div className="alert alert-danger">{taskError}</div>}
-
-                  <form onSubmit={handleAssignTask}>
-                    <div className="form-group">
-                      <label className="form-label">Task Title</label>
-                      <input 
-                        type="text" 
-                        className="form-input" 
-                        placeholder="e.g. Complete client callbacks list" 
-                        value={taskTitle}
-                        onChange={e => setTaskTitle(e.target.value)}
-                        required 
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Task Description (Optional)</label>
-                      <textarea 
-                        className="form-input" 
-                        rows={4}
-                        placeholder="Provide details of the assignment..."
-                        value={taskDesc}
-                        onChange={e => setTaskDesc(e.target.value)}
-                        style={{ resize: 'vertical' }}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Assign To</label>
-                      <select 
-                        className="form-select" 
-                        value={taskAssignee}
-                        onChange={e => setTaskAssignee(e.target.value)}
-                        required
-                      >
-                        <option value="">-- Select Assignee --</option>
-                        
-                        {/* Domains */}
-                        <optgroup label="Departments (All members in domain)">
-                          <option value="Sales">Sales Domain</option>
-                          <option value="Accounts">Accounts Domain</option>
-                          <option value="Support">Support Domain</option>
-                          <option value="HR">HR Domain</option>
-                          <option value="Operations">Operations Domain</option>
-                        </optgroup>
-                        
-                        {/* Individual Users */}
-                        <optgroup label="Specific Employees">
-                          {users.filter(u => u.role !== 'admin').map(emp => (
-                            <option key={emp.id} value={emp.id}>
-                              {emp.name} ({emp.email})
-                            </option>
-                          ))}
-                        </optgroup>
-                      </select>
-                    </div>
-
-                    <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>
-                      <PlusCircle size={18} />
-                      Assign Workload Task
-                    </button>
-                  </form>
-                </div>
-
-                {/* Active Assigned Tasks list */}
+                {/* Active Assigned Tasks list (Left Sidebar - Recent 2) */}
                 <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
                   <div className="card-title-bar">
                     <h3>Active Workload Assignments ({tasks.length})</h3>
@@ -1399,7 +1346,7 @@ function AdminDashboard({ user, token }) {
                             assigneeName = targetUser.name;
                           }
 
-                          const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(task.assignedTo.toLowerCase());
+                          const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations', 'academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase()) || !users.some(u => u.id === task.assignedTo);
 
                           return (
                             <div 
@@ -1511,8 +1458,8 @@ function AdminDashboard({ user, token }) {
                               );
                             })()}
                           </div>
-                        );
-                      })}
+                          );
+                        })}
                     </div>
                   ) : (
                     <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1520,8 +1467,79 @@ function AdminDashboard({ user, token }) {
                     </div>
                   )}
                 </div>
+
+                {/* Form (Right main area) */}
+                <div className="card">
+                  <div className="card-title-bar">
+                    <h3>Assign Workload Task</h3>
+                  </div>
+                  
+                  {taskSuccess && <div className="alert alert-success">{taskSuccess}</div>}
+                  {taskError && <div className="alert alert-danger">{taskError}</div>}
+
+                  <form onSubmit={handleAssignTask}>
+                    <div className="form-group">
+                      <label className="form-label">Task Title</label>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        placeholder="e.g. Complete client callbacks list" 
+                        value={taskTitle}
+                        onChange={e => setTaskTitle(e.target.value)}
+                        required 
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Task Description (Optional)</label>
+                      <textarea 
+                        className="form-input" 
+                        rows={4}
+                        placeholder="Provide details of the assignment..."
+                        value={taskDesc}
+                        onChange={e => setTaskDesc(e.target.value)}
+                        style={{ resize: 'vertical' }}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Assign To</label>
+                      <select 
+                        className="form-select" 
+                        value={taskAssignee}
+                        onChange={e => setTaskAssignee(e.target.value)}
+                        required
+                      >
+                        <option value="">-- Select Assignee --</option>
+                        
+                        {/* Domains */}
+                        <optgroup label="Departments (All members in domain)">
+                          <option value="Sales">Sales Domain</option>
+                          <option value="Accounts">Accounts Domain</option>
+                          <option value="Support">Support Domain</option>
+                          <option value="HR">HR Domain</option>
+                          <option value="Operations">Operations Domain</option>
+                        </optgroup>
+                        
+                        {/* Individual Users */}
+                        <optgroup label="Specific Employees">
+                          {users.filter(u => u.role !== 'admin').map(emp => (
+                            <option key={emp.id} value={emp.id}>
+                              {emp.name} ({emp.email})
+                            </option>
+                          ))}
+                        </optgroup>
+                      </select>
+                    </div>
+
+                    <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>
+                      <PlusCircle size={18} />
+                      Assign Workload Task
+                    </button>
+                  </form>
+                </div>
               </div>
-            ) : (
+            ) : taskSubTab === 'grouped' ? (
               <div className="card" style={{ padding: '1.5rem' }}>
                 <div className="card-title-bar" style={{ marginBottom: '1.25rem' }}>
                   <h3>Workload Tasks Grouped by Assignee</h3>
@@ -1544,14 +1562,14 @@ function AdminDashboard({ user, token }) {
                           <h4 style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>
                             {employee.name}
                           </h4>
-                          <span className="badge badge-primary" style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', textTransform: 'uppercase' }}>
+                          <span className="badge badge-primary" style={{ fontSize: '0.7 your domain', padding: '0.2rem 0.5rem', textTransform: 'uppercase' }}>
                             {employee.domain}
                           </span>
                         </div>
                         
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                           {empTasks.map(task => {
-                            const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(task.assignedTo.toLowerCase());
+                            const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations', 'academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase()) || !users.some(u => u.id === task.assignedTo);
                             const stage = task.employeeStages?.[employee.id] || (isDomainTask ? 'pending' : (task.status || 'pending'));
                             
                             let badgeBg = '#f3f4f6';
@@ -1605,6 +1623,225 @@ function AdminDashboard({ user, token }) {
                     No active assignments to display.
                   </div>
                 )}
+              </div>
+            ) : (
+              /* All Assigned Works Subtab (Year --> Month --> Day --> Individual/Domain) */
+              <div className="card" style={{ padding: '1.5rem' }}>
+                <div className="card-title-bar" style={{ marginBottom: '1.25rem' }}>
+                  <h3>All Assigned Works (Hierarchical Grouping)</h3>
+                </div>
+                
+                {(() => {
+                  const sortedTasks = [...tasks].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                  const groups = {};
+                  
+                  sortedTasks.forEach(task => {
+                    const date = new Date(task.createdAt);
+                    const year = date.getFullYear().toString();
+                    const month = date.toLocaleString('default', { month: 'long' });
+                    const day = date.getDate().toString().padStart(2, '0');
+                    
+                    const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations', 'academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase()) || !users.some(u => u.id === task.assignedTo);
+                    
+                    let assigneeLabel = task.assignedTo;
+                    if (!isDomainTask) {
+                      const targetUser = users.find(u => u.id === task.assignedTo);
+                      assigneeLabel = targetUser ? `${targetUser.name} (Individual)` : `${task.assignedTo} (Individual)`;
+                    } else {
+                      assigneeLabel = `${task.assignedTo} (Domain)`;
+                    }
+
+                    if (!groups[year]) groups[year] = {};
+                    if (!groups[year][month]) groups[year][month] = {};
+                    if (!groups[year][month][day]) groups[year][month][day] = {};
+                    if (!groups[year][month][day][assigneeLabel]) groups[year][month][day][assigneeLabel] = [];
+                    
+                    groups[year][month][day][assigneeLabel].push(task);
+                  });
+
+                  const years = Object.keys(groups).sort((a, b) => b - a);
+
+                  if (years.length === 0) {
+                    return (
+                      <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
+                        No assigned tasks found.
+                      </div>
+                    );
+                  }
+
+                  const toggleAccordion = (keyPath) => {
+                    setCollapsedGroups(prev => ({ ...prev, [keyPath]: !prev[keyPath] }));
+                  };
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      {years.map(year => {
+                        const yearCollapsed = !!collapsedGroups[year];
+                        const months = Object.keys(groups[year]).sort((a, b) => {
+                          const order = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+                          return order.indexOf(b) - order.indexOf(a);
+                        });
+
+                        return (
+                          <div key={year} style={{ border: '2px solid #111111', borderRadius: '4px', overflow: 'hidden' }}>
+                            <div 
+                              onClick={() => toggleAccordion(year)}
+                              style={{ 
+                                background: '#111111', 
+                                color: '#ffffff', 
+                                padding: '0.75rem 1rem', 
+                                fontWeight: 800, 
+                                cursor: 'pointer',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                              }}
+                            >
+                              <span>📅 Year {year}</span>
+                              <span style={{ fontSize: '1rem' }}>{yearCollapsed ? '➕' : '➖'}</span>
+                            </div>
+
+                            {!yearCollapsed && (
+                              <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem', background: 'var(--bg-main, #f9f9f9)' }}>
+                                {months.map(month => {
+                                  const monthKey = `${year}-${month}`;
+                                  const monthCollapsed = !!collapsedGroups[monthKey];
+                                  const days = Object.keys(groups[year][month]).sort((a, b) => b - a);
+
+                                  return (
+                                    <div key={month} style={{ border: '1.5px solid #111111', borderRadius: '4px', overflow: 'hidden' }}>
+                                      <div 
+                                        onClick={() => toggleAccordion(monthKey)}
+                                        style={{ 
+                                          background: 'var(--primary)', 
+                                          color: '#ffffff', 
+                                          padding: '0.6rem 0.8rem', 
+                                          fontWeight: 700, 
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          justifyContent: 'space-between',
+                                          alignItems: 'center'
+                                        }}
+                                      >
+                                        <span>🌙 Month: {month}</span>
+                                        <span style={{ fontSize: '0.9rem' }}>{monthCollapsed ? '➕' : '➖'}</span>
+                                      </div>
+
+                                      {!monthCollapsed && (
+                                        <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', background: '#ffffff' }}>
+                                          {days.map(day => {
+                                            const dayKey = `${year}-${month}-${day}`;
+                                            const dayCollapsed = !!collapsedGroups[dayKey];
+                                            const assignees = Object.keys(groups[year][month][day]);
+
+                                            return (
+                                              <div key={day} style={{ border: '1px solid #ddd', borderRadius: '4px', overflow: 'hidden' }}>
+                                                <div 
+                                                  onClick={() => toggleAccordion(dayKey)}
+                                                  style={{ 
+                                                    background: '#f3f4f6', 
+                                                    color: '#111111', 
+                                                    padding: '0.5rem 0.75rem', 
+                                                    fontWeight: 600, 
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    alignItems: 'center',
+                                                    fontSize: '0.88rem'
+                                                  }}
+                                                >
+                                                  <span>📆 Day: {day}</span>
+                                                  <span style={{ fontSize: '0.8rem' }}>{dayCollapsed ? '➕' : '➖'}</span>
+                                                </div>
+
+                                                {!dayCollapsed && (
+                                                  <div style={{ padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', background: '#fafafa' }}>
+                                                    {assignees.map(assignee => {
+                                                      const tasksList = groups[year][month][day][assignee];
+                                                      return (
+                                                        <div key={assignee} style={{ padding: '0.5rem', background: '#ffffff', borderLeft: '3px solid var(--primary)', borderRadius: '2px', marginLeft: '0.5rem' }}>
+                                                          <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem', color: '#111' }}>
+                                                            👤 Assignee: {assignee}
+                                                          </div>
+                                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                                            {tasksList.map(task => {
+                                                              let badgeBg = '#f3f4f6';
+                                                              let badgeColor = '#4b5563';
+                                                              if (task.status === 'seen') { badgeBg = '#fef3c7'; badgeColor = '#b45309'; }
+                                                              else if (task.status === 'doing') { badgeBg = '#e0f2fe'; badgeColor = '#0369a1'; }
+                                                              else if (task.status === 'completed') { badgeBg = '#d1fae5'; badgeColor = '#047857'; }
+
+                                                              return (
+                                                                <div 
+                                                                  key={task.id} 
+                                                                  style={{ 
+                                                                    padding: '0.5rem', 
+                                                                    border: '1px solid #eee', 
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '0.8rem',
+                                                                    background: '#ffffff',
+                                                                    display: 'flex',
+                                                                    justifyContent: 'space-between',
+                                                                    alignItems: 'center'
+                                                                  }}
+                                                                >
+                                                                  <div>
+                                                                    <div style={{ fontWeight: 600 }}>{task.title}</div>
+                                                                    {task.description && <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem' }}>{task.description}</div>}
+                                                                  </div>
+                                                                  <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                                                                    <span style={{ 
+                                                                      fontSize: '0.65rem', 
+                                                                      padding: '0.1rem 0.35rem', 
+                                                                      borderRadius: '4px', 
+                                                                      backgroundColor: badgeBg, 
+                                                                      color: badgeColor, 
+                                                                      fontWeight: 700,
+                                                                      textTransform: 'uppercase'
+                                                                    }}>
+                                                                      {task.status || 'pending'}
+                                                                    </span>
+                                                                    <button 
+                                                                      onClick={() => handleDeleteTask(task.id)}
+                                                                      style={{
+                                                                        border: 'none',
+                                                                        background: 'none',
+                                                                        color: 'var(--danger)',
+                                                                        cursor: 'pointer',
+                                                                        padding: '2px',
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center'
+                                                                      }}
+                                                                      title="Delete task"
+                                                                    >
+                                                                      <Trash2 size={12} />
+                                                                    </button>
+                                                                  </div>
+                                                                </div>
+                                                              );
+                                                            })}
+                                                          </div>
+                                                        </div>
+                                                      );
+                                                    })}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>

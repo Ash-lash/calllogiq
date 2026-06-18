@@ -13,7 +13,8 @@ if (!fs.existsSync(DB_FILE)) {
     otps: [],
     assets: [],
     assetVerifications: [],
-    assetNotifications: []
+    assetNotifications: [],
+    fieldVisits: []
   }, null, 2), 'utf8');
 }
 
@@ -24,10 +25,11 @@ function readLocalDB() {
     if (!parsed.assets) parsed.assets = [];
     if (!parsed.assetVerifications) parsed.assetVerifications = [];
     if (!parsed.assetNotifications) parsed.assetNotifications = [];
+    if (!parsed.fieldVisits) parsed.fieldVisits = [];
     return parsed;
   } catch (err) {
     console.error('Error reading database file:', err);
-    return { users: [], logs: [], tasks: [], otps: [], assets: [], assetVerifications: [], assetNotifications: [] };
+    return { users: [], logs: [], tasks: [], otps: [], assets: [], assetVerifications: [], assetNotifications: [], fieldVisits: [] };
   }
 }
 
@@ -382,7 +384,7 @@ const db = {
       if (!task.employeeStages) task.employeeStages = {};
       task.employeeStages[userId] = status;
       
-      const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(task.assignedTo.toLowerCase());
+      const isDomainTask = ['academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase());
       if (isDomainTask) {
         if (!task.completions) task.completions = [];
         if (status === 'completed') {
@@ -404,7 +406,7 @@ const db = {
       if (!task.employeeStages) task.employeeStages = {};
       task.employeeStages[userId] = status;
       
-      const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(task.assignedTo.toLowerCase());
+      const isDomainTask = ['academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase());
       if (isDomainTask) {
         if (!task.completions) task.completions = [];
         if (status === 'completed') {
@@ -678,10 +680,78 @@ const db = {
     }
   },
 
+  updateTask: async (id, updatedFields) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      await firestore.collection('tasks').doc(id).update(updatedFields);
+      const doc = await firestore.collection('tasks').doc(id).get();
+      return { id: doc.id, ...doc.data() };
+    } else {
+      const data = readLocalDB();
+      const idx = data.tasks.findIndex(t => t.id === id);
+      if (idx === -1) return null;
+      data.tasks[idx] = { ...data.tasks[idx], ...updatedFields };
+      writeLocalDB(data);
+      return data.tasks[idx];
+    }
+  },
+
+  // --- FIELD VISITS ---
+  createFieldVisit: async (visit) => {
+    const firestore = getFirestore();
+    const id = 'visit_' + Date.now().toString() + Math.random().toString(36).substr(2, 5);
+    const newVisit = {
+      createdAt: new Date().toISOString(),
+      ...visit,
+      id
+    };
+    
+    if (firestore) {
+      await firestore.collection('field_visits').doc(id).set(newVisit);
+      return newVisit;
+    } else {
+      const data = readLocalDB();
+      if (!data.fieldVisits) data.fieldVisits = [];
+      data.fieldVisits.push(newVisit);
+      writeLocalDB(data);
+      return newVisit;
+    }
+  },
+
+  getAllFieldVisits: async () => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const snapshot = await firestore.collection('field_visits').get();
+      const list = [];
+      snapshot.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+      return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    } else {
+      const data = readLocalDB();
+      if (!data.fieldVisits) data.fieldVisits = [];
+      return data.fieldVisits.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+  },
+
+  getFieldVisitsByUserId: async (userId) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const snapshot = await firestore.collection('field_visits').where('userId', '==', userId).get();
+      const list = [];
+      snapshot.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+      return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    } else {
+      const data = readLocalDB();
+      if (!data.fieldVisits) data.fieldVisits = [];
+      return data.fieldVisits
+        .filter(v => v.userId === userId)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+  },
+
   flushDatabase: async () => {
     const firestore = getFirestore();
     if (firestore) {
-      const collections = ['users', 'logs', 'tasks', 'otps', 'assets', 'asset_verifications', 'asset_notifications'];
+      const collections = ['users', 'logs', 'tasks', 'otps', 'assets', 'asset_verifications', 'asset_notifications', 'field_visits'];
       for (const colName of collections) {
         const snapshot = await firestore.collection(colName).get();
         const batch = firestore.batch();
@@ -698,7 +768,8 @@ const db = {
         otps: [],
         assets: [],
         assetVerifications: [],
-        assetNotifications: []
+        assetNotifications: [],
+        fieldVisits: []
       };
       writeLocalDB(emptyData);
     }

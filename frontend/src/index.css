@@ -1051,3 +1051,44 @@ a:hover {
   from { transform: scale(1.12); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
+
+.field-visit-photo-wrapper {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  border: 2px solid #111111;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 3px 3px 0px #111111;
+  cursor: pointer;
+  background-color: #f3f4f6;
+  transition: all 0.2s ease;
+}
+
+.field-visit-photo-wrapper:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0px #111111;
+}
+
+.field-visit-tooltip {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(17, 17, 17, 0.95);
+  color: #ffffff;
+  padding: 0.6rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  z-index: 10;
+  border-top: 2px solid #111111;
+}
+
+.field-visit-photo-wrapper:hover .field-visit-tooltip {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+

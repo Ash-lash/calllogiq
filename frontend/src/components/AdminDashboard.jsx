@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, Calendar, FileSpreadsheet, PlusCircle, CheckCircle, Clock, 
   PhoneCall, AlertTriangle, Download, ArrowRight, ClipboardList, Settings, RotateCcw,
-  ChevronUp, ChevronDown, ChevronsUpDown, FileText, Folder, FolderOpen, RefreshCw, Trash2
+  ChevronUp, ChevronDown, ChevronsUpDown, FileText, Folder, FolderOpen, RefreshCw, Trash2, MapPin
 } from 'lucide-react';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
@@ -20,8 +20,13 @@ function AdminDashboard({ user, token }) {
   const [attendanceData, setAttendanceData] = useState(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   
-  // Active Admin Sub-View: 'leaderboard' | 'aggregate' | 'assign' | 'attendance'
+  // Active Admin Sub-View: 'leaderboard' | 'aggregate' | 'assign' | 'attendance' | 'fieldvisits'
   const [adminTab, setAdminTab] = useState('leaderboard');
+  
+  // Field Visits State
+  const [fieldVisits, setFieldVisits] = useState([]);
+  const [fieldVisitsLoading, setFieldVisitsLoading] = useState(false);
+  const [activePreviewImage, setActivePreviewImage] = useState(null);
   
   // Filter state for Aggregations: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'
   const [aggPeriod, setAggPeriod] = useState('monthly');
@@ -69,6 +74,7 @@ function AdminDashboard({ user, token }) {
     fetchUsers();
     fetchLogs();
     fetchTasks();
+    fetchFieldVisits();
   }, [token]);
 
   // Auto-detect running migration on Settings Tab mount
@@ -109,6 +115,8 @@ function AdminDashboard({ user, token }) {
       setAttendanceData(null);
     }
   }, [selectedAttendanceUserId]);
+
+
 
   const fetchAttendance = async (userId) => {
     setAttendanceLoading(true);
@@ -167,6 +175,23 @@ function AdminDashboard({ user, token }) {
       }
     } catch (err) {
       console.error('Error fetching tasks:', err);
+    }
+  };
+
+  const fetchFieldVisits = async () => {
+    setFieldVisitsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/business-development/field-visits`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setFieldVisits(data);
+      }
+    } catch (err) {
+      console.error('Error fetching field visits:', err);
+    } finally {
+      setFieldVisitsLoading(false);
     }
   };
 
@@ -647,6 +672,7 @@ function AdminDashboard({ user, token }) {
           <Users size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
           Analytics
         </button>
+
         <button 
           onClick={() => setAdminTab('attendance')} 
           className={`tab-btn ${adminTab === 'attendance' ? 'active' : ''}`}
@@ -674,6 +700,13 @@ function AdminDashboard({ user, token }) {
         >
           <ClipboardList size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
           Assign Tasks
+        </button>
+        <button 
+          onClick={() => setAdminTab('fieldvisits')} 
+          className={`tab-btn ${adminTab === 'fieldvisits' ? 'active' : ''}`}
+        >
+          <MapPin size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
+          Field Visits
         </button>
         <button 
           onClick={() => setAdminTab('settings')} 
@@ -1514,11 +1547,9 @@ function AdminDashboard({ user, token }) {
                         
                         {/* Domains */}
                         <optgroup label="Departments (All members in domain)">
-                          <option value="Sales">Sales Domain</option>
-                          <option value="Accounts">Accounts Domain</option>
-                          <option value="Support">Support Domain</option>
-                          <option value="HR">HR Domain</option>
-                          <option value="Operations">Operations Domain</option>
+                          <option value="Academic Couselling Team">Academic Counselling Team</option>
+                          <option value="Accounts & Developement Team">Accounts & Development Team</option>
+                          <option value="Business Development Team">Business Development Team</option>
                         </optgroup>
                         
                         {/* Individual Users */}
@@ -2047,6 +2078,155 @@ function AdminDashboard({ user, token }) {
         </div>
       )}
 
+      {/* SUB-VIEW: Field Visits (Admin only) */}
+      {adminTab === 'fieldvisits' && (() => {
+        const sortedVisits = [...fieldVisits].sort((a, b) => new Date(b.visitDateTime || b.createdAt) - new Date(a.visitDateTime || a.createdAt));
+        
+        // Group by Month and then by Day
+        const grouped = {};
+        sortedVisits.forEach(visit => {
+          const date = new Date(visit.visitDateTime || visit.createdAt);
+          if (isNaN(date.getTime())) return;
+          const monthYear = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+          const dayStr = date.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric' });
+          
+          if (!grouped[monthYear]) {
+            grouped[monthYear] = {};
+          }
+          if (!grouped[monthYear][dayStr]) {
+            grouped[monthYear][dayStr] = [];
+          }
+          grouped[monthYear][dayStr].push(visit);
+        });
+
+        return (
+          <div className="card" style={{ padding: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '2px solid #111111', paddingBottom: '0.75rem' }}>
+              <div>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.02em', margin: 0 }}>
+                  BD Team Field Visits Dashboard
+                </h2>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                  Track locations, dates, and verification photos uploaded by the Business Development field team.
+                </p>
+              </div>
+              <button 
+                onClick={fetchFieldVisits}
+                disabled={fieldVisitsLoading}
+                className="btn btn-secondary"
+                style={{ width: 'auto', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                <RefreshCw size={14} className={fieldVisitsLoading ? 'spin' : ''} />
+                Refresh Visits
+              </button>
+            </div>
+
+            {fieldVisitsLoading ? (
+              <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
+                <RefreshCw className="spin" size={36} style={{ color: '#111' }} />
+                <p style={{ marginTop: '1rem', fontWeight: 600 }}>Loading field visits logs...</p>
+              </div>
+            ) : Object.keys(grouped).length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                {Object.keys(grouped).map(month => (
+                  <div key={month} style={{ border: '2px solid #111111', borderRadius: '6px', padding: '1.5rem', backgroundColor: '#fafafa', boxShadow: '4px 4px 0px #111111' }}>
+                    <h3 style={{ fontSize: '1.3rem', fontWeight: 900, textTransform: 'uppercase', color: '#111111', borderBottom: '2px solid #111111', paddingBottom: '0.5rem', marginBottom: '1.25rem' }}>
+                      📅 {month}
+                    </h3>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                      {Object.keys(grouped[month]).map(day => (
+                        <div key={day} style={{ backgroundColor: '#ffffff', border: '1px dashed #111111', borderRadius: '4px', padding: '1rem' }}>
+                          <h4 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <span>☀️</span> {day}
+                          </h4>
+                          
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.25rem' }}>
+                            {grouped[month][day].map(visit => (
+                              visit.photos && visit.photos.map((photo, pIdx) => (
+                                <div 
+                                  key={`${visit.id}-${pIdx}`} 
+                                  className="field-visit-photo-wrapper"
+                                  onClick={() => setActivePreviewImage(photo)}
+                                >
+                                  <img 
+                                    src={photo} 
+                                    alt={`Visit by ${visit.userName}`} 
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                                  />
+                                  <div className="field-visit-tooltip">
+                                    <div style={{ fontWeight: 800, borderBottom: '1px dashed rgba(255,255,255,0.4)', paddingBottom: '3px', marginBottom: '3px', textTransform: 'uppercase' }}>
+                                      👤 {visit.userName}
+                                    </div>
+                                    <div style={{ fontWeight: 700 }}>📍 {visit.location}</div>
+                                    <div style={{ fontSize: '0.65rem', color: '#e2e8f0', marginTop: '2px' }}>
+                                      🕒 {new Date(visit.visitDateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </div>
+                                    <div style={{ marginTop: '4px', color: visit.gpsEnabled ? '#34d399' : '#fbbf24', fontWeight: 800, fontSize: '0.65rem' }}>
+                                      {visit.gpsEnabled ? 'Coordinates Verified' : 'No GPS info'}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '5rem 1rem', color: 'var(--text-muted)', border: '2px dashed #111111', borderRadius: '6px' }}>
+                <MapPin size={48} style={{ marginBottom: '1rem', color: 'var(--text-muted)' }} />
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111111' }}>No Field Visits Found</h3>
+                <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>Field visit photos uploaded by the Business Development Team will appear here.</p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+
+
+      {activePreviewImage && (
+        <div 
+          className="modal-overlay" 
+          style={{ zIndex: 100000, background: 'rgba(0, 0, 0, 0.85)' }}
+          onClick={() => setActivePreviewImage(null)}
+        >
+          <div style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+            <button 
+              onClick={() => setActivePreviewImage(null)}
+              style={{
+                position: 'absolute',
+                top: '-40px',
+                right: '0',
+                background: 'none',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '2rem',
+                cursor: 'pointer'
+              }}
+            >
+              &times;
+            </button>
+            <img 
+              src={activePreviewImage} 
+              alt="Fullscreen Field Visit Preview" 
+              style={{ 
+                maxWidth: '100%', 
+                maxHeight: '90vh', 
+                objectFit: 'contain',
+                border: '3px solid #ffffff',
+                borderRadius: '4px',
+                boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
+              }} 
+            />
+          </div>
+        </div>
+      )}
+
       {/* Edit User Modal Overlay */}
       {editingUser && (
         <div style={{
@@ -2122,11 +2302,9 @@ function AdminDashboard({ user, token }) {
                   onChange={e => setEditingUser({ ...editingUser, domain: e.target.value })} 
                   required
                 >
-                  <option value="Sales">Sales</option>
-                  <option value="Accounts">Accounts</option>
-                  <option value="Support">Support</option>
-                  <option value="HR">HR</option>
-                  <option value="Operations">Operations</option>
+                  <option value="Academic Couselling Team">Academic Counselling Team</option>
+                  <option value="Accounts & Developement Team">Accounts & Development Team</option>
+                  <option value="Business Development Team">Business Development Team</option>
                 </select>
               </div>
 

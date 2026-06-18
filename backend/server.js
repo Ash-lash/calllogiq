@@ -589,7 +589,7 @@ app.post('/api/users/update-profile', authenticateToken, async (req, res) => {
     return res.status(400).json({ error: 'Name, Domain, and Branch are required' });
   }
 
-  const validDomains = ['Sales', 'Accounts', 'Support', 'HR', 'Operations'];
+  const validDomains = ['Academic Couselling Team', 'Accounts & Developement Team', 'Business Development Team'];
   if (!validDomains.includes(domain)) {
     return res.status(400).json({ error: 'Invalid department domain' });
   }
@@ -1300,7 +1300,7 @@ async function cleanupOldCompletedTasks() {
       const taskDateStr = task.createdAt.split('T')[0];
       if (taskDateStr === todayStr) continue; // Keep today's tasks
       
-      const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(task.assignedTo.toLowerCase());
+      const isDomainTask = ['academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase());
       
       if (isDomainTask) {
         // Find all employees in this domain
@@ -1336,7 +1336,7 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
   
   // Format task checklist response
   const formattedTasks = tasks.map(t => {
-    const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(t.assignedTo.toLowerCase());
+    const isDomainTask = ['academic counselling team', 'accounts & developement team', 'business development team'].includes(t.assignedTo.toLowerCase());
     const status = t.employeeStages?.[req.user.userId] || (isDomainTask ? (t.completions?.includes(req.user.userId) ? 'completed' : 'pending') : (t.status || 'pending'));
     const isCompleted = status === 'completed';
     const taskDateStr = t.createdAt.split('T')[0];
@@ -1388,6 +1388,57 @@ app.post('/api/tasks/:taskId/toggle', authenticateToken, async (req, res) => {
   }
   
   return res.json({ message: 'Task status updated successfully', task: updatedTask });
+});
+
+// Submit field visit (Business Development Team)
+app.post('/api/business-development/field-visit', authenticateToken, async (req, res) => {
+  const { photos, gpsEnabled, location, visitDateTime } = req.body;
+  if (!photos || !Array.isArray(photos) || photos.length === 0) {
+    return res.status(400).json({ error: 'At least one photo is required' });
+  }
+  if (photos.length > 2) {
+    return res.status(400).json({ error: 'Maximum 2 photos can be uploaded' });
+  }
+  if (!location) {
+    return res.status(400).json({ error: 'Location is required' });
+  }
+  if (!visitDateTime) {
+    return res.status(400).json({ error: 'Date and time of visit are required' });
+  }
+
+  try {
+    const visit = {
+      userId: req.user.userId,
+      userName: req.user.name,
+      domain: req.user.domain,
+      photos,
+      gpsEnabled: !!gpsEnabled,
+      location,
+      visitDateTime
+    };
+
+    const newVisit = await db.createFieldVisit(visit);
+    return res.status(201).json({ message: 'Field visit recorded successfully', visit: newVisit });
+  } catch (err) {
+    console.error('Error creating field visit:', err);
+    return res.status(500).json({ error: 'Failed to record field visit' });
+  }
+});
+
+// Get field visits (All for admin, filtered by userId for employees)
+app.get('/api/business-development/field-visits', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role === 'admin') {
+      const allVisits = await db.getAllFieldVisits();
+      return res.json(allVisits);
+    } else {
+      const userVisits = await db.getFieldVisitsByUserId(req.user.userId);
+      return res.json(userVisits);
+    }
+  } catch (err) {
+    console.error('Error fetching field visits:', err);
+    return res.status(500).json({ error: 'Failed to fetch field visits' });
+  }
 });
 
 // --- ADMIN CONTROL PANEL ROUTES ---
@@ -2136,12 +2187,75 @@ app.get('/api/assets/reports/download', authenticateToken, requireAdmin, async (
   }
 });
 
+// Database Migration for Domain Categories
+async function migrateDomainCategories() {
+  try {
+    console.log('Running domain category database migration...');
+    const usersList = await db.listUsers();
+    const tasksList = await db.getAllTasks();
+
+    // 1. Migrate Users
+    for (const user of usersList) {
+      if (user.domain) {
+        let updatedDomain = null;
+        const lowerDom = user.domain.toLowerCase();
+        
+        if (lowerDom === 'sales') {
+          updatedDomain = 'Academic Couselling Team';
+        } else if (lowerDom === 'accounts') {
+          updatedDomain = 'Accounts & Developement Team';
+        } else if (['support', 'hr', 'operations'].includes(lowerDom)) {
+          updatedDomain = 'Pending';
+        }
+
+        if (updatedDomain) {
+          await db.updateUser(user.id, { domain: updatedDomain });
+          console.log(`Migrated user ${user.email} domain from "${user.domain}" to "${updatedDomain}"`);
+        }
+      }
+    }
+
+    // 2. Migrate Tasks
+    for (const task of tasksList) {
+      if (task.assignedTo) {
+        let updatedAssignee = null;
+        const lowerAssignee = task.assignedTo.toLowerCase();
+
+        if (lowerAssignee === 'sales') {
+          updatedAssignee = 'Academic Couselling Team';
+        } else if (lowerAssignee === 'accounts') {
+          updatedAssignee = 'Accounts & Developement Team';
+        } else if (['support', 'hr', 'operations'].includes(lowerAssignee)) {
+          await db.deleteTask(task.id);
+          console.log(`Deleted task "${task.title}" (ID: ${task.id}) assigned to removed domain: ${task.assignedTo}`);
+          continue;
+        }
+
+        if (updatedAssignee) {
+          await db.updateTask(task.id, { assignedTo: updatedAssignee });
+          console.log(`Migrated task "${task.title}" assignee from "${task.assignedTo}" to "${updatedAssignee}"`);
+        }
+      }
+    }
+    console.log('Domain category database migration completed successfully.');
+  } catch (err) {
+    console.error('Error running domain categories migration:', err);
+  }
+}
+
 // Start Express server
 app.listen(PORT, async () => {
   console.log(`CallLogIQ backend running on port ${PORT}`);
   console.log(`Admin email configured as: ${ADMIN_EMAIL}`);
   console.log(`Create admin by registering or logging in with this email.`);
   
+  // Run startup migrations
+  try {
+    await migrateDomainCategories();
+  } catch (err) {
+    console.error('Failed to run startup domain categories migration:', err);
+  }
+
   // Run startup assets seeder
   try {
     await db.seedAssets();

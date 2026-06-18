@@ -3,7 +3,9 @@ import Auth from './components/Auth';
 import UserDashboard from './components/UserDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import AssetManager from './components/AssetManager';
-import { LogOut, LayoutDashboard, CheckSquare, ShieldAlert, Laptop } from 'lucide-react';
+import UserProfile from './components/UserProfile';
+import API_BASE from './api';
+import { LogOut, LayoutDashboard, CheckSquare, ShieldAlert, Laptop, User } from 'lucide-react';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
@@ -13,7 +15,6 @@ function App() {
 
   useEffect(() => {
     if (token) {
-      // Decode JWT simple way to get user info, or fetch profile
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
         setUser({
@@ -24,6 +25,25 @@ function App() {
           branch: payload.branch,
           role: payload.role
         });
+
+        // Fetch full profile dynamically (photo, phone)
+        fetch(`${API_BASE}/api/users/profile`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.email) {
+              setUser(prev => ({
+                ...prev,
+                name: data.name || prev.name,
+                domain: data.domain || prev.domain,
+                branch: data.branch || prev.branch,
+                phone: data.phone || '',
+                photo: data.photo || ''
+              }));
+            }
+          })
+          .catch(err => console.error('Error fetching full user profile:', err));
         
         // If user is admin, set active tab to admin panel
         if (payload.role === 'admin') {
@@ -120,6 +140,13 @@ function App() {
                 <Laptop size={18} />
                 Asset Manager
               </button>
+              <button 
+                onClick={() => setActiveTab('profile')} 
+                className={`sidebar-item-btn ${activeTab === 'profile' ? 'active' : ''}`}
+              >
+                <User size={18} />
+                My Profile
+              </button>
             </>
           )}
 
@@ -140,6 +167,13 @@ function App() {
                 Asset Manager
               </button>
               <button 
+                onClick={() => setActiveTab('profile')} 
+                className={`sidebar-item-btn ${activeTab === 'profile' ? 'active' : ''}`}
+              >
+                <User size={18} />
+                My Profile
+              </button>
+              <button 
                 onClick={() => setActiveTab('dashboard')} 
                 className={`sidebar-item-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
               >
@@ -151,21 +185,30 @@ function App() {
         </nav>
         
         <div className="sidebar-footer">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {user.name}
-            </div>
-            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-              {user.domain && user.domain !== 'Pending' && (
-                <div className="user-meta-domain">
-                  {user.domain}
-                </div>
-              )}
-              {user.branch && user.branch !== 'Pending' && (
-                <div className="user-meta-domain" style={{ borderColor: 'var(--success)', color: 'var(--success)', boxShadow: '1px 1px 0px var(--success)' }}>
-                  {user.branch}
-                </div>
-              )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+            {user.photo ? (
+              <img src={user.photo} alt={user.name} style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #111' }} />
+            ) : (
+              <div className="user-avatar" style={{ width: '36px', height: '36px', minWidth: '36px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--primary)', color: '#fff', borderRadius: '50%', fontWeight: 700 }}>
+                {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', overflow: 'hidden' }}>
+              <div style={{ fontWeight: 600, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {user.name}
+              </div>
+              <div style={{ display: 'flex', gap: '0.2rem', flexWrap: 'wrap' }}>
+                {user.domain && user.domain !== 'Pending' && (
+                  <div className="user-meta-domain" style={{ fontSize: '0.65rem', padding: '1px 4px' }}>
+                    {user.domain}
+                  </div>
+                )}
+                {user.branch && user.branch !== 'Pending' && (
+                  <div className="user-meta-domain" style={{ fontSize: '0.65rem', padding: '1px 4px', borderColor: 'var(--success)', color: 'var(--success)', boxShadow: '1px 1px 0px var(--success)' }}>
+                    {user.branch}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           
@@ -175,17 +218,19 @@ function App() {
           </button>
         </div>
       </aside>
-
-      {/* Main workspace area */}
-      <main className="main-content">
-        {activeTab === 'admin' && isUserAdmin ? (
-          <AdminDashboard user={user} token={token} />
-        ) : activeTab === 'assets' ? (
-          <AssetManager user={user} token={token} />
-        ) : (
-          <UserDashboard user={user} token={token} previewMode={isUserAdmin} onProfileUpdate={handleLoginSuccess} />
-        )}
-      </main>
+ 
+       {/* Main workspace area */}
+       <main className="main-content">
+         {activeTab === 'admin' && isUserAdmin ? (
+           <AdminDashboard user={user} token={token} />
+         ) : activeTab === 'assets' ? (
+           <AssetManager user={user} token={token} />
+         ) : activeTab === 'profile' ? (
+           <UserProfile user={user} token={token} onProfileUpdate={handleLoginSuccess} />
+         ) : (
+           <UserDashboard user={user} token={token} previewMode={isUserAdmin} onProfileUpdate={handleLoginSuccess} />
+         )}
+       </main>
     </div>
   );
 }

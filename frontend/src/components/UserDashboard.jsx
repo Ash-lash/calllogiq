@@ -399,7 +399,11 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
       {/* Profile Header */}
       <div className="header-banner">
         <div className="header-user-profile">
-          <div className="user-avatar">{user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}</div>
+          {user.photo ? (
+            <img src={user.photo} alt={user.name} className="user-avatar" style={{ objectFit: 'cover', border: '2px solid #111111' }} />
+          ) : (
+            <div className="user-avatar">{user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}</div>
+          )}
           <div>
             <div className="user-meta-name">Welcome back, {user.name}</div>
             <div className="user-meta-domain">Workspace: {user.domain} Domain</div>

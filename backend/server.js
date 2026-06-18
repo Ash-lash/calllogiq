@@ -633,6 +633,62 @@ app.post('/api/users/update-profile', authenticateToken, async (req, res) => {
   }
 });
 
+// Get User Profile Details
+app.get('/api/users/profile', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const user = await db.findUserById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const { passwordHash, ...safeUser } = user;
+    return res.json(safeUser);
+  } catch (err) {
+    console.error('Get Profile Error:', err);
+    return res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+// Update User Profile Settings (Name, Phone, and Base64 Photo)
+app.post('/api/users/update-profile-settings', authenticateToken, async (req, res) => {
+  const { name, phone, photo } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: 'Name is required' });
+  }
+
+  try {
+    const userId = req.user.userId;
+    const updatedFields = { name };
+    if (phone !== undefined) updatedFields.phone = phone;
+    if (photo !== undefined) updatedFields.photo = photo;
+
+    const updatedUser = await db.updateUser(userId, updatedFields);
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Generate new JWT token with updated profile info
+    const token = jwt.sign({
+      userId: updatedUser.id,
+      email: updatedUser.email,
+      name: updatedUser.name,
+      domain: updatedUser.domain,
+      branch: updatedUser.branch || 'Pending',
+      role: updatedUser.role
+    }, JWT_SECRET, { expiresIn: '30d' });
+
+    const { passwordHash, ...safeUser } = updatedUser;
+
+    return res.json({
+      token,
+      user: safeUser
+    });
+  } catch (err) {
+    console.error('Update Profile Settings Error:', err);
+    return res.status(500).json({ error: 'Failed to update profile settings' });
+  }
+});
+
 
 // --- CALL ANALYSIS ROUTES ---
 

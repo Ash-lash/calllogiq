@@ -857,11 +857,16 @@ function AdminDashboard({ user, token }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {leaderboard.filter(u => u.email !== user.email).map(emp => (
+                  {leaderboard.filter(u => u.email !== user.email).map(emp => {
+                    const domainLower = (emp.domain || '').toLowerCase();
+                    let domainBg = '#dbeafe', domainColor = '#1d4ed8';
+                    if (domainLower.includes('accounts')) { domainBg = '#ede9fe'; domainColor = '#7c3aed'; }
+                    else if (domainLower.includes('business')) { domainBg = '#dcfce7'; domainColor = '#15803d'; }
+                    return (
                     <tr key={emp.id}>
-                      <td className="name-col" style={{ fontWeight: 600 }}>{emp.name}</td>
-                      <td className="email-col">{emp.email}</td>
-                      <td><span className="badge badge-primary">{emp.domain}</span></td>
+                      <td className="name-col" style={{ fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'normal', wordBreak: 'break-word', cursor: 'pointer', color: 'var(--primary)', textDecoration: 'underline dotted' }} onClick={() => setSelectedProfilePreview(emp)} title="Click to view profile">{emp.name}</td>
+                      <td className="email-col" style={{ fontSize: '0.78rem', whiteSpace: 'normal', wordBreak: 'break-all' }}>{emp.email}</td>
+                      <td style={{ minWidth: '120px' }}><span style={{ display: 'inline-block', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', background: domainBg, color: domainColor, border: `1.5px solid ${domainColor}`, whiteSpace: 'normal', lineHeight: 1.2 }}>{emp.domain}</span></td>
                       <td>
                         <span 
                           className="badge badge-success" 
@@ -895,7 +900,8 @@ function AdminDashboard({ user, token }) {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {leaderboard.filter(u => u.email !== user.email).length === 0 && (
                     <tr>
                       <td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
@@ -1755,9 +1761,12 @@ function AdminDashboard({ user, token }) {
                           >
                             {employee.name}
                           </h4>
-                          <span className="badge badge-primary" style={{ fontSize: '0.7 your domain', padding: '0.2rem 0.5rem', textTransform: 'uppercase' }}>
-                            {employee.domain}
-                          </span>
+                          {(() => {
+                            const dl = (employee.domain || '').toLowerCase();
+                            const dbg = dl.includes('accounts') ? '#ede9fe' : dl.includes('business') ? '#dcfce7' : '#dbeafe';
+                            const dc = dl.includes('accounts') ? '#7c3aed' : dl.includes('business') ? '#15803d' : '#1d4ed8';
+                            return <span style={{ padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', background: dbg, color: dc, border: `1.5px solid ${dc}` }}>{employee.domain}</span>;
+                          })()}
                         </div>
                         
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
@@ -2983,9 +2992,12 @@ function AdminDashboard({ user, token }) {
               )}
               {selectedProfilePreview.domain && (
                 <div style={{ marginTop: '0.5rem', display: 'inline-block' }}>
-                  <span className="badge badge-primary" style={{ textTransform: 'uppercase', fontSize: '0.7rem', fontWeight: 800 }}>
-                    {selectedProfilePreview.domain}
-                  </span>
+                  {(() => {
+                    const dl = (selectedProfilePreview.domain || '').toLowerCase();
+                    const dbg = dl.includes('accounts') ? '#ede9fe' : dl.includes('business') ? '#dcfce7' : '#dbeafe';
+                    const dc = dl.includes('accounts') ? '#7c3aed' : dl.includes('business') ? '#15803d' : '#1d4ed8';
+                    return <span style={{ padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', background: dbg, color: dc, border: `1.5px solid ${dc}` }}>{selectedProfilePreview.domain}</span>;
+                  })()}
                 </div>
               )}
             </div>

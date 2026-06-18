@@ -395,6 +395,19 @@ const db = {
       } else {
         task.status = status;
       }
+
+      if (!task.completedAtByUser) task.completedAtByUser = {};
+      if (status === 'completed') {
+        task.completedAtByUser[userId] = new Date().toISOString();
+        if (!isDomainTask) {
+          task.completedAt = new Date().toISOString();
+        }
+      } else {
+        delete task.completedAtByUser[userId];
+        if (!isDomainTask) {
+          delete task.completedAt;
+        }
+      }
       
       await docRef.set(task);
       return { id: taskId, ...task };
@@ -416,6 +429,19 @@ const db = {
         }
       } else {
         task.status = status;
+      }
+
+      if (!task.completedAtByUser) task.completedAtByUser = {};
+      if (status === 'completed') {
+        task.completedAtByUser[userId] = new Date().toISOString();
+        if (!isDomainTask) {
+          task.completedAt = new Date().toISOString();
+        }
+      } else {
+        delete task.completedAtByUser[userId];
+        if (!isDomainTask) {
+          delete task.completedAt;
+        }
       }
       
       writeLocalDB(data);

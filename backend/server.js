@@ -1292,41 +1292,8 @@ app.get('/api/admin/attendance/:userId', authenticateToken, requireAdmin, async 
 
 // Cleanup helper to remove completed tasks from previous days
 async function cleanupOldCompletedTasks() {
-  try {
-    const tasks = await db.getAllTasks();
-    const users = await db.listUsers();
-    const todayStr = new Date().toISOString().split('T')[0];
-    
-    for (const task of tasks) {
-      const taskDateStr = task.createdAt.split('T')[0];
-      if (taskDateStr === todayStr) continue; // Keep today's tasks
-      
-      const isDomainTask = ['academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase());
-      
-      if (isDomainTask) {
-        // Find all employees in this domain
-        const domainEmployees = users.filter(u => u.domain && u.domain.toLowerCase() === task.assignedTo.toLowerCase() && u.role !== 'admin');
-        
-        // Check if all employees have completed it
-        const allCompleted = domainEmployees.length > 0 && domainEmployees.every(emp => {
-          const stage = task.employeeStages?.[emp.id] || (task.completions?.includes(emp.id) ? 'completed' : 'pending');
-          return stage === 'completed';
-        });
-        
-        if (allCompleted || domainEmployees.length === 0) {
-          await db.deleteTask(task.id);
-        }
-      } else {
-        // Personal task
-        const isCompleted = task.status === 'completed';
-        if (isCompleted) {
-          await db.deleteTask(task.id);
-        }
-      }
-    }
-  } catch (err) {
-    console.error('Error in cleanupOldCompletedTasks:', err);
-  }
+  // Discard auto-deletion to keep tasks for "All Assigned Works (Hierarchical Grouping)"
+  return;
 }
 
 // Get tasks for the current user
@@ -1351,11 +1318,25 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
       isCompleted,
       status, // 'pending', 'seen', 'doing', 'completed'
       createdAt: t.createdAt,
-      taskDateStr
+      taskDateStr,
+      completedAtByUser: t.completedAtByUser || {},
+      completedAt: t.completedAt
     };
   })
-  // Filter out tasks that are completed AND from a previous day
-  .filter(t => !(t.status === 'completed' && t.taskDateStr !== todayStr));
+  // Filter out completed tasks that were completed more than 24 hours ago
+  .filter(t => {
+    if (t.status === 'completed') {
+      const completedTime = t.completedAtByUser?.[req.user.userId] || t.completedAt;
+      if (completedTime) {
+        const msDiff = new Date() - new Date(completedTime);
+        return msDiff <= 24 * 60 * 60 * 1000;
+      } else {
+        // Fallback for historical completed tasks without a completion timestamp
+        return t.taskDateStr === todayStr;
+      }
+    }
+    return true; // Keep pending, seen, doing tasks until completed
+  });
   
   return res.json(formattedTasks);
 });

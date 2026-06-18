@@ -28,6 +28,12 @@ function AdminDashboard({ user, token }) {
   const [fieldVisitsLoading, setFieldVisitsLoading] = useState(false);
   const [activePreviewImage, setActivePreviewImage] = useState(null);
 
+  // WhatsApp-style employee profile preview card state
+  const [selectedProfilePreview, setSelectedProfilePreview] = useState(null);
+
+  // Task details status card state
+  const [selectedTaskDetails, setSelectedTaskDetails] = useState(null);
+
   // Deep Analytics State
   const [deepAnalyticsUserId, setDeepAnalyticsUserId] = useState('');
   const [deepAnalyticsPeriod, setDeepAnalyticsPeriod] = useState('monthly');
@@ -72,6 +78,18 @@ function AdminDashboard({ user, token }) {
   const [expandedEmployees, setExpandedEmployees] = useState({});
   // Aggregate download loading per userId
   const [aggregateLoading, setAggregateLoading] = useState({});
+
+  const showProfilePopupByNameOrId = (nameOrId) => {
+    if (!nameOrId) return;
+    const foundUser = users.find(u => 
+      u.id === nameOrId || 
+      (u.name && u.name.toLowerCase() === nameOrId.toLowerCase()) ||
+      (u.name && nameOrId.toLowerCase().includes(u.name.toLowerCase()))
+    );
+    if (foundUser) {
+      setSelectedProfilePreview(foundUser);
+    }
+  };
 
   // Fetch Admin Data
   useEffect(() => {
@@ -905,7 +923,7 @@ function AdminDashboard({ user, token }) {
               style={{ maxWidth: '300px', margin: 0 }}
             >
               <option value="">-- Choose Employee --</option>
-              {users.filter(u => u.role !== 'admin').map(emp => (
+              {users.filter(u => u.role !== 'admin').sort((a, b) => a.name.localeCompare(b.name)).map(emp => (
                 <option key={emp.id} value={emp.id}>
                   {emp.name} ({emp.email})
                 </option>
@@ -1218,7 +1236,13 @@ function AdminDashboard({ user, token }) {
                         ? <FolderOpen size={20} style={{ color: 'var(--primary)' }} />
                         : <Folder size={20} style={{ color: 'var(--text-secondary)' }} />}
                       <div>
-                        <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{emp.name}</div>
+                        <div 
+                          onClick={(e) => { e.stopPropagation(); setSelectedProfilePreview(emp); }}
+                          style={{ fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', textDecoration: 'underline', color: 'var(--primary)' }}
+                          title="Click to view WhatsApp profile"
+                        >
+                          {emp.name}
+                        </div>
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
                           {emp.email} &nbsp;·&nbsp; {emp.domain} &nbsp;·&nbsp;
                           <strong>{empLogs.length}</strong> log{empLogs.length !== 1 ? 's' : ''} &nbsp;·&nbsp;
@@ -1329,18 +1353,89 @@ function AdminDashboard({ user, token }) {
         // Get active users (excluding admin)
         const activeEmployees = users.filter(u => u.role !== 'admin');
         
+        // Helper to decide if a task should be shown for a specific employee on Admin side
+        const shouldShowTaskForEmployeeOnAdminSide = (task, employee) => {
+          const isDomainTask = ['academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase()) || !users.some(u => u.id === task.assignedTo);
+          const stage = task.employeeStages?.[employee.id] || (isDomainTask ? (task.completions?.includes(employee.id) ? 'completed' : 'pending') : (task.status || 'pending'));
+          
+          if (stage !== 'completed') {
+            return true; // Let it be there until completed
+          }
+          
+          // Completed - check 24 hours
+          const completedTime = task.completedAtByUser?.[employee.id] || task.completedAt;
+          if (completedTime) {
+            const msDiff = new Date() - new Date(completedTime);
+            return msDiff <= 24 * 60 * 60 * 1000;
+          }
+          
+          const taskDateStr = task.createdAt.split('T')[0];
+          const todayStr = new Date().toISOString().split('T')[0];
+          return taskDateStr === todayStr;
+        };
+
+        // Helper to decide if a task is active overall (at least one user has it in seen/doing, or completed within 24h)
+        const shouldShowTaskOnAdminSide = (task) => {
+          const isDomainTask = ['academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase()) || !users.some(u => u.id === task.assignedTo);
+          
+          if (isDomainTask) {
+            const domainEmployees = activeEmployees.filter(u => u.domain && u.domain.toLowerCase() === task.assignedTo.toLowerCase());
+            if (domainEmployees.length === 0) return false;
+            
+            const allCompleted = domainEmployees.every(emp => {
+              const stage = task.employeeStages?.[emp.id] || (task.completions?.includes(emp.id) ? 'completed' : 'pending');
+              return stage === 'completed';
+            });
+            
+            if (!allCompleted) {
+              return true; // Someone is still working on it, keep it
+            }
+            
+            // If everyone completed it, check if the latest completion is within 24 hours
+            let latestCompletion = null;
+            domainEmployees.forEach(emp => {
+              const compTime = task.completedAtByUser?.[emp.id];
+              if (compTime) {
+                const d = new Date(compTime);
+                if (!latestCompletion || d > latestCompletion) {
+                  latestCompletion = d;
+                }
+              }
+            });
+            
+            if (latestCompletion) {
+              const msDiff = new Date() - latestCompletion;
+              return msDiff <= 24 * 60 * 60 * 1000;
+            }
+            return task.createdAt.split('T')[0] === new Date().toISOString().split('T')[0];
+          } else {
+            // Personal task
+            const isCompleted = task.status === 'completed';
+            if (!isCompleted) return true;
+            
+            const completedTime = task.completedAt;
+            if (completedTime) {
+              const msDiff = new Date() - new Date(completedTime);
+              return msDiff <= 24 * 60 * 60 * 1000;
+            }
+            return task.createdAt.split('T')[0] === new Date().toISOString().split('T')[0];
+          }
+        };
+
+        const activeWorkloadTasks = tasks.filter(shouldShowTaskOnAdminSide);
+
         // Group tasks by employee
         const employeeTasksMap = {};
         
         activeEmployees.forEach(emp => {
           // Find all tasks assigned to this user or to their domain
           const empTasks = tasks.filter(task => {
-            const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations'].includes(task.assignedTo.toLowerCase());
-            if (isDomainTask) {
-              return emp.domain && emp.domain.toLowerCase() === task.assignedTo.toLowerCase();
-            } else {
-              return task.assignedTo === emp.id;
-            }
+            const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations', 'academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase()) || !users.some(u => u.id === task.assignedTo);
+            const isAssigned = isDomainTask 
+              ? (emp.domain && emp.domain.toLowerCase() === task.assignedTo.toLowerCase())
+              : (task.assignedTo === emp.id);
+            
+            return isAssigned && shouldShowTaskForEmployeeOnAdminSide(task, emp);
           });
           
           if (empTasks.length > 0) {
@@ -1410,12 +1505,12 @@ function AdminDashboard({ user, token }) {
                 {/* Active Assigned Tasks list (Left Sidebar - Recent 2) */}
                 <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
                   <div className="card-title-bar">
-                    <h3>Active Workload Assignments ({tasks.length})</h3>
+                    <h3>Active Workload Assignments ({activeWorkloadTasks.length})</h3>
                   </div>
                   
-                  {tasks.length > 0 ? (
+                  {activeWorkloadTasks.length > 0 ? (
                     <div style={{ overflowY: 'auto', flex: 1, paddingRight: '0.25rem' }}>
-                      {tasks
+                      {activeWorkloadTasks
                         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
                         .slice(0, 2)
                         .map(task => {
@@ -1448,7 +1543,7 @@ function AdminDashboard({ user, token }) {
                                     <span className="badge badge-success">Personal</span>
                                   )}
                                   <button 
-                                    onClick={() => handleDeleteTask(task.id)}
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteTask(task.id); }}
                                     style={{
                                       border: 'none',
                                       background: 'none',
@@ -1477,7 +1572,21 @@ function AdminDashboard({ user, token }) {
                             )}
                             
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.6rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span>Assigned to: <strong>{assigneeName}</strong></span>
+                              <span>
+                                Assigned to: <strong>
+                                  {targetUser ? (
+                                    <span 
+                                      onClick={() => setSelectedProfilePreview(targetUser)}
+                                      style={{ cursor: 'pointer', textDecoration: 'underline', color: 'var(--primary)' }}
+                                      title="Click to view WhatsApp profile"
+                                    >
+                                      {assigneeName}
+                                    </span>
+                                  ) : (
+                                    assigneeName
+                                  )}
+                                </strong>
+                              </span>
                               {isDomainTask ? (
                                 <span>Completions: {task.completions?.length || 0}</span>
                               ) : (
@@ -1516,6 +1625,7 @@ function AdminDashboard({ user, token }) {
                                       return (
                                         <span 
                                           key={u.id} 
+                                          onClick={() => setSelectedProfilePreview(u)}
                                           style={{ 
                                             fontSize: '0.7rem', 
                                             padding: '0.15rem 0.4rem', 
@@ -1526,8 +1636,10 @@ function AdminDashboard({ user, token }) {
                                             border: '1px solid rgba(0,0,0,0.05)',
                                             display: 'inline-flex',
                                             alignItems: 'center',
-                                            gap: '2px'
+                                            gap: '2px',
+                                            cursor: 'pointer'
                                           }}
+                                          title="Click to view WhatsApp profile"
                                         >
                                           {u.name}: <strong style={{ textTransform: 'capitalize' }}>{stage}</strong>
                                         </span>
@@ -1598,10 +1710,9 @@ function AdminDashboard({ user, token }) {
                           <option value="Accounts & Developement Team">Accounts & Development Team</option>
                           <option value="Business Development Team">Business Development Team</option>
                         </optgroup>
-                        
-                        {/* Individual Users */}
+                                  {/* Individual Users */}
                         <optgroup label="Specific Employees">
-                          {users.filter(u => u.role !== 'admin').map(emp => (
+                          {users.filter(u => u.role !== 'admin').sort((a, b) => a.name.localeCompare(b.name)).map(emp => (
                             <option key={emp.id} value={emp.id}>
                               {emp.name} ({emp.email})
                             </option>
@@ -1609,7 +1720,7 @@ function AdminDashboard({ user, token }) {
                         </optgroup>
                       </select>
                     </div>
-
+ 
                     <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>
                       <PlusCircle size={18} />
                       Assign Workload Task
@@ -1637,7 +1748,11 @@ function AdminDashboard({ user, token }) {
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.6rem', marginBottom: '0.75rem' }}>
-                          <h4 style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>
+                          <h4 
+                            onClick={() => setSelectedProfilePreview(employee)}
+                            style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0, cursor: 'pointer', textDecoration: 'underline' }}
+                            title="Click to view WhatsApp profile"
+                          >
                             {employee.name}
                           </h4>
                           <span className="badge badge-primary" style={{ fontSize: '0.7 your domain', padding: '0.2rem 0.5rem', textTransform: 'uppercase' }}>
@@ -1839,7 +1954,20 @@ function AdminDashboard({ user, token }) {
                                                       return (
                                                         <div key={assignee} style={{ padding: '0.5rem', background: '#ffffff', borderLeft: '3px solid var(--primary)', borderRadius: '2px', marginLeft: '0.5rem' }}>
                                                           <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem', color: '#111' }}>
-                                                            👤 Assignee: {assignee}
+                                                            👤 Assignee: {assignee.endsWith('(Individual)') ? (
+                                                              <span 
+                                                                onClick={() => {
+                                                                  const uName = assignee.replace(' (Individual)', '');
+                                                                  showProfilePopupByNameOrId(uName);
+                                                                }}
+                                                                style={{ cursor: 'pointer', textDecoration: 'underline', color: 'var(--primary)' }}
+                                                                title="Click to view WhatsApp profile"
+                                                              >
+                                                                {assignee}
+                                                              </span>
+                                                            ) : (
+                                                              assignee
+                                                            )}
                                                           </div>
                                                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                                                             {tasksList.map(task => {
@@ -1852,6 +1980,7 @@ function AdminDashboard({ user, token }) {
                                                               return (
                                                                 <div 
                                                                   key={task.id} 
+                                                                  onClick={() => setSelectedTaskDetails(task)}
                                                                   style={{ 
                                                                     padding: '0.5rem', 
                                                                     border: '1px solid #eee', 
@@ -1860,8 +1989,10 @@ function AdminDashboard({ user, token }) {
                                                                     background: '#ffffff',
                                                                     display: 'flex',
                                                                     justifyContent: 'space-between',
-                                                                    alignItems: 'center'
+                                                                    alignItems: 'center',
+                                                                    cursor: 'pointer'
                                                                   }}
+                                                                  title="Click to view task details"
                                                                 >
                                                                   <div>
                                                                     <div style={{ fontWeight: 600 }}>{task.title}</div>
@@ -1880,7 +2011,7 @@ function AdminDashboard({ user, token }) {
                                                                       {task.status || 'pending'}
                                                                     </span>
                                                                     <button 
-                                                                      onClick={() => handleDeleteTask(task.id)}
+                                                                      onClick={(e) => { e.stopPropagation(); handleDeleteTask(task.id); }}
                                                                       style={{
                                                                         border: 'none',
                                                                         background: 'none',
@@ -2129,21 +2260,34 @@ function AdminDashboard({ user, token }) {
       {adminTab === 'fieldvisits' && (() => {
         const sortedVisits = [...fieldVisits].sort((a, b) => new Date(b.visitDateTime || b.createdAt) - new Date(a.visitDateTime || a.createdAt));
         
-        // Group by Month and then by Day
+        const monthOrder = {
+          'January': 1, 'February': 2, 'March': 3, 'April': 4, 'May': 5, 'June': 6,
+          'July': 7, 'August': 8, 'September': 9, 'October': 10, 'November': 11, 'December': 12
+        };
+
+        // Group by Year -> Individual -> Month -> Day
         const grouped = {};
         sortedVisits.forEach(visit => {
           const date = new Date(visit.visitDateTime || visit.createdAt);
           if (isNaN(date.getTime())) return;
-          const monthYear = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+          const year = date.getFullYear().toString();
+          const userName = visit.userName || 'Unknown Employee';
+          const month = date.toLocaleDateString('en-US', { month: 'long' });
           const dayStr = date.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric' });
           
-          if (!grouped[monthYear]) {
-            grouped[monthYear] = {};
+          if (!grouped[year]) {
+            grouped[year] = {};
           }
-          if (!grouped[monthYear][dayStr]) {
-            grouped[monthYear][dayStr] = [];
+          if (!grouped[year][userName]) {
+            grouped[year][userName] = {};
           }
-          grouped[monthYear][dayStr].push(visit);
+          if (!grouped[year][userName][month]) {
+            grouped[year][userName][month] = {};
+          }
+          if (!grouped[year][userName][month][dayStr]) {
+            grouped[year][userName][month][dayStr] = [];
+          }
+          grouped[year][userName][month][dayStr].push(visit);
         });
 
         return (
@@ -2175,53 +2319,91 @@ function AdminDashboard({ user, token }) {
               </div>
             ) : Object.keys(grouped).length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                {Object.keys(grouped).map(month => (
-                  <div key={month} style={{ border: '2px solid #111111', borderRadius: '6px', padding: '1.5rem', backgroundColor: '#fafafa', boxShadow: '4px 4px 0px #111111' }}>
-                    <h3 style={{ fontSize: '1.3rem', fontWeight: 900, textTransform: 'uppercase', color: '#111111', borderBottom: '2px solid #111111', paddingBottom: '0.5rem', marginBottom: '1.25rem' }}>
-                      📅 {month}
-                    </h3>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                      {Object.keys(grouped[month]).map(day => (
-                        <div key={day} style={{ backgroundColor: '#ffffff', border: '1px dashed #111111', borderRadius: '4px', padding: '1rem' }}>
-                          <h4 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            <span>☀️</span> {day}
-                          </h4>
-                          
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.25rem' }}>
-                            {grouped[month][day].map(visit => (
-                              visit.photos && visit.photos.map((photo, pIdx) => (
-                                <div 
-                                  key={`${visit.id}-${pIdx}`} 
-                                  className="field-visit-photo-wrapper"
-                                  onClick={() => setActivePreviewImage(photo)}
+                {Object.keys(grouped)
+                  .sort((a, b) => b - a)
+                  .map(year => (
+                    <div key={year} style={{ border: '2px solid #111111', borderRadius: '6px', padding: '1.5rem', backgroundColor: '#fafafa', boxShadow: '4px 4px 0px #111111' }}>
+                      <h3 style={{ fontSize: '1.4rem', fontWeight: 900, textTransform: 'uppercase', color: '#111111', borderBottom: '2px solid #111111', paddingBottom: '0.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        📅 Year: {year}
+                      </h3>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                        {Object.keys(grouped[year])
+                          .sort((a, b) => a.localeCompare(b))
+                          .map(userName => (
+                            <div key={userName} style={{ backgroundColor: '#ffffff', border: '2px solid #111111', borderRadius: '6px', padding: '1.25rem', boxShadow: '2px 2px 0px #111111' }}>
+                              <h4 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)', borderBottom: '1px solid #111111', paddingBottom: '0.5rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                👤 <span 
+                                  onClick={() => showProfilePopupByNameOrId(userName)}
+                                  style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                                  title="Click to view WhatsApp profile"
                                 >
-                                  <img 
-                                    src={photo} 
-                                    alt={`Visit by ${visit.userName}`} 
-                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                                  />
-                                  <div className="field-visit-tooltip">
-                                    <div style={{ fontWeight: 800, borderBottom: '1px dashed rgba(255,255,255,0.4)', paddingBottom: '3px', marginBottom: '3px', textTransform: 'uppercase' }}>
-                                      👤 {visit.userName}
+                                  {userName}
+                                </span>
+                              </h4>
+                              
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                {Object.keys(grouped[year][userName])
+                                  .sort((a, b) => (monthOrder[b] || 0) - (monthOrder[a] || 0))
+                                  .map(month => (
+                                    <div key={month}>
+                                      <h5 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#444444', textTransform: 'uppercase', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                        🌙 {month}
+                                      </h5>
+                                      
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingLeft: '0.5rem' }}>
+                                        {Object.keys(grouped[year][userName][month])
+                                          .sort((a, b) => {
+                                            const dateA = new Date(grouped[year][userName][month][a][0].visitDateTime || grouped[year][userName][month][a][0].createdAt);
+                                            const dateB = new Date(grouped[year][userName][month][b][0].visitDateTime || grouped[year][userName][month][b][0].createdAt);
+                                            return dateB - dateA;
+                                          })
+                                          .map(day => (
+                                            <div key={day} style={{ backgroundColor: '#f9fafb', border: '1px dashed #111111', borderRadius: '4px', padding: '1rem' }}>
+                                              <div style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                <span>☀️</span> {day}
+                                              </div>
+                                              
+                                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.25rem' }}>
+                                                {grouped[year][userName][month][day].map(visit => (
+                                                  visit.photos && visit.photos.map((photo, pIdx) => (
+                                                    <div 
+                                                      key={`${visit.id}-${pIdx}`} 
+                                                      className="field-visit-photo-wrapper"
+                                                      onClick={() => setActivePreviewImage(photo)}
+                                                    >
+                                                      <img 
+                                                        src={photo} 
+                                                        alt={`Visit by ${visit.userName}`} 
+                                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                                                      />
+                                                      <div className="field-visit-tooltip">
+                                                        <div style={{ fontWeight: 800, borderBottom: '1px dashed rgba(255,255,255,0.4)', paddingBottom: '3px', marginBottom: '3px', textTransform: 'uppercase' }}>
+                                                          👤 {visit.userName}
+                                                        </div>
+                                                        <div style={{ fontWeight: 700 }}>📍 {visit.location}</div>
+                                                        <div style={{ fontSize: '0.65rem', color: '#e2e8f0', marginTop: '2px' }}>
+                                                          🕒 {new Date(visit.visitDateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </div>
+                                                        <div style={{ marginTop: '4px', color: visit.gpsEnabled ? '#34d399' : '#fbbf24', fontWeight: 800, fontSize: '0.65rem' }}>
+                                                          {visit.gpsEnabled ? 'Coordinates Verified' : 'No GPS info'}
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                  ))
+                                                ))}
+                                              </div>
+                                            </div>
+                                          ))}
+                                      </div>
                                     </div>
-                                    <div style={{ fontWeight: 700 }}>📍 {visit.location}</div>
-                                    <div style={{ fontSize: '0.65rem', color: '#e2e8f0', marginTop: '2px' }}>
-                                      🕒 {new Date(visit.visitDateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </div>
-                                    <div style={{ marginTop: '4px', color: visit.gpsEnabled ? '#34d399' : '#fbbf24', fontWeight: 800, fontSize: '0.65rem' }}>
-                                      {visit.gpsEnabled ? 'Coordinates Verified' : 'No GPS info'}
-                                    </div>
-                                  </div>
-                                </div>
-                              ))
-                            ))}
-                          </div>
-                        </div>
-                      ))}
+                                  ))}
+                              </div>
+                            </div>
+                          ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             ) : (
               <div style={{ textAlign: 'center', padding: '5rem 1rem', color: 'var(--text-muted)', border: '2px dashed #111111', borderRadius: '6px' }}>
@@ -2344,7 +2526,7 @@ function AdminDashboard({ user, token }) {
                   }}
                 >
                   <option value="">-- Select Employee --</option>
-                  {users.map(u => (
+                  {users.sort((a, b) => a.name.localeCompare(b.name)).map(u => (
                     <option key={u.id} value={u.id}>{u.name} ({u.domain})</option>
                   ))}
                 </select>
@@ -2712,6 +2894,266 @@ function AdminDashboard({ user, token }) {
           </div>
         </div>
       )}
+
+      {/* WhatsApp-style Profile details Modal */}
+      {selectedProfilePreview && (
+        <div 
+          onClick={() => setSelectedProfilePreview(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backdropFilter: 'blur(4px)',
+            padding: '1rem'
+          }}
+        >
+          <div 
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '320px',
+              backgroundColor: '#ffffff',
+              border: '3px solid #111111',
+              borderRadius: '12px',
+              boxShadow: '8px 8px 0px #111111',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              position: 'relative',
+              animation: 'fadeIn 0.2s ease-out'
+            }}
+          >
+            {/* Close Button */}
+            <button 
+              onClick={() => setSelectedProfilePreview(null)}
+              style={{
+                position: 'absolute',
+                top: '10px',
+                right: '10px',
+                border: '2px solid #111111',
+                background: '#ffffff',
+                width: '30px',
+                height: '30px',
+                borderRadius: '50%',
+                fontWeight: 900,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10
+              }}
+            >
+              ✕
+            </button>
+
+            {/* Profile Photo Area */}
+            <div style={{ height: '240px', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', borderBottom: '3px solid #111111' }}>
+              {selectedProfilePreview.photo ? (
+                <img 
+                  src={selectedProfilePreview.photo} 
+                  alt={selectedProfilePreview.name} 
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                />
+              ) : (
+                <div style={{ fontSize: '5rem', fontWeight: 800, color: '#4b5563' }}>
+                  {selectedProfilePreview.name ? selectedProfilePreview.name.charAt(0).toUpperCase() : 'U'}
+                </div>
+              )}
+            </div>
+
+            {/* Info Area */}
+            <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#111111', textTransform: 'uppercase' }}>
+                {selectedProfilePreview.name}
+              </div>
+              <div style={{ fontSize: '0.88rem', color: '#4b5563', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                ✉️ {selectedProfilePreview.email}
+              </div>
+              {selectedProfilePreview.phone && (
+                <div style={{ fontSize: '0.85rem', color: '#4b5563', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  📞 {selectedProfilePreview.phone}
+                </div>
+              )}
+              {selectedProfilePreview.domain && (
+                <div style={{ marginTop: '0.5rem', display: 'inline-block' }}>
+                  <span className="badge badge-primary" style={{ textTransform: 'uppercase', fontSize: '0.7rem', fontWeight: 800 }}>
+                    {selectedProfilePreview.domain}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Task Status Details Modal */}
+      {selectedTaskDetails && (() => {
+        const isDomainTask = ['academic counselling team', 'accounts & developement team', 'business development team'].includes(selectedTaskDetails.assignedTo.toLowerCase()) || !users.some(u => u.id === selectedTaskDetails.assignedTo);
+        const activeEmployees = users.filter(u => u.role !== 'admin');
+        
+        let assignedUsers = [];
+        if (isDomainTask) {
+          assignedUsers = activeEmployees.filter(u => u.domain && u.domain.toLowerCase() === selectedTaskDetails.assignedTo.toLowerCase());
+        } else {
+          const targetUser = users.find(u => u.id === selectedTaskDetails.assignedTo);
+          if (targetUser) assignedUsers = [targetUser];
+        }
+
+        return (
+          <div 
+            onClick={() => setSelectedTaskDetails(null)}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              zIndex: 9999,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backdropFilter: 'blur(4px)',
+              padding: '1rem'
+            }}
+          >
+            <div 
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: '100%',
+                maxWidth: '480px',
+                backgroundColor: '#ffffff',
+                border: '3px solid #111111',
+                borderRadius: '12px',
+                boxShadow: '8px 8px 0px #111111',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                position: 'relative',
+                animation: 'fadeIn 0.2s ease-out'
+              }}
+            >
+              {/* Card Title Bar */}
+              <div className="card-title-bar" style={{ borderBottom: '3px solid #111111', padding: '1rem' }}>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, textTransform: 'uppercase' }}>
+                  Task Status Details
+                </h3>
+                <button 
+                  onClick={() => setSelectedTaskDetails(null)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    fontSize: '1.5rem',
+                    cursor: 'pointer',
+                    color: '#111111',
+                    lineHeight: 1
+                  }}
+                >
+                  &times;
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Title</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111111', marginTop: '0.2rem' }}>{selectedTaskDetails.title}</div>
+                </div>
+
+                {selectedTaskDetails.description && (
+                  <div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Description</div>
+                    <div style={{ fontSize: '0.88rem', color: '#334155', marginTop: '0.2rem', whiteSpace: 'pre-wrap' }}>{selectedTaskDetails.description}</div>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '2rem' }}>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Assigned To</div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, marginTop: '0.2rem' }}>
+                      {isDomainTask ? `Domain: ${selectedTaskDetails.assignedTo}` : 'Individual Employee'}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Created On</div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, marginTop: '0.2rem' }}>
+                      {new Date(selectedTaskDetails.createdAt).toLocaleDateString([], { dateStyle: 'medium' })}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '2px solid #111111', paddingTop: '1rem' }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 900, textTransform: 'uppercase', color: '#111111', marginBottom: '0.75rem' }}>
+                    Employee Progress Status
+                  </div>
+
+                  {assignedUsers.length === 0 ? (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      No active employees assigned to this domain/task.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '200px', overflowY: 'auto' }}>
+                      {assignedUsers.map(emp => {
+                        const stage = selectedTaskDetails.employeeStages?.[emp.id] || (isDomainTask ? 'pending' : (selectedTaskDetails.status || 'pending'));
+                        const completedTime = selectedTaskDetails.completedAtByUser?.[emp.id] || (!isDomainTask && selectedTaskDetails.completedAt);
+                        
+                        let badgeBg = '#f3f4f6';
+                        let badgeColor = '#4b5563';
+                        if (stage === 'seen') { badgeBg = '#fef3c7'; badgeColor = '#b45309'; }
+                        else if (stage === 'doing') { badgeBg = '#e0f2fe'; badgeColor = '#0369a1'; }
+                        else if (stage === 'completed') { badgeBg = '#d1fae5'; badgeColor = '#047857'; }
+
+                        return (
+                          <div 
+                            key={emp.id} 
+                            style={{ 
+                              display: 'flex', 
+                              justifyContent: 'space-between', 
+                              alignItems: 'center',
+                              padding: '0.5rem 0.75rem',
+                              border: '1px solid #111111',
+                              borderRadius: '6px',
+                              backgroundColor: '#f9fafb'
+                            }}
+                          >
+                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111111' }}>{emp.name}</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                              <span style={{ 
+                                fontSize: '0.7rem', 
+                                padding: '0.15rem 0.4rem', 
+                                borderRadius: '4px', 
+                                backgroundColor: badgeBg, 
+                                color: badgeColor, 
+                                fontWeight: 800,
+                                textTransform: 'uppercase',
+                                border: '1px solid rgba(0,0,0,0.1)'
+                              }}>
+                                {stage}
+                              </span>
+                              {stage === 'completed' && completedTime && (
+                                <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>
+                                  at {new Date(completedTime).toLocaleDateString([], { month: 'short', day: 'numeric' })} {new Date(completedTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

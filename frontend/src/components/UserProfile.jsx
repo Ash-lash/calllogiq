@@ -99,6 +99,26 @@ function UserProfile({ user: initialUser, token, onProfileUpdate }) {
     reader.onload = async (event) => {
       const compressed = await compressImage(event.target.result, 400, 400, 0.7);
       setPhoto(compressed);
+      
+      // Auto-upload the photo
+      try {
+        const res = await fetch(`${API_BASE}/api/users/update-profile-settings`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ name, email, domain, branch, phone, photo: compressed })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to update photo');
+        
+        setMessage({ text: 'Profile photo updated successfully!', type: 'success' });
+        setUser(data.user);
+        if (onProfileUpdate) onProfileUpdate(data.token, data.user);
+      } catch (err) {
+        setMessage({ text: err.message, type: 'danger' });
+      }
     };
     reader.readAsDataURL(file);
   };

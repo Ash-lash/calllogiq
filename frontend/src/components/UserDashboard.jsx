@@ -164,13 +164,48 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
     const timeStr = now.toLocaleString();
     
     const drawWatermarkAndSave = async (lat, lng) => {
+      let exactAddress = '';
+      if (lat && lng && lat !== 'GPS Unavailable' && lat !== 'GPS Not Supported') {
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
+          const data = await res.json();
+          if (data && data.display_name) {
+            exactAddress = data.display_name;
+          }
+        } catch (err) {
+          console.error("Reverse geocoding failed", err);
+        }
+      }
+
       ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-      ctx.fillRect(0, canvas.height - 80, canvas.width, 80);
+      ctx.fillRect(0, canvas.height - 110, canvas.width, 110);
       ctx.fillStyle = 'white';
-      ctx.font = '24px sans-serif';
-      ctx.fillText('Timestamp: ' + timeStr, 20, canvas.height - 50);
-      ctx.fillText('Location: ' + lat + (lng ? ', ' + lng : ''), 20, canvas.height - 20);
+      ctx.font = '22px sans-serif';
+      ctx.fillText('Timestamp: ' + timeStr, 20, canvas.height - 75);
       
+      const locText = lat && lng && !isNaN(lat) ? `Lat: ${lat}, Lng: ${lng}` : `Location: ${lat}`;
+      ctx.fillText(locText, 20, canvas.height - 45);
+
+      if (exactAddress) {
+        ctx.font = '16px sans-serif';
+        // Basic wrapping for long address string (up to 2 lines max roughly)
+        const maxLen = 60;
+        let addr1 = exactAddress;
+        let addr2 = '';
+        if (exactAddress.length > maxLen) {
+           const splitIndex = exactAddress.lastIndexOf(',', maxLen) > 0 ? exactAddress.lastIndexOf(',', maxLen) + 1 : maxLen;
+           addr1 = exactAddress.substring(0, splitIndex).trim();
+           addr2 = exactAddress.substring(splitIndex).trim();
+        }
+        ctx.fillText(addr1, 20, canvas.height - 20);
+        if (addr2) {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(0, canvas.height - 20, canvas.width, 25);
+            ctx.fillStyle = 'white';
+            ctx.fillText(addr2, 20, canvas.height - 5);
+        }
+      }
+
       const base64 = canvas.toDataURL('image/jpeg', 0.8);
       const compressed = await compressImage(base64, 800, 800, 0.6);
       setBdPhotos(prev => [...prev, compressed]);

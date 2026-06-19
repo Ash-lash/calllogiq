@@ -10,29 +10,6 @@ import {
 } from 'recharts';
 import API_BASE from '../api';
 
-function AdminDashboard({ user, token }) {
-  const [users, setUsers] = useState([]);
-  const [logs, setLogs] = useState([]);
-  const [tasks, setTasks] = useState([]);
-  
-  // Attendance State
-  const [selectedAttendanceUserId, setSelectedAttendanceUserId] = useState('');
-  const [attendanceData, setAttendanceData] = useState(null);
-  const [attendanceLoading, setAttendanceLoading] = useState(false);
-  
-  // Active Admin Sub-View: 'leaderboard' | 'aggregate' | 'assign' | 'attendance' | 'fieldvisits' | 'deepanalytics'
-  const [adminTab, setAdminTab] = useState('leaderboard');
-  
-  // Field Visits State
-  const [fieldVisits, setFieldVisits] = useState([]);
-  const [fieldVisitsLoading, setFieldVisitsLoading] = useState(false);
-  const [activePreviewImage, setActivePreviewImage] = useState(null);
-
-  // Profile Preview States
-  const [selectedProfilePreview, setSelectedProfilePreview] = useState(null);
-  const [hoveredDropdownProfile, setHoveredDropdownProfile] = useState(null);
-  const [profileTooltipPos, setProfileTooltipPos] = useState({x: 0, y: 0});
-
 // Custom Employee Dropdown Component
 const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHoverProfile }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -81,7 +58,9 @@ const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHover
           maxHeight: '250px',
           overflowY: 'auto',
           zIndex: 1000
-        }}>
+        }}
+        onMouseLeave={() => onHoverProfile(null)}
+        >
           <div 
             onClick={() => { onChange(''); setIsOpen(false); }}
             style={{ padding: '0.5rem 1rem', cursor: 'pointer', borderBottom: '1px solid #eee' }}
@@ -95,11 +74,9 @@ const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHover
               onClick={() => { onChange(opt.value); setIsOpen(false); }}
               onMouseEnter={(e) => {
                 if (opt.user) {
-                  const rect = e.target.getBoundingClientRect();
-                  onHoverProfile({ user: opt.user, x: rect.right + 10, y: rect.top });
+                  onHoverProfile({ user: opt.user });
                 }
               }}
-              onMouseLeave={() => onHoverProfile(null)}
               style={{ 
                 padding: '0.5rem 1rem', 
                 cursor: 'pointer', 
@@ -116,6 +93,17 @@ const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHover
     </div>
   );
 };
+
+
+
+const AdminDashboard = () => {
+  const { token, user: loggedInUser, logout } = useAuth();
+  const [activeTab, setActiveTab] = useState('attendance'); // 'directory', 'attendance', 'field-visits', 'deep-analytics'
+
+  // Admin users state
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   // Task details status card state
   const [selectedTaskDetails, setSelectedTaskDetails] = useState(null);
@@ -799,8 +787,8 @@ const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHover
       {hoveredDropdownProfile && (
         <div style={{
           position: 'fixed',
-          top: profileTooltipPos.y,
-          left: profileTooltipPos.x,
+          bottom: '20px',
+          right: '20px',
           background: '#fff',
           color: '#111',
           padding: '1rem',
@@ -989,7 +977,7 @@ const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHover
                     else if (domainLower.includes('business')) { domainBg = '#dcfce7'; domainColor = '#15803d'; }
                     return (
                     <tr key={emp.id}>
-                      <td className="name-col" style={{ fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'normal', wordBreak: 'break-word', cursor: 'pointer', color: 'var(--primary)', textDecoration: 'underline dotted' }} onClick={() => setSelectedProfilePreview()} title="Click to view profile">{emp.name}</td>
+                      <td className="name-col" style={{ fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'normal', wordBreak: 'break-word', cursor: 'pointer', color: 'var(--primary)', textDecoration: 'underline dotted' }} onClick={() => setSelectedProfilePreview(emp)} title="Click to view profile">{emp.name}</td>
                       <td className="email-col" style={{ fontSize: '0.78rem', whiteSpace: 'normal', wordBreak: 'break-all' }}>{emp.email}</td>
                       <td style={{ minWidth: '120px' }}><span style={{ display: 'inline-block', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', background: domainBg, color: domainColor, border: `1.5px solid ${domainColor}`, whiteSpace: 'normal', lineHeight: 1.2 }}>{emp.domain}</span></td>
                       <td>
@@ -1369,7 +1357,7 @@ const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHover
                         : <Folder size={20} style={{ color: 'var(--text-secondary)' }} />}
                       <div>
                         <div 
-                          onClick={(e) => { e.stopPropagation(); setSelectedProfilePreview(); }}
+                          onClick={(e) => { e.stopPropagation(); setSelectedProfilePreview(emp); }}
                           style={{ fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', textDecoration: 'underline', color: 'var(--primary)' }}
                           title="Click To View Profile"
                         >
@@ -1708,7 +1696,7 @@ const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHover
                                 Assigned to: <strong>
                                   {targetUser ? (
                                     <span 
-                                      onClick={() => setSelectedProfilePreview()}
+                                      onClick={() => setSelectedProfilePreview(targetUser)}
                                       style={{ cursor: 'pointer', textDecoration: 'underline', color: 'var(--primary)' }}
                                       title="Click To View Profile"
                                     >
@@ -1757,7 +1745,7 @@ const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHover
                                       return (
                                         <span 
                                           key={u.id} 
-                                          onClick={() => setSelectedProfilePreview()}
+                                          onClick={() => setSelectedProfilePreview(emp)}
                                           style={{ 
                                             fontSize: '0.7rem', 
                                             padding: '0.15rem 0.4rem', 
@@ -1881,7 +1869,7 @@ const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHover
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.6rem', marginBottom: '0.75rem' }}>
                           <h4 
-                            onClick={() => setSelectedProfilePreview()}
+                            onClick={() => setSelectedProfilePreview(employee)}
                             style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0, cursor: 'pointer', textDecoration: 'underline' }}
                             title="Click To View Profile"
                           >

@@ -652,7 +652,7 @@ app.get('/api/users/profile', authenticateToken, async (req, res) => {
 
 // Update User Profile Settings (Name, Phone, and Base64 Photo)
 app.post('/api/users/update-profile-settings', authenticateToken, async (req, res) => {
-  const { name, phone, photo } = req.body;
+  const { name, phone, photo, email, domain, branch } = req.body;
   if (!name) {
     return res.status(400).json({ error: 'Name is required' });
   }
@@ -662,6 +662,9 @@ app.post('/api/users/update-profile-settings', authenticateToken, async (req, re
     const updatedFields = { name };
     if (phone !== undefined) updatedFields.phone = phone;
     if (photo !== undefined) updatedFields.photo = photo;
+    if (email !== undefined) updatedFields.email = email;
+    if (domain !== undefined) updatedFields.domain = domain;
+    if (branch !== undefined) updatedFields.branch = branch;
 
     const updatedUser = await db.updateUser(userId, updatedFields);
     if (!updatedUser) {

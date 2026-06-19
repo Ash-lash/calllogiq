@@ -35,6 +35,9 @@ const compressImage = (base64Str, maxWidth = 400, maxHeight = 400, quality = 0.7
 function UserProfile({ user: initialUser, token, onProfileUpdate }) {
   const [user, setUser] = useState(initialUser);
   const [name, setName] = useState(initialUser.name || '');
+  const [email, setEmail] = useState(initialUser.email || '');
+  const [domain, setDomain] = useState(initialUser.domain || '');
+  const [branch, setBranch] = useState(initialUser.branch || '');
   const [phone, setPhone] = useState('');
   const [photo, setPhoto] = useState('');
   const [assetsInfo, setAssetsInfo] = useState({ verifiedThisMonth: false, myAssets: [] });
@@ -56,6 +59,9 @@ function UserProfile({ user: initialUser, token, onProfileUpdate }) {
         const data = await res.json();
         setUser(data);
         setName(data.name || '');
+        setEmail(data.email || '');
+        setDomain(data.domain || '');
+        setBranch(data.branch || '');
         setPhone(data.phone || '');
         setPhoto(data.photo || '');
       }
@@ -109,7 +115,7 @@ function UserProfile({ user: initialUser, token, onProfileUpdate }) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ name, phone, photo })
+        body: JSON.stringify({ name, email, domain, branch, phone, photo })
       });
       const data = await res.json();
       if (!res.ok) {
@@ -217,6 +223,38 @@ function UserProfile({ user: initialUser, token, onProfileUpdate }) {
               />
             </div>
 
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 800 }}>Email Address</label>
+              <input 
+                type="email" 
+                className="form-input" 
+                value={email} 
+                onChange={e => setEmail(e.target.value)} 
+                required 
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 800 }}>Department / Domain</label>
+              <select className="form-select" value={domain} onChange={e => setDomain(e.target.value)} style={{ width: '100%' }}>
+                <option value="">Select Domain</option>
+                <option value="Academic Counselling Team">Academic Counselling Team</option>
+                <option value="Accounts & Development Team">Accounts & Development Team</option>
+                <option value="Business Development Team">Business Development Team</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 800 }}>Branch Location</label>
+              <input 
+                type="text" 
+                className="form-input" 
+                value={branch} 
+                onChange={e => setBranch(e.target.value)} 
+                placeholder="e.g. Porur" 
+              />
+            </div>
+
             <button type="submit" disabled={loading} className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>
               {loading ? 'Saving Changes...' : 'Save Profile Settings'}
             </button>
@@ -233,19 +271,7 @@ function UserProfile({ user: initialUser, token, onProfileUpdate }) {
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.9rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Mail size={16} color="var(--text-secondary)" />
-                <span style={{ color: 'var(--text-secondary)' }}>Email:</span>
-                <strong>{user.email}</strong>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Briefcase size={16} color="var(--text-secondary)" />
-                <span style={{ color: 'var(--text-secondary)' }}>Domain:</span>
-                <strong>{user.domain} Department</strong>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <MapPin size={16} color="var(--text-secondary)" />
-                <span style={{ color: 'var(--text-secondary)' }}>Branch:</span>
-                <strong>{user.branch || 'Pending'}</strong>
+                <span style={{ color: 'var(--text-secondary)' }}>You can edit your personal details in the form above.</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <User size={16} color="var(--text-secondary)" />

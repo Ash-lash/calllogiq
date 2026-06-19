@@ -173,13 +173,6 @@ function App() {
                 <User size={18} />
                 My Profile
               </button>
-              <button 
-                onClick={() => setActiveTab('dashboard')} 
-                className={`sidebar-item-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-              >
-                <LayoutDashboard size={18} />
-                Preview Dashboard
-              </button>
             </>
           )}
         </nav>

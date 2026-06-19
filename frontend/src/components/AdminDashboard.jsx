@@ -30,6 +30,7 @@ function AdminDashboard({ user, token }) {
 
   // WhatsApp-style employee profile preview card state
   const [selectedProfilePreview, setSelectedProfilePreview] = useState(null);
+  const [profileTooltipPos, setProfileTooltipPos] = useState({x: 0, y: 0});
 
   // Task details status card state
   const [selectedTaskDetails, setSelectedTaskDetails] = useState(null);
@@ -865,7 +866,7 @@ function AdminDashboard({ user, token }) {
                     else if (domainLower.includes('business')) { domainBg = '#dcfce7'; domainColor = '#15803d'; }
                     return (
                     <tr key={emp.id}>
-                      <td className="name-col" style={{ fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'normal', wordBreak: 'break-word', cursor: 'pointer', color: 'var(--primary)', textDecoration: 'underline dotted' }} onClick={() => setSelectedProfilePreview(emp)} title="Click to view profile">{emp.name}</td>
+                      <td className="name-col" style={{ fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'normal', wordBreak: 'break-word', cursor: 'pointer', color: 'var(--primary)', textDecoration: 'underline dotted' }} onMouseEnter={(e) => { setSelectedProfilePreview(emp); setProfileTooltipPos({ x: e.clientX, y: e.clientY }); }} onMouseLeave={() => setSelectedProfilePreview(null)} title="Click to view profile">{emp.name}</td>
                       <td className="email-col" style={{ fontSize: '0.78rem', whiteSpace: 'normal', wordBreak: 'break-all' }}>{emp.email}</td>
                       <td style={{ minWidth: '120px' }}><span style={{ display: 'inline-block', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', background: domainBg, color: domainColor, border: `1.5px solid ${domainColor}`, whiteSpace: 'normal', lineHeight: 1.2 }}>{emp.domain}</span></td>
                       <td>
@@ -1244,7 +1245,7 @@ function AdminDashboard({ user, token }) {
                         : <Folder size={20} style={{ color: 'var(--text-secondary)' }} />}
                       <div>
                         <div 
-                          onClick={(e) => { e.stopPropagation(); setSelectedProfilePreview(emp); }}
+                          onMouseEnter={(e) => { e.stopPropagation(); setSelectedProfilePreview(emp); setProfileTooltipPos({ x: e.clientX, y: e.clientY }); }} onMouseLeave={(e) => { e.stopPropagation(); setSelectedProfilePreview(null); }}
                           style={{ fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', textDecoration: 'underline', color: 'var(--primary)' }}
                           title="Click To View Profile"
                         >
@@ -1583,7 +1584,7 @@ function AdminDashboard({ user, token }) {
                                 Assigned to: <strong>
                                   {targetUser ? (
                                     <span 
-                                      onClick={() => setSelectedProfilePreview(targetUser)}
+                                      onMouseEnter={(e) => { setSelectedProfilePreview(targetUser); setProfileTooltipPos({ x: e.clientX, y: e.clientY }); }} onMouseLeave={() => setSelectedProfilePreview(null)}
                                       style={{ cursor: 'pointer', textDecoration: 'underline', color: 'var(--primary)' }}
                                       title="Click To View Profile"
                                     >
@@ -1632,7 +1633,7 @@ function AdminDashboard({ user, token }) {
                                       return (
                                         <span 
                                           key={u.id} 
-                                          onClick={() => setSelectedProfilePreview(u)}
+                                          onMouseEnter={(e) => { setSelectedProfilePreview(u); setProfileTooltipPos({ x: e.clientX, y: e.clientY }); }} onMouseLeave={() => setSelectedProfilePreview(null)}
                                           style={{ 
                                             fontSize: '0.7rem', 
                                             padding: '0.15rem 0.4rem', 
@@ -1756,7 +1757,7 @@ function AdminDashboard({ user, token }) {
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.6rem', marginBottom: '0.75rem' }}>
                           <h4 
-                            onClick={() => setSelectedProfilePreview(employee)}
+                            onMouseEnter={(e) => { setSelectedProfilePreview(employee); setProfileTooltipPos({ x: e.clientX, y: e.clientY }); }} onMouseLeave={() => setSelectedProfilePreview(null)}
                             style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0, cursor: 'pointer', textDecoration: 'underline' }}
                             title="Click To View Profile"
                           >
@@ -2512,18 +2513,7 @@ function AdminDashboard({ user, token }) {
                 <label style={{ fontWeight: 800, fontSize: '0.8rem', textTransform: 'uppercase', color: '#111' }}>
                   👤 Choose Employee
                 </label>
-                <select 
-                  value={deepAnalyticsUserId} 
-                  onChange={e => setDeepAnalyticsUserId(e.target.value)}
-                  style={{
-                    padding: '10px',
-                    fontSize: '0.9rem',
-                    border: '2px solid #111111',
-                    borderRadius: '4px',
-                    fontWeight: 700,
-                    backgroundColor: '#ffffff',
-                    outline: 'none'
-                  }}
+                <select className="form-select" value={deepAnalyticsUserId} onChange={e => setDeepAnalyticsUserId(e.target.value)}
                 >
                   <option value="">-- Select Employee --</option>
                   {users.sort((a, b) => a.name.localeCompare(b.name)).map(u => (
@@ -2895,103 +2885,54 @@ function AdminDashboard({ user, token }) {
         </div>
       )}
 
-      {/* WhatsApp-style Profile details Modal */}
+      {/* WhatsApp-style Profile details Tooltip */}
       {selectedProfilePreview && (
-        <div 
-          onClick={() => setSelectedProfilePreview(null)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backdropFilter: 'blur(4px)',
-            padding: '1rem'
-          }}
-        >
-          <div 
-            onClick={e => e.stopPropagation()}
-            style={{
-              width: '100%',
-              maxWidth: '320px',
-              backgroundColor: '#ffffff',
-              border: '3px solid #111111',
-              borderRadius: '12px',
-              boxShadow: '8px 8px 0px #111111',
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column',
-              position: 'relative',
-              animation: 'fadeIn 0.2s ease-out'
-            }}
-          >
-            {/* Close Button */}
-            <button 
-              onClick={() => setSelectedProfilePreview(null)}
-              style={{
-                position: 'absolute',
-                top: '10px',
-                right: '10px',
-                border: '2px solid #111111',
-                background: '#ffffff',
-                width: '30px',
-                height: '30px',
-                borderRadius: '50%',
-                fontWeight: 900,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 10
-              }}
-            >
-              ✕
-            </button>
-
-            {/* Profile Photo Area */}
-            <div style={{ height: '240px', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', borderBottom: '3px solid #111111' }}>
+        <div className="tooltip-profile" style={{ 
+          left: Math.min(profileTooltipPos.x + 15, window.innerWidth - 300) + 'px', 
+          top: Math.min(profileTooltipPos.y + 15, window.innerHeight - 200) + 'px',
+          position: 'fixed'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.75rem', marginBottom: '0.25rem' }}>
+            <div style={{ width: '50px', height: '50px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, border: '2px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f5f5f5' }}>
               {selectedProfilePreview.photo ? (
                 <img 
                   src={selectedProfilePreview.photo} 
                   alt={selectedProfilePreview.name} 
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
               ) : (
-                <div style={{ fontSize: '5rem', fontWeight: 800, color: '#4b5563' }}>
+                <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#666' }}>
                   {selectedProfilePreview.name ? selectedProfilePreview.name.charAt(0).toUpperCase() : 'U'}
-                </div>
+                </span>
               )}
             </div>
-
-            {/* Info Area */}
-            <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#111111', textTransform: 'uppercase' }}>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.2 }}>
                 {selectedProfilePreview.name}
-              </div>
-              <div style={{ fontSize: '0.88rem', color: '#4b5563', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
                 ✉️ {selectedProfilePreview.email}
-              </div>
+              </p>
               {selectedProfilePreview.phone && (
-                <div style={{ fontSize: '0.85rem', color: '#4b5563', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
                   📞 {selectedProfilePreview.phone}
-                </div>
-              )}
-              {selectedProfilePreview.domain && (
-                <div style={{ marginTop: '0.5rem', display: 'inline-block' }}>
-                  {(() => {
-                    const dl = (selectedProfilePreview.domain || '').toLowerCase();
-                    const dbg = dl.includes('accounts') ? '#ede9fe' : dl.includes('business') ? '#dcfce7' : '#dbeafe';
-                    const dc = dl.includes('accounts') ? '#7c3aed' : dl.includes('business') ? '#15803d' : '#1d4ed8';
-                    return <span style={{ padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', background: dbg, color: dc, border: `1.5px solid ${dc}` }}>{selectedProfilePreview.domain}</span>;
-                  })()}
-                </div>
+                </p>
               )}
             </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+            {selectedProfilePreview.domain && (
+              <div style={{ marginTop: '0.2rem' }}>
+                {(() => {
+                    const dl = (selectedProfilePreview.domain || '').toLowerCase();
+                    let dbg = '#f3f4f6'; let dc = '#374151';
+                    if (dl.includes('academic')) { dbg = '#dbeafe'; dc = '#1e40af'; }
+                    else if (dl.includes('development')) { dbg = '#fce7f3'; dc = '#be185d'; }
+                    else if (dl.includes('business')) { dbg = '#fef3c7'; dc = '#b45309'; }
+                    return <span style={{ padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', background: dbg, color: dc, border: `1.5px solid ${dc}` }}>{selectedProfilePreview.domain}</span>;
+                })()}
+              </div>
+            )}
           </div>
         </div>
       )}

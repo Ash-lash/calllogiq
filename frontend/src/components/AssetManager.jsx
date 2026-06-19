@@ -529,8 +529,19 @@ function AssetManager({ user, token }) {
 
   if (loading && assets.length === 0) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', fontFamily: 'var(--font-family-title)', fontWeight: 700 }}>
-        Loading Asset Manager...
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '60vh', fontFamily: 'var(--font-family-title)', color: 'var(--text-primary)' }}>
+        <div style={{
+          width: '64px',
+          height: '64px',
+          border: '4px solid #e2e8f0',
+          borderTop: '4px solid var(--primary)',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite',
+          marginBottom: '1.5rem'
+        }} />
+        <Laptop size={32} style={{ position: 'absolute', marginTop: '-5.5rem', color: 'var(--primary)', animation: 'pulse 2s infinite' }} />
+        <h2 style={{ fontSize: '1.5rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.02em', margin: 0 }}>Loading Asset Manager</h2>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: 600, marginTop: '0.5rem' }}>Syncing inventory, alerts, and repair logs...</p>
       </div>
     );
   }

@@ -1285,7 +1285,7 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
                   Department Domain
                 </label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '180px', overflowY: 'auto', paddingRight: '4px' }}>
-                  {['Academic Couselling Team', 'Accounts & Developement Team', 'Business Development Team'].map((dom) => {
+                  {['Academic Counselling Team', 'Accounts & Development Team', 'Business Development Team'].map((dom) => {
                     const isSelected = selectedSetupDomain === dom;
                     return (
                       <div

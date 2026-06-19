@@ -590,7 +590,7 @@ app.post('/api/users/update-profile', authenticateToken, async (req, res) => {
     return res.status(400).json({ error: 'Name, Domain, and Branch are required' });
   }
 
-  const validDomains = ['Academic Couselling Team', 'Accounts & Developement Team', 'Business Development Team'];
+  const validDomains = ['Academic Counselling Team', 'Accounts & Development Team', 'Business Development Team'];
   if (!validDomains.includes(domain)) {
     return res.status(400).json({ error: 'Invalid department domain' });
   }
@@ -2183,9 +2183,9 @@ async function migrateDomainCategories() {
         const lowerDom = user.domain.toLowerCase();
         
         if (lowerDom === 'sales') {
-          updatedDomain = 'Academic Couselling Team';
+          updatedDomain = 'Academic Counselling Team';
         } else if (lowerDom === 'accounts') {
-          updatedDomain = 'Accounts & Developement Team';
+          updatedDomain = 'Accounts & Development Team';
         } else if (['support', 'hr', 'operations'].includes(lowerDom)) {
           updatedDomain = 'Pending';
         }
@@ -2204,9 +2204,9 @@ async function migrateDomainCategories() {
         const lowerAssignee = task.assignedTo.toLowerCase();
 
         if (lowerAssignee === 'sales') {
-          updatedAssignee = 'Academic Couselling Team';
+          updatedAssignee = 'Academic Counselling Team';
         } else if (lowerAssignee === 'accounts') {
-          updatedAssignee = 'Accounts & Developement Team';
+          updatedAssignee = 'Accounts & Development Team';
         } else if (['support', 'hr', 'operations'].includes(lowerAssignee)) {
           await db.deleteTask(task.id);
           console.log(`Deleted task "${task.title}" (ID: ${task.id}) assigned to removed domain: ${task.assignedTo}`);

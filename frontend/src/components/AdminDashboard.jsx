@@ -57,8 +57,8 @@ function AdminDashboard({ user, token }) {
   const [editError, setEditError] = useState('');
 
   // Leaderboard Sort State
-  const [sortKey, setSortKey] = useState('talkTimeSecs');
-  const [sortDir, setSortDir] = useState('desc'); // 'asc' or 'desc'
+  const [sortKey, setSortKey] = useState('name');
+  const [sortDir, setSortDir] = useState('asc'); // 'asc' or 'desc'
 
   // Database Flush State
   const [flushSuccess, setFlushSuccess] = useState('');
@@ -597,6 +597,7 @@ function AdminDashboard({ user, token }) {
         email: u.email,
         domain: u.domain,
         role: u.role || 'user',
+        branch: u.branch,
         uploads: totalUploads,
         totalCalls,
         talkTimeStr: formatSeconds(totalTalkSecs),
@@ -1245,7 +1246,7 @@ function AdminDashboard({ user, token }) {
                         <div 
                           onClick={(e) => { e.stopPropagation(); setSelectedProfilePreview(emp); }}
                           style={{ fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', textDecoration: 'underline', color: 'var(--primary)' }}
-                          title="Click to view WhatsApp profile"
+                          title="Click To View Profile"
                         >
                           {emp.name}
                         </div>
@@ -1584,7 +1585,7 @@ function AdminDashboard({ user, token }) {
                                     <span 
                                       onClick={() => setSelectedProfilePreview(targetUser)}
                                       style={{ cursor: 'pointer', textDecoration: 'underline', color: 'var(--primary)' }}
-                                      title="Click to view WhatsApp profile"
+                                      title="Click To View Profile"
                                     >
                                       {assigneeName}
                                     </span>
@@ -1645,7 +1646,7 @@ function AdminDashboard({ user, token }) {
                                             gap: '2px',
                                             cursor: 'pointer'
                                           }}
-                                          title="Click to view WhatsApp profile"
+                                          title="Click To View Profile"
                                         >
                                           {u.name}: <strong style={{ textTransform: 'capitalize' }}>{stage}</strong>
                                         </span>
@@ -1712,8 +1713,8 @@ function AdminDashboard({ user, token }) {
                         
                         {/* Domains */}
                         <optgroup label="Departments (All members in domain)">
-                          <option value="Academic Couselling Team">Academic Counselling Team</option>
-                          <option value="Accounts & Developement Team">Accounts & Development Team</option>
+                          <option value="Academic Counselling Team">Academic Counselling Team</option>
+                          <option value="Accounts & Development Team">Accounts & Development Team</option>
                           <option value="Business Development Team">Business Development Team</option>
                         </optgroup>
                                   {/* Individual Users */}
@@ -1757,7 +1758,7 @@ function AdminDashboard({ user, token }) {
                           <h4 
                             onClick={() => setSelectedProfilePreview(employee)}
                             style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0, cursor: 'pointer', textDecoration: 'underline' }}
-                            title="Click to view WhatsApp profile"
+                            title="Click To View Profile"
                           >
                             {employee.name}
                           </h4>
@@ -1769,8 +1770,8 @@ function AdminDashboard({ user, token }) {
                           })()}
                         </div>
                         
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                          {empTasks.map(task => {
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '400px', overflowY: 'auto', paddingRight: '0.2rem' }}>
+                          {empTasks.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(task => {
                             const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations', 'academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase()) || !users.some(u => u.id === task.assignedTo);
                             const stage = task.employeeStages?.[employee.id] || (isDomainTask ? 'pending' : (task.status || 'pending'));
                             
@@ -1970,7 +1971,7 @@ function AdminDashboard({ user, token }) {
                                                                   showProfilePopupByNameOrId(uName);
                                                                 }}
                                                                 style={{ cursor: 'pointer', textDecoration: 'underline', color: 'var(--primary)' }}
-                                                                title="Click to view WhatsApp profile"
+                                                                title="Click To View Profile"
                                                               >
                                                                 {assignee}
                                                               </span>
@@ -2008,17 +2009,7 @@ function AdminDashboard({ user, token }) {
                                                                     {task.description && <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem' }}>{task.description}</div>}
                                                                   </div>
                                                                   <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                                                                    <span style={{ 
-                                                                      fontSize: '0.65rem', 
-                                                                      padding: '0.1rem 0.35rem', 
-                                                                      borderRadius: '4px', 
-                                                                      backgroundColor: badgeBg, 
-                                                                      color: badgeColor, 
-                                                                      fontWeight: 700,
-                                                                      textTransform: 'uppercase'
-                                                                    }}>
-                                                                      {task.status || 'pending'}
-                                                                    </span>
+                                                                      {/* Badge removed as per user request */}
                                                                     <button 
                                                                       onClick={(e) => { e.stopPropagation(); handleDeleteTask(task.id); }}
                                                                       style={{
@@ -2345,7 +2336,7 @@ function AdminDashboard({ user, token }) {
                                 👤 <span 
                                   onClick={() => showProfilePopupByNameOrId(userName)}
                                   style={{ cursor: 'pointer', textDecoration: 'underline' }}
-                                  title="Click to view WhatsApp profile"
+                                  title="Click To View Profile"
                                 >
                                   {userName}
                                 </span>
@@ -2843,8 +2834,8 @@ function AdminDashboard({ user, token }) {
                   onChange={e => setEditingUser({ ...editingUser, domain: e.target.value })} 
                   required
                 >
-                  <option value="Academic Couselling Team">Academic Counselling Team</option>
-                  <option value="Accounts & Developement Team">Accounts & Development Team</option>
+                  <option value="Academic Counselling Team">Academic Counselling Team</option>
+                  <option value="Accounts & Development Team">Accounts & Development Team</option>
                   <option value="Business Development Team">Business Development Team</option>
                 </select>
               </div>
@@ -3112,9 +3103,21 @@ function AdminDashboard({ user, token }) {
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '200px', overflowY: 'auto' }}>
-                      {assignedUsers.map(emp => {
+                      {assignedUsers.sort((a, b) => {
+                        const getStageWeight = (stage) => {
+                          if (stage === 'pending') return 1;
+                          if (stage === 'seen') return 2;
+                          if (stage === 'doing') return 3;
+                          if (stage === 'completed') return 4;
+                          return 5;
+                        };
+                        const stageA = selectedTaskDetails.employeeStages?.[a.id] || (isDomainTask ? 'pending' : (selectedTaskDetails.status || 'pending'));
+                        const stageB = selectedTaskDetails.employeeStages?.[b.id] || (isDomainTask ? 'pending' : (selectedTaskDetails.status || 'pending'));
+                        return getStageWeight(stageA) - getStageWeight(stageB);
+                      }).map(emp => {
                         const stage = selectedTaskDetails.employeeStages?.[emp.id] || (isDomainTask ? 'pending' : (selectedTaskDetails.status || 'pending'));
                         const completedTime = selectedTaskDetails.completedAtByUser?.[emp.id] || (!isDomainTask && selectedTaskDetails.completedAt);
+
                         
                         let badgeBg = '#f3f4f6';
                         let badgeColor = '#4b5563';

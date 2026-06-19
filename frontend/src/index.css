@@ -1135,3 +1135,30 @@ a:hover {
   pointer-events: none;
   animation: fadeIn 0.2s ease-out;
 }
+
+/* Custom Profile Hover Tooltip */
+.profile-hover-tooltip {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  background: #fff;
+  color: #111;
+  padding: 1rem;
+  border-radius: 8px;
+  z-index: 9999;
+  font-size: 0.85rem;
+  pointer-events: none;
+  box-shadow: 8px 8px 0px #111111;
+  border: 3px solid #111;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  min-width: 250px;
+  max-width: calc(100vw - 40px);
+}
+
+@media (min-width: 769px) {
+  .profile-hover-tooltip {
+    left: 260px;
+  }
+}

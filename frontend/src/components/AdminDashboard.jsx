@@ -96,14 +96,30 @@ const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHover
 
 
 
-const AdminDashboard = () => {
-  const { token, user: loggedInUser, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState('attendance'); // 'directory', 'attendance', 'field-visits', 'deep-analytics'
-
-  // Admin users state
+const AdminDashboard = ({ user, token }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [logs, setLogs] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  
+  // Attendance State
+  const [selectedAttendanceUserId, setSelectedAttendanceUserId] = useState('');
+  const [attendanceData, setAttendanceData] = useState(null);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  
+  // Active Admin Sub-View: 'leaderboard' | 'aggregate' | 'assign' | 'attendance' | 'fieldvisits' | 'deepanalytics'
+  const [adminTab, setAdminTab] = useState('leaderboard');
+  
+  // Field Visits State
+  const [fieldVisits, setFieldVisits] = useState([]);
+  const [fieldVisitsLoading, setFieldVisitsLoading] = useState(false);
+  const [activePreviewImage, setActivePreviewImage] = useState(null);
+
+  // Profile Preview States
+  const [selectedProfilePreview, setSelectedProfilePreview] = useState(null);
+  const [hoveredDropdownProfile, setHoveredDropdownProfile] = useState(null);
+  const [profileTooltipPos, setProfileTooltipPos] = useState({x: 0, y: 0});
 
   // Task details status card state
   const [selectedTaskDetails, setSelectedTaskDetails] = useState(null);
@@ -785,24 +801,7 @@ const AdminDashboard = () => {
     <div>
       {/* Profile Tooltip */}
       {hoveredDropdownProfile && (
-        <div style={{
-          position: 'fixed',
-          bottom: '20px',
-          right: '20px',
-          background: '#fff',
-          color: '#111',
-          padding: '1rem',
-          borderRadius: '8px',
-          zIndex: 9999,
-          fontSize: '0.85rem',
-          pointerEvents: 'none',
-          boxShadow: '8px 8px 0px #111111',
-          border: '3px solid #111',
-          display: 'flex',
-          gap: '1rem',
-          alignItems: 'center',
-          minWidth: '250px'
-        }}>
+        <div className="profile-hover-tooltip">
           <div style={{ width: '60px', height: '60px', borderRadius: '50%', overflow: 'hidden', border: '2px solid #111', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5' }}>
             {hoveredDropdownProfile.photo ? (
               <img src={hoveredDropdownProfile.photo} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -1745,7 +1744,7 @@ const AdminDashboard = () => {
                                       return (
                                         <span 
                                           key={u.id} 
-                                          onClick={() => setSelectedProfilePreview(emp)}
+                                          onClick={() => setSelectedProfilePreview(u)}
                                           style={{ 
                                             fontSize: '0.7rem', 
                                             padding: '0.15rem 0.4rem', 
@@ -1816,29 +1815,28 @@ const AdminDashboard = () => {
 
                     <div className="form-group">
                       <label className="form-label">Assign To</label>
-                      <select 
-                        className="form-select" 
+                      <EmployeeSelectDropdown
+                        options={[
+                          { value: 'Academic Counselling Team', label: 'Academic Counselling Team (Department)' },
+                          { value: 'Accounts & Development Team', label: 'Accounts & Development Team (Department)' },
+                          { value: 'Business Development Team', label: 'Business Development Team (Department)' },
+                          ...users.filter(u => u.role !== 'admin').sort((a, b) => a.name.localeCompare(b.name)).map(emp => ({
+                            value: emp.id,
+                            label: `${emp.name} (${emp.email})`,
+                            user: emp
+                          }))
+                        ]}
                         value={taskAssignee}
-                        onChange={e => setTaskAssignee(e.target.value)}
-                        required
-                      >
-                        <option value="">-- Select Assignee --</option>
-                        
-                        {/* Domains */}
-                        <optgroup label="Departments (All members in domain)">
-                          <option value="Academic Counselling Team">Academic Counselling Team</option>
-                          <option value="Accounts & Development Team">Accounts & Development Team</option>
-                          <option value="Business Development Team">Business Development Team</option>
-                        </optgroup>
-                                  {/* Individual Users */}
-                        <optgroup label="Specific Employees">
-                          {users.filter(u => u.role !== 'admin').sort((a, b) => a.name.localeCompare(b.name)).map(emp => (
-                            <option key={emp.id} value={emp.id}>
-                              {emp.name} ({emp.email})
-                            </option>
-                          ))}
-                        </optgroup>
-                      </select>
+                        onChange={setTaskAssignee}
+                        placeholder="-- Select Assignee --"
+                        onHoverProfile={(data) => {
+                          if (data) {
+                            setHoveredDropdownProfile(data.user);
+                          } else {
+                            setHoveredDropdownProfile(null);
+                          }
+                        }}
+                      />
                     </div>
  
                     <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>

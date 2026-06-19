@@ -682,12 +682,7 @@ const AdminDashboard = ({ user, token }) => {
       const totalUploads = userLogs.length;
 
       return {
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        domain: u.domain,
-        role: u.role || 'user',
-        branch: u.branch,
+        ...u,
         uploads: totalUploads,
         totalCalls,
         talkTimeStr: formatSeconds(totalTalkSecs),
@@ -1557,12 +1552,10 @@ const AdminDashboard = ({ user, token }) => {
             return isAssigned && shouldShowTaskForEmployeeOnAdminSide(task, emp);
           });
           
-          if (empTasks.length > 0) {
-            employeeTasksMap[emp.id] = {
-              employee: emp,
-              tasks: empTasks
-            };
-          }
+          employeeTasksMap[emp.id] = {
+            employee: emp,
+            tasks: empTasks
+          };
         });
 
         return (
@@ -1854,35 +1847,42 @@ const AdminDashboard = ({ user, token }) => {
                 
                 {Object.keys(employeeTasksMap).length > 0 ? (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
-                    {Object.values(employeeTasksMap).map(({ employee, tasks: empTasks }) => (
-                      <div 
-                        key={employee.id} 
-                        style={{ 
-                          border: '1.5px solid var(--border-color)', 
-                          borderRadius: '12px', 
-                          padding: '1.25rem',
-                          backgroundColor: '#ffffff',
-                          boxShadow: 'var(--shadow-flat-sm)'
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.6rem', marginBottom: '0.75rem' }}>
-                          <h4 
-                            onClick={() => setSelectedProfilePreview(employee)}
-                            style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0, cursor: 'pointer', textDecoration: 'underline' }}
-                            title="Click To View Profile"
-                          >
-                            {employee.name}
-                          </h4>
-                          {(() => {
-                            const dl = (employee.domain || '').toLowerCase();
-                            const dbg = dl.includes('accounts') ? '#ede9fe' : dl.includes('business') ? '#dcfce7' : '#dbeafe';
-                            const dc = dl.includes('accounts') ? '#7c3aed' : dl.includes('business') ? '#15803d' : '#1d4ed8';
-                            return <span style={{ padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', background: dbg, color: dc, border: `1.5px solid ${dc}` }}>{employee.domain}</span>;
-                          })()}
-                        </div>
-                        
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '400px', overflowY: 'auto', paddingRight: '0.2rem' }}>
-                          {empTasks.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(task => {
+                    {Object.values(employeeTasksMap)
+                      .sort((a, b) => a.employee.name.localeCompare(b.employee.name))
+                      .map(({ employee, tasks: empTasks }) => (
+                        <div 
+                          key={employee.id} 
+                          style={{ 
+                            border: '1.5px solid var(--border-color)', 
+                            borderRadius: '12px', 
+                            padding: '1.25rem',
+                            backgroundColor: '#ffffff',
+                            boxShadow: 'var(--shadow-flat-sm)'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.6rem', marginBottom: '0.75rem' }}>
+                            <h4 
+                              onClick={() => setSelectedProfilePreview(employee)}
+                              style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0, cursor: 'pointer', textDecoration: 'underline' }}
+                              title="Click To View Profile"
+                            >
+                              {employee.name}
+                            </h4>
+                            {(() => {
+                              const dl = (employee.domain || '').toLowerCase();
+                              const dbg = dl.includes('accounts') ? '#ede9fe' : dl.includes('business') ? '#dcfce7' : '#dbeafe';
+                              const dc = dl.includes('accounts') ? '#7c3aed' : dl.includes('business') ? '#15803d' : '#1d4ed8';
+                              return <span style={{ padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', background: dbg, color: dc, border: `1.5px solid ${dc}` }}>{employee.domain}</span>;
+                            })()}
+                          </div>
+                          
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '400px', overflowY: 'auto', paddingRight: '0.2rem' }}>
+                            {empTasks.length === 0 ? (
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', opacity: 0.6, fontStyle: 'italic', padding: '1rem 0.5rem', textAlign: 'center' }}>
+                                No tasks assigned
+                              </div>
+                            ) : (
+                              empTasks.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(task => {
                             const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations', 'academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase()) || !users.some(u => u.id === task.assignedTo);
                             const stage = task.employeeStages?.[employee.id] || (isDomainTask ? 'pending' : (task.status || 'pending'));
                             
@@ -1927,7 +1927,7 @@ const AdminDashboard = ({ user, token }) => {
                                 </div>
                               </div>
                             );
-                          })}
+                          }))}
                         </div>
                       </div>
                     ))}

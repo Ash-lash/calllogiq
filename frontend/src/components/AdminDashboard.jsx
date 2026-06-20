@@ -19,18 +19,25 @@ const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHover
     const handleClickOutside = (event) => {
       if (containerRef.current && !containerRef.current.contains(event.target)) {
         setIsOpen(false);
+        onHoverProfile(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      onHoverProfile(null);
+    };
+  }, [onHoverProfile]);
 
   const selectedOption = options.find(o => o.value === value);
 
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%', minWidth: '220px' }}>
       <div 
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          if (isOpen) onHoverProfile(null);
+          setIsOpen(!isOpen);
+        }}
         className="form-select"
         style={{ 
           cursor: 'pointer', 
@@ -62,7 +69,7 @@ const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHover
         onMouseLeave={() => onHoverProfile(null)}
         >
           <div 
-            onClick={() => { onChange(''); setIsOpen(false); }}
+            onClick={() => { onChange(''); setIsOpen(false); onHoverProfile(null); }}
             style={{ padding: '0.5rem 1rem', cursor: 'pointer', borderBottom: '1px solid #eee' }}
             onMouseEnter={() => onHoverProfile(null)}
           >
@@ -71,7 +78,7 @@ const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHover
           {options.map((opt) => (
             <div 
               key={opt.value}
-              onClick={() => { onChange(opt.value); setIsOpen(false); }}
+              onClick={() => { onChange(opt.value); setIsOpen(false); onHoverProfile(null); }}
               onMouseEnter={(e) => {
                 if (opt.user) {
                   onHoverProfile({ user: opt.user });
@@ -188,6 +195,11 @@ const AdminDashboard = ({ user, token }) => {
     fetchTasks();
     fetchFieldVisits();
   }, [token]);
+
+  // Clear hover profile banner when switching tabs
+  useEffect(() => {
+    setHoveredDropdownProfile(null);
+  }, [adminTab]);
 
   // Auto-detect running migration on Settings Tab mount
   useEffect(() => {
@@ -810,7 +822,7 @@ const AdminDashboard = ({ user, token }) => {
             <div style={{ fontWeight: 800, fontSize: '1rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>{hoveredDropdownProfile.name}</div>
             <div style={{ color: '#555', fontWeight: 600, fontSize: '0.75rem' }}>{hoveredDropdownProfile.email}</div>
             <div style={{ color: '#555', fontWeight: 600, fontSize: '0.75rem' }}>{hoveredDropdownProfile.domain}</div>
-            <div style={{ color: '#555', fontWeight: 600, fontSize: '0.75rem' }}>{hoveredDropdownProfile.branch}</div>
+            <div style={{ color: '#555', fontWeight: 600, fontSize: '0.75rem' }}>📍 Branch: {hoveredDropdownProfile.branch && hoveredDropdownProfile.branch !== 'Pending' ? hoveredDropdownProfile.branch : 'Pending'}</div>
           </div>
         </div>
       )}
@@ -3088,6 +3100,9 @@ const AdminDashboard = ({ user, token }) => {
                   📞 {selectedProfilePreview.phone}
                 </div>
               )}
+              <div style={{ fontSize: '0.85rem', color: '#4b5563', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                📍 Branch: {selectedProfilePreview.branch && selectedProfilePreview.branch !== 'Pending' ? selectedProfilePreview.branch : 'Pending'}
+              </div>
               {selectedProfilePreview.domain && (
                 <div style={{ marginTop: '0.5rem', display: 'inline-block' }}>
                   {(() => {

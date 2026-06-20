@@ -15,19 +15,29 @@ const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHover
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = React.useRef(null);
 
+  const onHoverRef = React.useRef(onHoverProfile);
+  useEffect(() => {
+    onHoverRef.current = onHoverProfile;
+  }, [onHoverProfile]);
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (containerRef.current && !containerRef.current.contains(event.target)) {
         setIsOpen(false);
-        onHoverProfile(null);
+        onHoverRef.current(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
-      onHoverProfile(null);
     };
-  }, [onHoverProfile]);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      onHoverRef.current(null);
+    };
+  }, []);
 
   const selectedOption = options.find(o => o.value === value);
 
@@ -66,22 +76,22 @@ const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHover
           overflowY: 'auto',
           zIndex: 1000
         }}
-        onMouseLeave={() => onHoverProfile(null)}
+        onMouseLeave={() => onHoverRef.current(null)}
         >
           <div 
-            onClick={() => { onChange(''); setIsOpen(false); onHoverProfile(null); }}
+            onClick={() => { onChange(''); setIsOpen(false); onHoverRef.current(null); }}
             style={{ padding: '0.5rem 1rem', cursor: 'pointer', borderBottom: '1px solid #eee' }}
-            onMouseEnter={() => onHoverProfile(null)}
+            onMouseEnter={() => onHoverRef.current(null)}
           >
             {placeholder}
           </div>
           {options.map((opt) => (
             <div 
               key={opt.value}
-              onClick={() => { onChange(opt.value); setIsOpen(false); onHoverProfile(null); }}
+              onClick={() => { onChange(opt.value); setIsOpen(false); onHoverRef.current(null); }}
               onMouseEnter={(e) => {
                 if (opt.user) {
-                  onHoverProfile({ user: opt.user });
+                  onHoverRef.current({ user: opt.user });
                 }
               }}
               style={{ 

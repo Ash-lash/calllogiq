@@ -4,8 +4,9 @@ import UserDashboard from './components/UserDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import AssetManager from './components/AssetManager';
 import UserProfile from './components/UserProfile';
+import WebNotifications from './components/WebNotifications';
 import API_BASE from './api';
-import { LogOut, LayoutDashboard, CheckSquare, ShieldAlert, Laptop, User } from 'lucide-react';
+import { LogOut, LayoutDashboard, CheckSquare, ShieldAlert, Laptop, User, Globe } from 'lucide-react';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
@@ -167,6 +168,13 @@ function App() {
                 Asset Manager
               </button>
               <button 
+                onClick={() => setActiveTab('webnotifications')} 
+                className={`sidebar-item-btn ${activeTab === 'webnotifications' ? 'active' : ''}`}
+              >
+                <Globe size={18} />
+                Web Notifications
+              </button>
+              <button 
                 onClick={() => setActiveTab('profile')} 
                 className={`sidebar-item-btn ${activeTab === 'profile' ? 'active' : ''}`}
               >
@@ -214,15 +222,17 @@ function App() {
  
        {/* Main workspace area */}
        <main className="main-content">
-         {activeTab === 'admin' && isUserAdmin ? (
-           <AdminDashboard user={user} token={token} />
-         ) : activeTab === 'assets' ? (
-           <AssetManager user={user} token={token} />
-         ) : activeTab === 'profile' ? (
-           <UserProfile user={user} token={token} onProfileUpdate={handleLoginSuccess} />
-         ) : (
-           <UserDashboard user={user} token={token} previewMode={isUserAdmin} onProfileUpdate={handleLoginSuccess} />
-         )}
+          {activeTab === 'admin' && isUserAdmin ? (
+            <AdminDashboard user={user} token={token} />
+          ) : activeTab === 'webnotifications' && isUserAdmin ? (
+            <WebNotifications user={user} token={token} />
+          ) : activeTab === 'assets' ? (
+            <AssetManager user={user} token={token} />
+          ) : activeTab === 'profile' ? (
+            <UserProfile user={user} token={token} onProfileUpdate={handleLoginSuccess} />
+          ) : (
+            <UserDashboard user={user} token={token} previewMode={isUserAdmin} onProfileUpdate={handleLoginSuccess} />
+          )}
        </main>
     </div>
   );

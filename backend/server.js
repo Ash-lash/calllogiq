@@ -2228,6 +2228,206 @@ async function migrateDomainCategories() {
   }
 }
 
+// --- WEB MONITORING CRAWLER HELPERS ---
+const crypto = require('crypto');
+
+function extractTextFromHtml(html) {
+  // Remove script and style tags and their contents
+  let clean = html.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '');
+  // Remove HTML tags
+  clean = clean.replace(/<[^>]+>/g, ' ');
+  // Decode common HTML entities
+  clean = clean.replace(/&nbsp;/g, ' ')
+               .replace(/&amp;/g, '&')
+               .replace(/&lt;/g, '<')
+               .replace(/&gt;/g, '>');
+  // Collapse whitespace
+  return clean.replace(/\s+/g, ' ').trim();
+}
+
+async function checkWebsiteForChanges(site) {
+  try {
+    const response = await fetch(site.url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      signal: AbortSignal.timeout(10000) // 10s timeout
+    });
+    
+    if (!response.ok) {
+      console.warn(`Failed to fetch ${site.url}: HTTP ${response.status}`);
+      return false;
+    }
+    
+    const html = await response.text();
+    const text = extractTextFromHtml(html);
+    const hash = crypto.createHash('md5').update(text).digest('hex');
+    
+    const previousHash = site.lastContentHash;
+    const nowStr = new Date().toISOString();
+    
+    // Save current status
+    await db.updateTrackedWebsite(site.id, {
+      lastContentHash: hash,
+      lastCheckedAt: nowStr
+    });
+    
+    // If it's the first check, don't trigger notification (just initialize hash)
+    if (!previousHash) {
+      console.log(`Initialized content hash for tracked website: ${site.name} (${site.url})`);
+      return false;
+    }
+    
+    // If hash differs, trigger notification
+    if (hash !== previousHash) {
+      console.log(`Detected change on monitored website: ${site.name} (${site.url})`);
+      
+      const cleanSnippet = text.substring(0, 180) + (text.length > 180 ? '...' : '');
+      
+      await db.createWebNotification({
+        websiteId: site.id,
+        websiteName: site.name,
+        url: site.url,
+        title: `Change detected on ${site.name}`,
+        description: `Content updated on website. Preview: "${cleanSnippet}"`,
+        createdAt: nowStr
+      });
+      
+      return true;
+    }
+    
+    return false;
+  } catch (err) {
+    console.error(`Error checking website ${site.name} (${site.url}):`, err.message);
+    return false;
+  }
+}
+
+// Background scheduler
+function startWebNotificationCrawlLoop() {
+  // Check every 30 minutes
+  setInterval(async () => {
+    console.log('Running background web monitor check...');
+    try {
+      const sites = await db.listTrackedWebsites();
+      for (const site of sites) {
+        await checkWebsiteForChanges(site);
+      }
+    } catch (err) {
+      console.error('Error running web monitor loop:', err);
+    }
+  }, 30 * 60 * 1000);
+}
+
+// --- WEB MONITORING REST ROUTING (Admin only) ---
+app.get('/api/admin/web-notifications/sites', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const sites = await db.listTrackedWebsites();
+    res.json(sites);
+  } catch (err) {
+    console.error('Error listing tracked sites:', err);
+    res.status(500).json({ error: 'Failed to list tracked websites' });
+  }
+});
+
+app.post('/api/admin/web-notifications/sites', authenticateToken, requireAdmin, async (req, res) => {
+  const { url, name } = req.body;
+  if (!url || !name) {
+    return res.status(400).json({ error: 'Name and URL are required' });
+  }
+  try {
+    const newSite = await db.createTrackedWebsite({ url, name });
+    // Perform initial check to save the hash without notification
+    await checkWebsiteForChanges(newSite);
+    res.status(201).json(newSite);
+  } catch (err) {
+    console.error('Error adding tracked site:', err);
+    res.status(500).json({ error: 'Failed to add tracked website' });
+  }
+});
+
+app.delete('/api/admin/web-notifications/sites/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.deleteTrackedWebsite(id);
+    res.json({ message: 'Tracked website deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting tracked site:', err);
+    res.status(500).json({ error: 'Failed to delete tracked website' });
+  }
+});
+
+app.get('/api/admin/web-notifications', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const notifications = await db.listWebNotifications();
+    res.json(notifications);
+  } catch (err) {
+    console.error('Error listing notifications:', err);
+    res.status(500).json({ error: 'Failed to list notifications' });
+  }
+});
+
+app.post('/api/admin/web-notifications/clear', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    await db.clearWebNotifications();
+    res.json({ message: 'All web notifications cleared' });
+  } catch (err) {
+    console.error('Error clearing notifications:', err);
+    res.status(500).json({ error: 'Failed to clear notifications' });
+  }
+});
+
+app.post('/api/admin/web-notifications/trigger-check', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    console.log('Manual web monitor check triggered by admin');
+    const sites = await db.listTrackedWebsites();
+    let changeCount = 0;
+    for (const site of sites) {
+      const changed = await checkWebsiteForChanges(site);
+      if (changed) changeCount++;
+    }
+    res.json({ message: `Check completed. Detected changes on ${changeCount} site(s).` });
+  } catch (err) {
+    console.error('Error triggering web check:', err);
+    res.status(500).json({ error: 'Failed to check websites' });
+  }
+});
+
+app.post('/api/admin/web-notifications/simulate-change/:siteId', authenticateToken, requireAdmin, async (req, res) => {
+  const { siteId } = req.params;
+  try {
+    const sites = await db.listTrackedWebsites();
+    const site = sites.find(s => s.id === siteId);
+    if (!site) {
+      return res.status(404).json({ error: 'Website not found' });
+    }
+    
+    // Create a mock update notification
+    const updates = [
+      "Updated UI layout and color themes on homepage.",
+      "Added a new post: 'Latest Product Features Announcement'.",
+      "Modified contact details: phone number and office location updated.",
+      "Updated price listing sheet for Business Consultancy plans.",
+      "Added a new banner notification: 'Upcoming System Maintenance on Sunday'."
+    ];
+    const randomUpdate = updates[Math.floor(Math.random() * updates.length)];
+    
+    await db.createWebNotification({
+      websiteId: site.id,
+      websiteName: site.name,
+      url: site.url,
+      title: `Change detected on ${site.name}`,
+      description: `[SIMULATED CHANGE] Content updated on website. Detail: ${randomUpdate}`,
+      createdAt: new Date().toISOString()
+    });
+    
+    res.json({ message: `Simulated change notification created for ${site.name}.` });
+  } catch (err) {
+    console.error('Error simulating change:', err);
+    res.status(500).json({ error: 'Failed to simulate change' });
+  }
+});
+
 // Start Express server
 app.listen(PORT, async () => {
   console.log(`CallLogIQ backend running on port ${PORT}`);
@@ -2247,4 +2447,7 @@ app.listen(PORT, async () => {
   } catch (err) {
     console.error('Failed to run startup assets seeder:', err);
   }
+
+  // Start background web monitoring crawler loop
+  startWebNotificationCrawlLoop();
 });

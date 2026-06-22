@@ -14,7 +14,9 @@ if (!fs.existsSync(DB_FILE)) {
     assets: [],
     assetVerifications: [],
     assetNotifications: [],
-    fieldVisits: []
+    fieldVisits: [],
+    trackedWebsites: [],
+    webNotifications: []
   }, null, 2), 'utf8');
 }
 
@@ -26,10 +28,12 @@ function readLocalDB() {
     if (!parsed.assetVerifications) parsed.assetVerifications = [];
     if (!parsed.assetNotifications) parsed.assetNotifications = [];
     if (!parsed.fieldVisits) parsed.fieldVisits = [];
+    if (!parsed.trackedWebsites) parsed.trackedWebsites = [];
+    if (!parsed.webNotifications) parsed.webNotifications = [];
     return parsed;
   } catch (err) {
     console.error('Error reading database file:', err);
-    return { users: [], logs: [], tasks: [], otps: [], assets: [], assetVerifications: [], assetNotifications: [], fieldVisits: [] };
+    return { users: [], logs: [], tasks: [], otps: [], assets: [], assetVerifications: [], assetNotifications: [], fieldVisits: [], trackedWebsites: [], webNotifications: [] };
   }
 }
 
@@ -777,7 +781,7 @@ const db = {
   flushDatabase: async () => {
     const firestore = getFirestore();
     if (firestore) {
-      const collections = ['users', 'logs', 'tasks', 'otps', 'assets', 'asset_verifications', 'asset_notifications', 'field_visits'];
+      const collections = ['users', 'logs', 'tasks', 'otps', 'assets', 'asset_verifications', 'asset_notifications', 'field_visits', 'tracked_websites', 'web_notifications'];
       for (const colName of collections) {
         const snapshot = await firestore.collection(colName).get();
         const batch = firestore.batch();
@@ -795,11 +799,131 @@ const db = {
         assets: [],
         assetVerifications: [],
         assetNotifications: [],
-        fieldVisits: []
+        fieldVisits: [],
+        trackedWebsites: [],
+        webNotifications: []
       };
       writeLocalDB(emptyData);
     }
     return true;
+  },
+
+  // --- WEB MONITORING ---
+  listTrackedWebsites: async () => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const snapshot = await firestore.collection('tracked_websites').get();
+      const list = [];
+      snapshot.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+      return list;
+    } else {
+      const data = readLocalDB();
+      return data.trackedWebsites || [];
+    }
+  },
+
+  createTrackedWebsite: async (site) => {
+    const firestore = getFirestore();
+    const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+    const newSite = {
+      id,
+      lastContentHash: '',
+      lastCheckedAt: null,
+      createdAt: new Date().toISOString(),
+      ...site
+    };
+
+    if (firestore) {
+      await firestore.collection('tracked_websites').doc(id).set(newSite);
+      return newSite;
+    } else {
+      const data = readLocalDB();
+      data.trackedWebsites.push(newSite);
+      writeLocalDB(data);
+      return newSite;
+    }
+  },
+
+  updateTrackedWebsite: async (id, updates) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      await firestore.collection('tracked_websites').doc(id).update(updates);
+      return true;
+    } else {
+      const data = readLocalDB();
+      const idx = data.trackedWebsites.findIndex(s => s.id === id);
+      if (idx !== -1) {
+        data.trackedWebsites[idx] = { ...data.trackedWebsites[idx], ...updates };
+        writeLocalDB(data);
+        return true;
+      }
+      return false;
+    }
+  },
+
+  deleteTrackedWebsite: async (id) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      await firestore.collection('tracked_websites').doc(id).delete();
+      return true;
+    } else {
+      const data = readLocalDB();
+      data.trackedWebsites = data.trackedWebsites.filter(s => s.id !== id);
+      // also delete any notifications associated with this site
+      data.webNotifications = data.webNotifications.filter(n => n.websiteId !== id);
+      writeLocalDB(data);
+      return true;
+    }
+  },
+
+  listWebNotifications: async () => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const snapshot = await firestore.collection('web_notifications').get();
+      const list = [];
+      snapshot.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+      return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    } else {
+      const data = readLocalDB();
+      return (data.webNotifications || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+  },
+
+  createWebNotification: async (notif) => {
+    const firestore = getFirestore();
+    const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+    const newNotif = {
+      id,
+      createdAt: new Date().toISOString(),
+      status: 'unread',
+      ...notif
+    };
+
+    if (firestore) {
+      await firestore.collection('web_notifications').doc(id).set(newNotif);
+      return newNotif;
+    } else {
+      const data = readLocalDB();
+      data.webNotifications.push(newNotif);
+      writeLocalDB(data);
+      return newNotif;
+    }
+  },
+
+  clearWebNotifications: async () => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const snapshot = await firestore.collection('web_notifications').get();
+      const batch = firestore.batch();
+      snapshot.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+      return true;
+    } else {
+      const data = readLocalDB();
+      data.webNotifications = [];
+      writeLocalDB(data);
+      return true;
+    }
   }
 };
 

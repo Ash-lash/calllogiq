@@ -2230,6 +2230,7 @@ async function migrateDomainCategories() {
 
 // --- WEB MONITORING CRAWLER HELPERS ---
 const crypto = require('crypto');
+const puppeteer = require('puppeteer');
 
 function extractTextFromHtml(html) {
   // Remove script and style tags and their contents
@@ -2246,20 +2247,28 @@ function extractTextFromHtml(html) {
 }
 
 async function checkWebsiteForChanges(site) {
+  let browser = null;
   try {
-    const response = await fetch(site.url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      },
-      signal: AbortSignal.timeout(10000) // 10s timeout
+    console.log(`Checking website "${site.name}" (${site.url}) using Puppeteer...`);
+    browser = await puppeteer.launch({
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     
-    if (!response.ok) {
-      console.warn(`Failed to fetch ${site.url}: HTTP ${response.status}`);
-      return false;
-    }
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
-    const html = await response.text();
+    // Set viewport to look like desktop
+    await page.setViewport({ width: 1280, height: 800 });
+    
+    // Navigate and wait for networkidle2 or load event (max 25 seconds timeout)
+    await page.goto(site.url, { waitUntil: 'networkidle2', timeout: 25000 });
+    
+    // Get fully rendered html content
+    const html = await page.content();
+    await browser.close();
+    browser = null; // Mark as closed
+    
     const text = extractTextFromHtml(html);
     const hash = crypto.createHash('md5').update(text).digest('hex');
     
@@ -2299,6 +2308,13 @@ async function checkWebsiteForChanges(site) {
     return false;
   } catch (err) {
     console.error(`Error checking website ${site.name} (${site.url}):`, err.message);
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (closeErr) {
+        // ignore
+      }
+    }
     return false;
   }
 }

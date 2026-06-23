@@ -2503,58 +2503,56 @@ app.get('/api/admin/web-notifications/proxy', authenticateTokenOrQuery, requireA
       <script>
         (function() {
           window.selectMode = true;
-          window.proxyBaseUrl = '/api/admin/web-notifications/proxy';
-          
+          window.proxyToken = '';  // filled by parent via postMessage
+
           window.addEventListener('message', function(e) {
-            if (e.data && e.data.type === 'SET_SELECT_MODE') {
+            if (!e.data) return;
+            if (e.data.type === 'SET_SELECT_MODE') {
               window.selectMode = e.data.enabled;
               if (!window.selectMode) {
-                const elements = document.querySelectorAll('.antigravity-hovered');
-                elements.forEach(el => el.classList.remove('antigravity-hovered'));
+                document.querySelectorAll('.antigravity-hovered')
+                  .forEach(el => el.classList.remove('antigravity-hovered'));
               }
+            }
+            if (e.data.type === 'SET_TOKEN') {
+              window.proxyToken = e.data.token || '';
             }
           });
 
           function getCssSelector(el) {
             if (!(el instanceof Element)) return '';
             const path = [];
-            while (el && el.nodeType === Node.ELEMENT_NODE) {
-              let selector = el.nodeName.toLowerCase();
-              if (el.id) {
-                selector += '#' + el.id;
+            let current = el;
+            while (current && current.nodeType === Node.ELEMENT_NODE) {
+              let selector = current.nodeName.toLowerCase();
+              if (current.id) {
+                selector += '#' + CSS.escape(current.id);
                 path.unshift(selector);
                 break;
-              } else {
-                let className = el.className || '';
-                className = className.replace(/antigravity-hovered|antigravity-selected/g, '').trim();
-                if (className) {
-                  const classes = className.split(/\\s+/).filter(c => c.length > 0);
-                  if (classes.length > 0) {
-                    selector += '.' + classes.join('.');
-                  }
-                }
-                let sibling = el.previousElementSibling;
-                let nth = 1;
-                while (sibling) {
-                  nth++;
-                  sibling = sibling.previousElementSibling;
-                }
-                selector += ':nth-child(' + nth + ')';
               }
+              let className = (current.className || '').toString()
+                .replace(/antigravity-hovered|antigravity-selected/g, '').trim();
+              if (className) {
+                const classes = className.split(/\\s+/).filter(c => c && !c.includes(':'));
+                if (classes.length > 0) selector += '.' + classes.slice(0, 2).join('.');
+              }
+              let sibling = current.previousElementSibling;
+              let nth = 1;
+              while (sibling) { nth++; sibling = sibling.previousElementSibling; }
+              if (nth > 1) selector += ':nth-child(' + nth + ')';
               path.unshift(selector);
-              el = el.parentElement;
+              current = current.parentElement;
             }
             return path.join(' > ');
           }
 
+          // ── Hover highlighting (SELECT mode only) ──
           let lastHovered = null;
           document.addEventListener('mousemove', function(e) {
             if (!window.selectMode) return;
             const target = e.target;
             if (target === lastHovered) return;
-            if (lastHovered) {
-              lastHovered.classList.remove('antigravity-hovered');
-            }
+            if (lastHovered) lastHovered.classList.remove('antigravity-hovered');
             if (target && target.tagName !== 'BODY' && target.tagName !== 'HTML') {
               target.classList.add('antigravity-hovered');
               lastHovered = target;
@@ -2563,71 +2561,62 @@ app.get('/api/admin/web-notifications/proxy', authenticateTokenOrQuery, requireA
             }
           }, true);
 
+          // ── Click handler ──
           document.addEventListener('click', function(e) {
-            const anchor = e.target.closest('a');
-            if (anchor && anchor.href && !anchor.href.startsWith('javascript:')) {
-              if (!window.selectMode) {
-                const hrefVal = anchor.getAttribute('href');
-                if (hrefVal && hrefVal !== '#' && !hrefVal.startsWith('#')) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  window.location.href = window.proxyBaseUrl + '?url=' + encodeURIComponent(anchor.href);
-                  return;
-                }
-              }
-            }
-
             if (window.selectMode) {
+              // In SELECT mode: capture selector and prevent navigation
               e.preventDefault();
               e.stopPropagation();
               const target = e.target;
-              const prevSelected = document.querySelectorAll('.antigravity-selected');
-              prevSelected.forEach(el => el.classList.remove('antigravity-selected'));
+              document.querySelectorAll('.antigravity-selected')
+                .forEach(el => el.classList.remove('antigravity-selected'));
               target.classList.remove('antigravity-hovered');
               target.classList.add('antigravity-selected');
-              
               const selector = getCssSelector(target);
-              const text = target.innerText || target.textContent || '';
-              window.parent.postMessage({
-                type: 'SELECTOR_SELECTED',
-                selector: selector,
-                text: text.trim()
-              }, '*');
+              const text = (target.innerText || target.textContent || '').trim();
+              window.parent.postMessage({ type: 'SELECTOR_SELECTED', selector, text }, '*');
+            } else {
+              // In BROWSE mode: let JS run naturally, only intercept real page navigations
+              const anchor = e.target.closest('a[href]');
+              if (anchor) {
+                const href = anchor.getAttribute('href') || '';
+                // Allow: hash links, javascript: links, same-page anchors → let them fire naturally
+                if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+                
+                try {
+                  const resolved = new URL(href, document.baseURI);
+                  const currentTargetStr = new URLSearchParams(window.location.search).get('url');
+                  if (currentTargetStr) {
+                    const currentTarget = new URL(currentTargetStr);
+                    // Check if it's the same page (same origin, pathname, search) - let JS run
+                    if (resolved.origin === currentTarget.origin &&
+                        resolved.pathname === currentTarget.pathname &&
+                        resolved.search === currentTarget.search) {
+                      return; // Let it fire naturally!
+                    }
+                  }
+                  
+                  // For real navigations: rewrite through proxy preserving token
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const proxyUrl = '/api/admin/web-notifications/proxy?url='
+                    + encodeURIComponent(resolved.href)
+                    + (window.proxyToken ? '&token=' + encodeURIComponent(window.proxyToken) : '');
+                  window.location.href = proxyUrl;
+                } catch(err) {
+                  // If URL resolution fails, let it go
+                }
+              }
+              // All other clicks (buttons, div toggles, JS menus) fire normally in browse mode
             }
           }, true);
 
-          function initMenuitems() {
-            const menuitems = document.querySelectorAll('menuitem');
-            menuitems.forEach(mi => {
-              if (mi.dataset.antigravityBound) return;
-              mi.dataset.antigravityBound = "true";
-              
-              mi.addEventListener('click', function(e) {
-                const subMenu = mi.querySelector('menu');
-                if (subMenu) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  const childItems = subMenu.querySelectorAll('menuitem');
-                  childItems.forEach(ci => {
-                    if (ci.style.display === 'none' || ci.style.display === '') {
-                      ci.style.display = 'block';
-                    } else {
-                      ci.style.display = 'none';
-                    }
-                  });
-                }
-              });
-            });
-          }
-
-          if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initMenuitems);
-          } else {
-            initMenuitems();
-          }
+          // Notify parent that iframe is ready so parent can send the token
+          window.parent.postMessage({ type: 'IFRAME_READY' }, '*');
         })();
       </script>
     `);
+
 
     res.send($.html());
   } catch (err) {

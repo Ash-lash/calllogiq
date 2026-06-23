@@ -668,73 +668,86 @@ function WebNotifications({ user, token }) {
 
         {/* Main Workspace content */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, backgroundColor: '#ffffff' }}>
-          
+
           {/* VIEW: WATCHLIST TABLE */}
           {activeFilter !== 'history' && (
             <>
-              {/* Watchlist Table Top Toolbar */}
+              {/* Compact Table Toolbar */}
               <div style={{
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                padding: '10px 16px',
+                padding: '0 12px',
+                height: '36px',
                 backgroundColor: 'var(--bg-main)',
-                borderBottom: '2px solid #111111'
+                borderBottom: '2px solid #111111',
+                flexShrink: 0
               }}>
-                {/* Left controls */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  {/* Select All Checkbox */}
-                  <div 
+                {/* Left: select all checkbox */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div
                     onClick={handleSelectAll}
                     style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#111111' }}
                   >
-                    {selectedSiteIds.length > 0 && selectedSiteIds.length === filteredSites.length ? (
-                      <CheckSquare size={16} />
-                    ) : (
-                      <Square size={16} />
-                    )}
+                    {selectedSiteIds.length > 0 && selectedSiteIds.length === filteredSites.length
+                      ? <CheckSquare size={14} />
+                      : <Square size={14} />
+                    }
                   </div>
+                  {selectedSiteIds.length > 0 && (
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#111111' }}>
+                      {selectedSiteIds.length} selected
+                    </span>
+                  )}
                 </div>
 
                 {/* Right controls */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: '#111111', fontWeight: 800 }}>
-                  {/* Scan All button inline */}
-                  <button 
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', color: '#111111', fontWeight: 800 }}>
+                  <button
                     onClick={handleTriggerCheckAll}
                     disabled={checkingAll}
                     style={{
+                      display: 'flex', alignItems: 'center', gap: '4px',
+                      padding: '3px 10px',
                       backgroundColor: '#ffffff',
-                      border: '2px solid #111111',
-                      color: '#111111',
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      fontSize: '11px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '4px 10px',
+                      border: '1.5px solid #111111',
                       boxShadow: '1.5px 1.5px 0px #111',
-                      textTransform: 'uppercase',
-                      transition: 'all 0.1s'
+                      fontSize: '11px', fontWeight: 800, cursor: 'pointer',
+                      textTransform: 'uppercase', transition: 'all 0.1s'
                     }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.transform = 'translate(-0.5px, -0.5px)';
-                      e.currentTarget.style.boxShadow = '2px 2px 0px #111';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.transform = 'none';
-                      e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111';
-                    }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-0.5px,-0.5px)'; e.currentTarget.style.boxShadow = '2px 2px 0px #111'; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111'; }}
                   >
-                    <RefreshCw size={11} className={checkingAll ? 'spin' : ''} />
-                    {checkingAll ? 'Scanning...' : 'Scan All'}
+                    <RefreshCw size={10} className={checkingAll ? 'spin' : ''} />
+                    {checkingAll ? 'Scanning…' : 'Scan All'}
                   </button>
-
-                  <div style={{ height: '14px', width: '2px', backgroundColor: '#111111' }} />
-
-                  {/* Pagination text */}
-                  <span style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>1 - {filteredSites.length} of {filteredSites.length}</span>
+                  <div style={{ width: '1.5px', height: '14px', backgroundColor: '#111111' }} />
+                  <span style={{ letterSpacing: '0.04em', fontSize: '11px' }}>
+                    1 – {filteredSites.length} of {filteredSites.length}
+                  </span>
                 </div>
+              </div>
+
+              {/* Column Header Row */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '24px 18px 20px 1fr 70px 110px 28px 52px',
+                alignItems: 'center',
+                padding: '0 12px',
+                height: '28px',
+                gap: '8px',
+                backgroundColor: '#f8fafc',
+                borderBottom: '1.5px solid #111111',
+                flexShrink: 0
+              }}>
+                <div />
+                <div />
+                <div />
+                <div style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.05em' }}>Monitor</div>
+                <div style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.05em' }}>Interval</div>
+                <div style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.05em' }}>Last Check</div>
+                <div />
+                <div />
               </div>
 
               {/* Table Body */}
@@ -742,9 +755,9 @@ function WebNotifications({ user, token }) {
                 {filteredSites.length === 0 ? (
                   <div style={{ padding: '60px 20px', textAlign: 'center', color: '#111111' }}>
                     <Info size={32} style={{ margin: '0 auto 8px auto', color: '#111111' }} />
-                    <div style={{ fontWeight: 900, fontSize: '15px', color: '#111111', textTransform: 'uppercase' }}>No Monitors Found</div>
-                    <p style={{ fontSize: '13px', margin: '4px 0 0 0', fontWeight: 600 }}>
-                      {searchQuery ? 'No websites match your search query.' : 'Click "Add Monitor" to start tracking.'}
+                    <div style={{ fontWeight: 900, fontSize: '14px', color: '#111111', textTransform: 'uppercase' }}>No Monitors Found</div>
+                    <p style={{ fontSize: '12px', margin: '6px 0 0 0', fontWeight: 600, color: '#64748b' }}>
+                      {searchQuery ? 'No websites match your search.' : 'Click "+ Add Monitor" to start tracking a website.'}
                     </p>
                   </div>
                 ) : (
@@ -754,57 +767,59 @@ function WebNotifications({ user, token }) {
                     const isEnabled = site.enabled !== false;
                     const isExpanded = expandedSiteId === site.id;
                     const isSelected = selectedSiteIds.includes(site.id);
-                    
+                    const isChecking = checkingSiteId === site.id;
+
                     return (
-                      <div 
+                      <div
                         key={site.id}
                         style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          borderBottom: '1.5px solid #111111',
-                          backgroundColor: hasAlert ? '#f0fdf4' : (isExpanded ? '#f8fafc' : 'transparent'),
-                          transition: 'background-color 0.2s'
+                          borderBottom: '1.5px solid #e2e8f0',
+                          backgroundColor: hasAlert ? '#f0fdf4' : 'transparent',
                         }}
                       >
-                        {/* Row Header */}
-                        <div 
+                        {/* ── COMPACT ROW ── */}
+                        <div
                           onClick={() => setExpandedSiteId(isExpanded ? null : site.id)}
                           style={{
-                            display: 'flex',
-                            flexDirection: 'row',
+                            display: 'grid',
+                            gridTemplateColumns: '24px 18px 20px 1fr 70px 110px 28px 52px',
                             alignItems: 'center',
-                            padding: '12px 16px',
-                            gap: '12px',
-                            cursor: 'pointer'
+                            padding: '0 12px',
+                            height: '38px',
+                            gap: '8px',
+                            cursor: 'pointer',
+                            transition: 'background 0.1s',
+                            borderLeft: hasAlert ? '3px solid var(--success)' : '3px solid transparent'
                           }}
                           onMouseEnter={e => e.currentTarget.style.backgroundColor = hasAlert ? '#dcfce7' : '#f1f5f9'}
-                          onMouseLeave={e => e.currentTarget.style.backgroundColor = hasAlert ? '#f0fdf4' : (isExpanded ? '#f8fafc' : 'transparent')}
+                          onMouseLeave={e => e.currentTarget.style.backgroundColor = hasAlert ? '#f0fdf4' : 'transparent'}
                         >
                           {/* Checkbox */}
-                          <div 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSelectRow(site.id);
-                            }}
-                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#111111' }}
+                          <div
+                            onClick={e => { e.stopPropagation(); handleSelectRow(site.id); }}
+                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#64748b' }}
                           >
-                            {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                            {isSelected ? <CheckSquare size={14} style={{ color: '#111111' }} /> : <Square size={14} />}
                           </div>
 
-                          {/* Expand chevron caret */}
-                          <div style={{ color: '#111111', display: 'flex', alignItems: 'center' }}>
-                            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          {/* Expand caret */}
+                          <div style={{ color: '#94a3b8', display: 'flex', alignItems: 'center' }}>
+                            {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                           </div>
 
-                          {/* Favicon + Name + Inline Snippet */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
-                            <img 
-                              src={getFaviconUrl(site.url)} 
-                              alt="" 
-                              style={{ width: '16px', height: '16px', border: '1px solid #111', borderRadius: '0px', flexShrink: 0, backgroundColor: '#ffffff' }}
-                              onError={(e) => { e.currentTarget.src = 'https://www.google.com/s2/favicons?sz=64&domain=google.com'; }}
+                          {/* Favicon */}
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <img
+                              src={getFaviconUrl(site.url)}
+                              alt=""
+                              style={{ width: '16px', height: '16px', border: '1px solid #e2e8f0', flexShrink: 0 }}
+                              onError={e => { e.currentTarget.src = 'https://www.google.com/s2/favicons?sz=64&domain=google.com'; }}
                             />
-                            <a 
+                          </div>
+
+                          {/* Name + Content Preview (inline) */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
+                            <a
                               href={site.url}
                               target="_blank"
                               rel="noreferrer"
@@ -813,129 +828,139 @@ function WebNotifications({ user, token }) {
                                 fontWeight: 800,
                                 fontSize: '13px',
                                 color: '#2563eb',
-                                textDecoration: 'underline',
+                                textDecoration: 'none',
                                 whiteSpace: 'nowrap',
+                                flexShrink: 0,
+                                maxWidth: '170px',
                                 overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                maxWidth: '200px',
-                                flexShrink: 0
+                                textOverflow: 'ellipsis'
                               }}
+                              title={site.url}
                             >
                               {site.name}
                             </a>
                             {site.latestContentText && (
                               <span style={{
-                                color: '#475569',
                                 fontSize: '12px',
+                                color: '#64748b',
+                                fontWeight: 500,
                                 whiteSpace: 'nowrap',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
-                                fontWeight: 600
+                                flexShrink: 1
                               }}>
-                                — {site.latestContentText.substring(0, 120)}
+                                — {site.latestContentText.replace(/\s+/g, ' ').substring(0, 140)}
                               </span>
                             )}
                           </div>
 
-                          {/* Interval */}
-                          <div style={{ width: '90px', color: '#2563eb', fontSize: '12px', fontWeight: 800, textAlign: 'left', flexShrink: 0 }}>
-                            30 mins
+                          {/* Interval badge */}
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <span style={{
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              color: '#2563eb',
+                              backgroundColor: '#eff6ff',
+                              border: '1px solid #bfdbfe',
+                              padding: '2px 7px',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              30 mins
+                            </span>
                           </div>
 
                           {/* Last Checked */}
-                          <div style={{ 
-                            width: '110px', 
-                            color: hasAlert ? 'var(--danger)' : '#111111', 
-                            fontSize: '12px', 
-                            fontWeight: 800, 
-                            textAlign: 'left',
-                            flexShrink: 0
+                          <div style={{
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            color: hasAlert ? 'var(--danger)' : '#64748b',
+                            whiteSpace: 'nowrap'
                           }}>
                             {formatTimeAgo(site.lastCheckedAt)}
                           </div>
 
-                          {/* Device / Cloud Indicator */}
-                          <div style={{ width: '40px', display: 'flex', justifyContent: 'center', color: '#111111', flexShrink: 0 }}>
-                            <Cloud size={15} />
+                          {/* Cloud icon */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+                            <Cloud size={14} />
                           </div>
 
-                          {/* ON/OFF Switch Button */}
-                          <div 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggleSite(site.id, isEnabled);
-                            }}
-                            style={{ width: '60px', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}
+                          {/* ON/OFF Toggle */}
+                          <div
+                            onClick={e => { e.stopPropagation(); handleToggleSite(site.id, isEnabled); }}
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}
                           >
-                            <button style={{
-                              backgroundColor: isEnabled ? 'var(--success)' : '#ffffff',
-                              color: isEnabled ? '#ffffff' : '#111111',
-                              border: '1.5px solid #111111',
-                              borderRadius: '0px',
-                              padding: '2px 8px',
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '2px 7px',
                               fontSize: '10px',
                               fontWeight: 900,
-                              cursor: 'pointer',
-                              minWidth: '38px',
-                              textAlign: 'center',
+                              backgroundColor: isEnabled ? 'var(--success)' : '#f1f5f9',
+                              color: isEnabled ? '#ffffff' : '#94a3b8',
+                              border: '1.5px solid #111111',
                               boxShadow: '1.5px 1.5px 0px #111',
-                              transition: 'all 0.1s'
-                            }}
-                            onMouseEnter={e => {
-                              e.currentTarget.style.transform = 'translate(-0.5px, -0.5px)';
-                              e.currentTarget.style.boxShadow = '2.2px 2.2px 0px #111';
-                            }}
-                            onMouseLeave={e => {
-                              e.currentTarget.style.transform = 'none';
-                              e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111';
-                            }}
-                            >
+                              cursor: 'pointer',
+                              letterSpacing: '0.04em',
+                              transition: 'all 0.1s',
+                              minWidth: '34px',
+                              textAlign: 'center'
+                            }}>
                               {isEnabled ? 'ON' : 'OFF'}
-                            </button>
+                            </span>
                           </div>
                         </div>
 
-                        {/* Expand Details Drawer */}
+                        {/* ── EXPANDED DRAWER ── */}
                         {isExpanded && (
                           <div style={{
-                            padding: '16px 24px',
+                            padding: '14px 16px 16px 60px',
                             backgroundColor: '#f8fafc',
-                            borderTop: '2px solid #111111',
+                            borderTop: '1.5px solid #111111',
                             display: 'flex',
                             flexDirection: 'row',
-                            gap: '24px'
+                            gap: '20px'
                           }}>
                             {/* Preview box */}
                             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', color: '#111111', letterSpacing: '0.03em' }}>
-                                  🔍 Latest Extracted Content Preview
+                                <span style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', color: '#111111', letterSpacing: '0.04em' }}>
+                                  Latest Content
                                 </span>
-                                {site.scrapedVia && (
-                                  <span style={{ 
-                                    fontSize: '10px', 
-                                    fontWeight: 800, 
-                                    padding: '2px 6px', 
-                                    border: '1.5px solid #111',
-                                    borderRadius: '0px', 
-                                    backgroundColor: '#e0f2fe', 
-                                    color: '#0369a1',
-                                    boxShadow: '1px 1px 0px #111'
-                                  }}>
-                                    ⚡ Scraped via: {site.scrapedVia}
-                                  </span>
-                                )}
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                  {site.scrapedVia && (
+                                    <span style={{
+                                      fontSize: '9px', fontWeight: 800,
+                                      padding: '2px 6px',
+                                      border: '1.5px solid #111',
+                                      backgroundColor: '#e0f2fe',
+                                      color: '#0369a1',
+                                      boxShadow: '1px 1px 0px #111'
+                                    }}>
+                                      ⚡ via {site.scrapedVia}
+                                    </span>
+                                  )}
+                                  {site.selector && (
+                                    <span style={{
+                                      fontSize: '9px', fontWeight: 800,
+                                      padding: '2px 6px',
+                                      border: '1.5px solid #111',
+                                      backgroundColor: '#fef9c3',
+                                      color: '#854d0e',
+                                      fontFamily: 'monospace',
+                                      boxShadow: '1px 1px 0px #111'
+                                    }}>
+                                      CSS: {site.selector}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                              
                               <div style={{
                                 fontFamily: 'monospace',
-                                fontSize: '12px',
-                                padding: '16px',
+                                fontSize: '11px',
+                                padding: '12px',
                                 border: '2px solid #111111',
-                                borderRadius: '0px',
                                 backgroundColor: '#ffffff',
                                 color: '#111111',
-                                maxHeight: '180px',
+                                maxHeight: '160px',
                                 overflowY: 'auto',
                                 lineHeight: 1.5,
                                 whiteSpace: 'pre-wrap',
@@ -944,183 +969,120 @@ function WebNotifications({ user, token }) {
                                 {site.latestContentText ? (
                                   <>
                                     {hasAlert && (
-                                      <div style={{ color: '#166534', fontWeight: 900, fontSize: '11px', textTransform: 'uppercase', marginBottom: '4px' }}>
-                                        🟢 UNREAD CHANGE ALERT DETECTED:
+                                      <div style={{ color: '#166534', fontWeight: 900, fontSize: '10px', textTransform: 'uppercase', marginBottom: '4px' }}>
+                                        🟢 UNREAD CHANGE DETECTED:
                                       </div>
                                     )}
                                     {site.latestContentText}
                                   </>
                                 ) : (
-                                  <span style={{ color: '#64748b', fontStyle: 'italic' }}>
-                                    No content has been fetched yet. Click "Scan" to fetch initial data.
+                                  <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+                                    No content fetched yet. Click "Scan" to initialise.
                                   </span>
                                 )}
                               </div>
                             </div>
 
-                            {/* Profile details */}
+                            {/* Right sidebar: profile + actions */}
                             <div style={{
-                              width: '260px',
+                              width: '240px',
                               borderLeft: '2px solid #111111',
-                              paddingLeft: '20px',
+                              paddingLeft: '16px',
                               display: 'flex',
                               flexDirection: 'column',
-                              gap: '8px',
-                              fontSize: '12px'
+                              gap: '6px',
+                              fontSize: '11px',
+                              flexShrink: 0
                             }}>
-                              <h5 style={{ margin: 0, fontWeight: 900, textTransform: 'uppercase', color: '#111111', fontFamily: 'var(--font-family-title)' }}>Scraper Profile</h5>
-                              
-                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1.5px dashed #111111', paddingBottom: '4px' }}>
-                                <span style={{ color: '#111111', fontWeight: 700 }}>Status:</span>
-                                <strong style={{ color: isEnabled ? 'var(--success)' : 'var(--danger)', fontWeight: 800 }}>
-                                  {isEnabled ? 'ACTIVE MONITOR' : 'PAUSED'}
-                                </strong>
-                              </div>
-                              
-                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1.5px dashed #111111', paddingBottom: '4px' }}>
-                                <span style={{ color: '#111111', fontWeight: 700 }}>Interval:</span>
-                                <span style={{ fontWeight: 600 }}>30 Minutes</span>
-                              </div>
-                              
-                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1.5px dashed #111111', paddingBottom: '4px' }}>
-                                <span style={{ color: '#111111', fontWeight: 700 }}>Date Added:</span>
-                                <span style={{ fontWeight: 600 }}>{site.createdAt ? new Date(site.createdAt).toLocaleDateString() : 'Unknown'}</span>
-                              </div>
-                              
-                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1.5px dashed #111111', paddingBottom: '4px' }}>
-                                <span style={{ color: '#111111', fontWeight: 700 }}>Hash ID:</span>
-                                <span style={{ fontFamily: 'monospace', fontSize: '10px', fontWeight: 600 }}>
-                                  {site.lastContentHash ? site.lastContentHash.substring(0, 16) + '...' : 'No Hash'}
-                                </span>
-                              </div>
+                              <h5 style={{ margin: '0 0 4px 0', fontWeight: 900, textTransform: 'uppercase', color: '#111111', fontFamily: 'var(--font-family-title)', fontSize: '11px' }}>
+                                Scraper Profile
+                              </h5>
 
-                              <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleCheckSingleSite(site.id, site.name);
-                                  }}
-                                  disabled={checkingSiteId === site.id}
+                              {[
+                                ['Status', isEnabled ? 'ACTIVE' : 'PAUSED', isEnabled ? 'var(--success)' : 'var(--danger)'],
+                                ['Interval', '30 Minutes', null],
+                                ['Added', site.createdAt ? new Date(site.createdAt).toLocaleDateString() : '—', null],
+                                ['Hash', site.lastContentHash ? site.lastContentHash.substring(0, 12) + '…' : 'None', null],
+                              ].map(([label, value, color]) => (
+                                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #d1d5db', paddingBottom: '3px' }}>
+                                  <span style={{ color: '#64748b', fontWeight: 700 }}>{label}:</span>
+                                  <strong style={{ color: color || '#111111', fontWeight: 800, fontFamily: color ? undefined : 'monospace', fontSize: '10px' }}>{value}</strong>
+                                </div>
+                              ))}
+
+                              <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleCheckSingleSite(site.id, site.name); }}
+                                  disabled={isChecking}
                                   style={{
-                                    flex: 1,
-                                    padding: '5px',
-                                    fontSize: '11px',
-                                    backgroundColor: '#ffffff',
-                                    border: '2px solid #111111',
+                                    flex: 1, padding: '5px 4px',
+                                    fontSize: '10px', backgroundColor: '#ffffff',
+                                    border: '1.5px solid #111111',
                                     boxShadow: '1.5px 1.5px 0px #111',
-                                    cursor: 'pointer',
-                                    fontWeight: 900,
+                                    cursor: 'pointer', fontWeight: 900,
                                     textTransform: 'uppercase',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '2px',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
                                     transition: 'all 0.1s'
                                   }}
-                                  onMouseEnter={e => {
-                                    e.currentTarget.style.transform = 'translate(-0.5px, -0.5px)';
-                                    e.currentTarget.style.boxShadow = '2.2px 2.2px 0px #111';
-                                  }}
-                                  onMouseLeave={e => {
-                                    e.currentTarget.style.transform = 'none';
-                                    e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111';
-                                  }}
+                                  onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-0.5px,-0.5px)'; e.currentTarget.style.boxShadow = '2px 2px 0px #111'; }}
+                                  onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111'; }}
                                 >
-                                  <RefreshCw size={10} className={checkingSiteId === site.id ? 'spin' : ''} />
-                                  Scan
+                                  <RefreshCw size={9} className={isChecking ? 'spin' : ''} /> Scan
                                 </button>
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSimulateChange(site.id, site.name);
-                                  }}
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleSimulateChange(site.id, site.name); }}
                                   style={{
-                                    flex: 1,
-                                    padding: '5px',
-                                    fontSize: '11px',
-                                    backgroundColor: '#ffffff',
-                                    border: '2px solid #111111',
+                                    flex: 1, padding: '5px 4px',
+                                    fontSize: '10px', backgroundColor: '#ffffff',
+                                    border: '1.5px solid #111111',
                                     boxShadow: '1.5px 1.5px 0px #111',
-                                    cursor: 'pointer',
-                                    fontWeight: 900,
+                                    cursor: 'pointer', fontWeight: 900,
                                     textTransform: 'uppercase',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '2px',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
                                     transition: 'all 0.1s'
                                   }}
-                                  onMouseEnter={e => {
-                                    e.currentTarget.style.transform = 'translate(-0.5px, -0.5px)';
-                                    e.currentTarget.style.boxShadow = '2.2px 2.2px 0px #111';
-                                  }}
-                                  onMouseLeave={e => {
-                                    e.currentTarget.style.transform = 'none';
-                                    e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111';
-                                  }}
+                                  onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-0.5px,-0.5px)'; e.currentTarget.style.boxShadow = '2px 2px 0px #111'; }}
+                                  onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111'; }}
                                 >
-                                  <Sparkles size={10} />
-                                  Simulate
+                                  <Sparkles size={9} /> Test
                                 </button>
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteSite(site.id, site.name);
-                                  }}
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleDeleteSite(site.id, site.name); }}
                                   style={{
                                     padding: '5px 8px',
-                                    fontSize: '11px',
-                                    backgroundColor: '#ffffff',
+                                    fontSize: '10px', backgroundColor: '#ffffff',
                                     color: 'var(--danger)',
-                                    border: '2px solid #111111',
+                                    border: '1.5px solid #111111',
                                     boxShadow: '1.5px 1.5px 0px #111',
-                                    cursor: 'pointer',
-                                    fontWeight: 900,
+                                    cursor: 'pointer', fontWeight: 900,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     transition: 'all 0.1s'
                                   }}
-                                  onMouseEnter={e => {
-                                    e.currentTarget.style.transform = 'translate(-0.5px, -0.5px)';
-                                    e.currentTarget.style.boxShadow = '2.2px 2.2px 0px #111';
-                                  }}
-                                  onMouseLeave={e => {
-                                    e.currentTarget.style.transform = 'none';
-                                    e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111';
-                                  }}
+                                  onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-0.5px,-0.5px)'; e.currentTarget.style.boxShadow = '2px 2px 0px #111'; }}
+                                  onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111'; }}
                                 >
                                   <Trash2 size={10} />
                                 </button>
                               </div>
-                              
+
                               {hasAlert && (
-                                <button 
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    await handleClearSiteAlerts(site.id);
-                                  }}
+                                <button
+                                  onClick={async e => { e.stopPropagation(); await handleClearSiteAlerts(site.id); }}
                                   style={{
-                                    width: '100%',
-                                    padding: '6px',
-                                    fontSize: '11px',
-                                    backgroundColor: '#ffffff',
-                                    border: '2px solid #111111',
-                                    boxShadow: '2px 2px 0px #111',
-                                    color: '#111111',
-                                    fontWeight: 900,
+                                    width: '100%', padding: '5px',
+                                    fontSize: '10px', backgroundColor: '#ffffff',
+                                    border: '1.5px solid #111111',
+                                    boxShadow: '1.5px 1.5px 0px #111',
+                                    color: '#111111', fontWeight: 900,
                                     textTransform: 'uppercase',
-                                    cursor: 'pointer',
-                                    marginTop: '4px',
-                                    transition: 'all 0.1s'
+                                    cursor: 'pointer', marginTop: '2px',
+                                    transition: 'all 0.1s',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
                                   }}
-                                  onMouseEnter={e => {
-                                    e.currentTarget.style.transform = 'translate(-1px, -1px)';
-                                    e.currentTarget.style.boxShadow = '3px 3px 0px #111';
-                                  }}
-                                  onMouseLeave={e => {
-                                    e.currentTarget.style.transform = 'none';
-                                    e.currentTarget.style.boxShadow = '2px 2px 0px #111';
-                                  }}
+                                  onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-1px,-1px)'; e.currentTarget.style.boxShadow = '2.5px 2.5px 0px #111'; }}
+                                  onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111'; }}
                                 >
-                                  Mark alerts as read
+                                  <Check size={9} /> Mark as Read
                                 </button>
                               )}
                             </div>
@@ -1136,95 +1098,73 @@ function WebNotifications({ user, token }) {
 
           {/* VIEW: HISTORICAL CHANGE LOG FEED */}
           {activeFilter === 'history' && (
-            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', flex: 1 }}>
+            <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto', flex: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 900, color: '#111111', fontFamily: 'var(--font-family-title)', letterSpacing: '-0.02em' }}>
+                <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 900, color: '#111111', fontFamily: 'var(--font-family-title)', letterSpacing: '-0.01em', textTransform: 'uppercase' }}>
                   📜 Change Log Feed
                 </h3>
                 {notifications.length > 0 && (
-                  <button 
+                  <button
                     onClick={handleClearNotifications}
                     style={{
-                      padding: '6px 12px',
-                      backgroundColor: '#ffffff',
-                      border: '2px solid #111111',
-                      boxShadow: '2px 2px 0px #111',
-                      color: 'var(--danger)',
-                      fontWeight: 900,
-                      fontSize: '11px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      textTransform: 'uppercase',
-                      transition: 'all 0.1s'
+                      padding: '4px 10px', backgroundColor: '#ffffff',
+                      border: '1.5px solid #111111', boxShadow: '1.5px 1.5px 0px #111',
+                      color: 'var(--danger)', fontWeight: 900, fontSize: '10px',
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                      textTransform: 'uppercase', transition: 'all 0.1s'
                     }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.transform = 'translate(-1px, -1px)';
-                      e.currentTarget.style.boxShadow = '3px 3px 0px #111';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.transform = 'none';
-                      e.currentTarget.style.boxShadow = '2px 2px 0px #111';
-                    }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-1px,-1px)'; e.currentTarget.style.boxShadow = '2.5px 2.5px 0px #111'; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111'; }}
                   >
-                    <Trash size={12} /> Clear Logs
+                    <Trash size={10} /> Clear Logs
                   </button>
                 )}
               </div>
 
               {notifications.length === 0 ? (
-                <div style={{ 
-                  textAlign: 'center', 
-                  padding: '48px 20px', 
-                  color: '#111111',
-                  backgroundColor: 'var(--bg-main)',
-                  border: '2px dashed #111111'
+                <div style={{
+                  textAlign: 'center', padding: '48px 20px', color: '#111111',
+                  backgroundColor: 'var(--bg-main)', border: '2px dashed #111111'
                 }}>
                   <Info size={28} style={{ marginBottom: '8px' }} />
-                  <div style={{ fontWeight: 900, fontSize: '14px', textTransform: 'uppercase' }}>No Changes Logged</div>
-                  <p style={{ fontSize: '12px', margin: '4px 0 0 0', fontWeight: 600 }}>
-                    All websites currently match their recorded states. When a change is detected, it will be listed here.
+                  <div style={{ fontWeight: 900, fontSize: '13px', textTransform: 'uppercase' }}>No Changes Logged</div>
+                  <p style={{ fontSize: '11px', margin: '4px 0 0 0', fontWeight: 600, color: '#64748b' }}>
+                    When a change is detected it will appear here.
                   </p>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {notifications.map(notif => (
-                    <div 
+                    <div
                       key={notif.id}
                       style={{
                         border: '2px solid #111111',
-                        padding: '16px',
+                        padding: '12px 14px',
                         backgroundColor: '#ffffff',
-                        boxShadow: '3px 3px 0px #111111'
+                        boxShadow: '2.5px 2.5px 0px #111111'
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
                         <div>
-                          <h4 style={{ fontSize: '13px', fontWeight: 900, color: '#111111', margin: 0 }}>{notif.title}</h4>
-                          <a 
-                            href={notif.url} 
-                            target="_blank" 
-                            rel="noreferrer"
-                            style={{ fontSize: '11px', color: '#2563eb', textDecoration: 'underline', fontWeight: 800 }}
+                          <h4 style={{ fontSize: '12px', fontWeight: 900, color: '#111111', margin: 0 }}>{notif.title}</h4>
+                          <a
+                            href={notif.url} target="_blank" rel="noreferrer"
+                            style={{ fontSize: '10px', color: '#2563eb', textDecoration: 'underline', fontWeight: 700 }}
                           >
                             {notif.url}
                           </a>
                         </div>
-                        <span style={{ fontSize: '11px', color: '#111111', fontWeight: 700 }}>
-                          🕒 {new Date(notif.createdAt).toLocaleDateString()} {new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          {new Date(notif.createdAt).toLocaleDateString()} {new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <p style={{ 
-                        fontSize: '12px', 
-                        color: '#111111', 
+                      <p style={{
+                        fontSize: '11px', color: '#111111',
                         backgroundColor: 'var(--bg-main)',
-                        padding: '10px',
+                        padding: '8px 10px',
                         border: '1.5px solid #111111',
-                        margin: 0,
-                        fontFamily: 'monospace',
-                        whiteSpace: 'pre-wrap',
-                        fontWeight: 600
+                        margin: 0, fontFamily: 'monospace',
+                        whiteSpace: 'pre-wrap', fontWeight: 600
                       }}>
                         {notif.description}
                       </p>

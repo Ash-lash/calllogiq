@@ -2249,14 +2249,47 @@ function extractTextFromHtml(html) {
   return clean.replace(/\s+/g, ' ').trim();
 }
 
+async function getBrowserInstance() {
+  const launchOptions = {
+    headless: 'new',
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  };
+  
+  try {
+    return await puppeteer.launch(launchOptions);
+  } catch (err) {
+    if (err.message.includes('Could not find Chrome') || err.message.includes('executable')) {
+      console.log('Chrome binary not found in cache. Attempting to download Chrome programmatically...');
+      try {
+        const cacheDir = process.env.RENDER ? '/opt/render/.cache/puppeteer' : undefined;
+        const installCmd = 'npx puppeteer browsers install chrome';
+        console.log(`Running: ${installCmd}`);
+        
+        execSync(installCmd, {
+          env: { 
+            ...process.env, 
+            ...(cacheDir ? { PUPPETEER_CACHE_DIR: cacheDir } : {}) 
+          },
+          stdio: 'inherit'
+        });
+        
+        console.log('Chrome downloaded successfully. Retrying browser launch...');
+        return await puppeteer.launch(launchOptions);
+      } catch (installErr) {
+        console.error('Failed to auto-install Chrome:', installErr);
+        throw err;
+      }
+    } else {
+      throw err;
+    }
+  }
+}
+
 async function checkWebsiteForChanges(site) {
   let browser = null;
   try {
     console.log(`Checking website "${site.name}" (${site.url}) using Puppeteer...`);
-    browser = await puppeteer.launch({
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    browser = await getBrowserInstance();
     
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');

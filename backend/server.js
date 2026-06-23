@@ -2498,13 +2498,26 @@ app.post('/api/admin/web-notifications/simulate-change/:siteId', authenticateTok
     }
     
     // Create a mock update notification
-    const updates = [
-      "Updated UI layout and color themes on homepage.",
-      "Added a new post: 'Latest Product Features Announcement'.",
-      "Modified contact details: phone number and office location updated.",
-      "Updated price listing sheet for Business Consultancy plans.",
-      "Added a new banner notification: 'Upcoming System Maintenance on Sunday'."
-    ];
+    let updates = [];
+    const lowerName = site.name.toLowerCase();
+    const lowerUrl = site.url.toLowerCase();
+    
+    if (lowerName.includes('ncc') || lowerUrl.includes('ncc') || lowerName.includes('sairam') || lowerName.includes('college') || lowerName.includes('univ')) {
+      updates = [
+        "New announcement: 'CATC camp registrations are now open for Navy Wing.'",
+        "Notice: 'Updated department-wise cadet selection list for Academic Year 2026.'",
+        "Circular: 'Upcoming training camp schedules updated on portal.'",
+        "Attention: 'NCC B & C Certificate examinations dates announced.'"
+      ];
+    } else {
+      updates = [
+        "Added a new post: 'Latest system features and portal updates.'",
+        "Updated contact details: official support phone number updated.",
+        "Added a new banner notification: 'Upcoming System Maintenance on Sunday.'",
+        "Notice: 'Privacy policy and user guidelines updated.'"
+      ];
+    }
+    
     const randomUpdate = updates[Math.floor(Math.random() * updates.length)];
     const mockContent = `[SIMULATED CHANGE] Content updated on website. Detail: ${randomUpdate}`;
     const mockHash = crypto.createHash('md5').update(mockContent).digest('hex');

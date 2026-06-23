@@ -2261,25 +2261,50 @@ async function checkWebsiteForChanges(site) {
     // Set viewport to look like desktop
     await page.setViewport({ width: 1280, height: 800 });
     
-    // Navigate and wait for networkidle2 or load event (max 25 seconds timeout)
+    // Navigate and wait for networkidle2 (max 25 seconds timeout)
     await page.goto(site.url, { waitUntil: 'networkidle2', timeout: 25000 });
     
-    // Get fully rendered html content
-    const html = await page.content();
+    // Extract text based on whether a CSS selector is specified
+    let text = '';
+    let selectorNotFound = false;
+    
+    if (site.selector) {
+      const selectedText = await page.evaluate((sel) => {
+        const elements = Array.from(document.querySelectorAll(sel));
+        if (elements.length === 0) return null;
+        return elements.map(el => el.innerText || el.textContent).join('\n');
+      }, site.selector);
+      
+      if (selectedText === null) {
+        selectorNotFound = true;
+        text = `[SELECTOR NOT FOUND] The CSS selector "${site.selector}" could not be found on the page.`;
+      } else {
+        text = selectedText;
+      }
+    } else {
+      text = await page.evaluate(() => document.body.innerText);
+    }
+    
     await browser.close();
     browser = null; // Mark as closed
     
-    const text = extractTextFromHtml(html);
     const hash = crypto.createHash('md5').update(text).digest('hex');
-    
     const previousHash = site.lastContentHash;
     const nowStr = new Date().toISOString();
+    const cleanSnippet = text.substring(0, 300) + (text.length > 300 ? '...' : '');
     
     // Save current status
     await db.updateTrackedWebsite(site.id, {
       lastContentHash: hash,
-      lastCheckedAt: nowStr
+      lastCheckedAt: nowStr,
+      latestContentText: cleanSnippet
     });
+    
+    // If selector was not found, don't trigger notification (just log error in status snippet)
+    if (selectorNotFound) {
+      console.warn(`Selector "${site.selector}" not found on page ${site.name}`);
+      return false;
+    }
     
     // If it's the first check, don't trigger notification (just initialize hash)
     if (!previousHash) {
@@ -2291,14 +2316,16 @@ async function checkWebsiteForChanges(site) {
     if (hash !== previousHash) {
       console.log(`Detected change on monitored website: ${site.name} (${site.url})`);
       
-      const cleanSnippet = text.substring(0, 180) + (text.length > 180 ? '...' : '');
+      const snippetLimit = text.substring(0, 180) + (text.length > 180 ? '...' : '');
       
       await db.createWebNotification({
         websiteId: site.id,
         websiteName: site.name,
         url: site.url,
         title: `Change detected on ${site.name}`,
-        description: `Content updated on website. Preview: "${cleanSnippet}"`,
+        description: site.selector 
+          ? `Selected element change detected. Content: "${snippetLimit}"` 
+          : `Content updated on website. Preview: "${snippetLimit}"`,
         createdAt: nowStr
       });
       
@@ -2347,12 +2374,12 @@ app.get('/api/admin/web-notifications/sites', authenticateToken, requireAdmin, a
 });
 
 app.post('/api/admin/web-notifications/sites', authenticateToken, requireAdmin, async (req, res) => {
-  const { url, name } = req.body;
+  const { url, name, selector } = req.body;
   if (!url || !name) {
     return res.status(400).json({ error: 'Name and URL are required' });
   }
   try {
-    const newSite = await db.createTrackedWebsite({ url, name });
+    const newSite = await db.createTrackedWebsite({ url, name, selector });
     // Perform initial check to save the hash without notification
     await checkWebsiteForChanges(newSite);
     res.status(201).json(newSite);
@@ -2370,6 +2397,22 @@ app.delete('/api/admin/web-notifications/sites/:id', authenticateToken, requireA
   } catch (err) {
     console.error('Error deleting tracked site:', err);
     res.status(500).json({ error: 'Failed to delete tracked website' });
+  }
+});
+
+app.post('/api/admin/web-notifications/sites/:id/check', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const sites = await db.listTrackedWebsites();
+    const site = sites.find(s => s.id === id);
+    if (!site) {
+      return res.status(404).json({ error: 'Website not found' });
+    }
+    const changed = await checkWebsiteForChanges(site);
+    res.json({ message: changed ? 'Change detected!' : 'No changes detected.' });
+  } catch (err) {
+    console.error('Error checking single site:', err);
+    res.status(500).json({ error: 'Failed to check website' });
   }
 });
 
@@ -2427,14 +2470,24 @@ app.post('/api/admin/web-notifications/simulate-change/:siteId', authenticateTok
       "Added a new banner notification: 'Upcoming System Maintenance on Sunday'."
     ];
     const randomUpdate = updates[Math.floor(Math.random() * updates.length)];
+    const mockContent = `[SIMULATED CHANGE] Content updated on website. Detail: ${randomUpdate}`;
+    const mockHash = crypto.createHash('md5').update(mockContent).digest('hex');
+    const nowStr = new Date().toISOString();
+    
+    // Update website record with mock content
+    await db.updateTrackedWebsite(site.id, {
+      lastContentHash: mockHash,
+      lastCheckedAt: nowStr,
+      latestContentText: mockContent
+    });
     
     await db.createWebNotification({
       websiteId: site.id,
       websiteName: site.name,
       url: site.url,
       title: `Change detected on ${site.name}`,
-      description: `[SIMULATED CHANGE] Content updated on website. Detail: ${randomUpdate}`,
-      createdAt: new Date().toISOString()
+      description: mockContent,
+      createdAt: nowStr
     });
     
     res.json({ message: `Simulated change notification created for ${site.name}.` });

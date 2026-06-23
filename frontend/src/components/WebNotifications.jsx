@@ -320,35 +320,51 @@ function WebNotifications({ user, token }) {
         style={{
           width: '100%',
           textAlign: 'left',
-          background: isActive ? '#2563eb' : 'transparent',
-          color: isActive ? '#ffffff' : '#334155',
-          border: 'none',
-          borderRadius: '4px',
+          background: isActive ? '#111111' : 'transparent',
+          color: isActive ? '#ffffff' : '#111111',
+          border: isActive ? '2px solid #111111' : '1.5px solid transparent',
+          borderRadius: '0px',
           padding: '8px 12px',
-          fontWeight: 600,
+          fontWeight: 800,
           fontSize: '13px',
           cursor: 'pointer',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          transition: 'background-color 0.15s, color 0.15s'
+          transform: isActive ? 'translate(-1px, -1px)' : 'none',
+          boxShadow: isActive ? '2px 2px 0px #111111' : 'none',
+          transition: 'all 0.1s',
+          fontFamily: 'var(--font-family-title)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.02em'
         }}
         onMouseEnter={e => {
-          if (!isActive) e.currentTarget.style.backgroundColor = '#e2e8f0';
+          if (!isActive) {
+            e.currentTarget.style.borderColor = '#111111';
+            e.currentTarget.style.backgroundColor = '#ffffff';
+            e.currentTarget.style.boxShadow = '2px 2px 0px #111111';
+            e.currentTarget.style.transform = 'translate(-1px, -1px)';
+          }
         }}
         onMouseLeave={e => {
-          if (!isActive) e.currentTarget.style.backgroundColor = 'transparent';
+          if (!isActive) {
+            e.currentTarget.style.borderColor = 'transparent';
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.boxShadow = 'none';
+            e.currentTarget.style.transform = 'none';
+          }
         }}
       >
         <span>{label}</span>
         {count > 0 && (
           <span style={{
-            backgroundColor: isActive ? '#ffffff' : activeColor || '#3b82f6',
-            color: isActive ? '#2563eb' : '#ffffff',
-            borderRadius: '10px',
+            backgroundColor: isActive ? '#ffffff' : activeColor || '#111111',
+            color: isActive ? '#111111' : '#ffffff',
+            border: '1.5px solid #111111',
+            borderRadius: '4px',
             padding: '1px 6px',
             fontSize: '10px',
-            fontWeight: 700
+            fontWeight: 900
           }}>
             {count}
           </span>
@@ -370,32 +386,32 @@ function WebNotifications({ user, token }) {
       display: 'flex',
       flexDirection: 'column',
       backgroundColor: '#ffffff',
-      borderRadius: '8px',
-      border: '1px solid #e2e8f0',
-      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.025)',
+      border: '2.5px solid #111111',
+      boxShadow: 'var(--shadow-flat)',
       overflow: 'hidden',
-      fontFamily: '"Inter", sans-serif',
-      color: '#334155'
+      fontFamily: 'var(--font-family-body)',
+      color: 'var(--text-primary)'
     }}>
       {/* Top Header Bar */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: '12px 20px',
-        borderBottom: '1px solid #e2e8f0',
+        padding: '14px 20px',
+        borderBottom: '2.5px solid #111111',
         backgroundColor: '#ffffff'
       }}>
         {/* Title */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '15px', fontWeight: 800, letterSpacing: '0.05em', color: '#0f172a' }}>WATCHLIST</span>
+          <span style={{ fontSize: '1.4rem', fontWeight: 900, fontFamily: 'var(--font-family-title)', color: '#111111', letterSpacing: '-0.02em' }}>WATCHLIST</span>
           <span style={{
-            fontSize: '10px',
-            fontWeight: 700,
-            color: '#2563eb',
-            backgroundColor: '#eff6ff',
-            padding: '2px 6px',
-            borderRadius: '4px'
+            fontSize: '0.72rem',
+            fontWeight: 800,
+            color: '#111111',
+            backgroundColor: '#ffffff',
+            padding: '2px 8px',
+            border: '2px solid #111111',
+            boxShadow: '1.5px 1.5px 0px #111'
           }}>
             CLOUD - CALL LOGIQ SERVERS
           </span>
@@ -406,15 +422,14 @@ function WebNotifications({ user, token }) {
           display: 'flex',
           alignItems: 'center',
           gap: '8px',
-          background: '#f1f5f9',
+          background: '#ffffff',
           padding: '6px 12px',
-          borderRadius: '20px',
+          border: '2px solid #111111',
           width: '260px',
-          border: '1px solid transparent',
           marginLeft: '20px',
           marginRight: 'auto'
         }}>
-          <Search size={14} style={{ color: '#64748b' }} />
+          <Search size={14} style={{ color: '#111111' }} />
           <input 
             type="text"
             style={{
@@ -423,7 +438,8 @@ function WebNotifications({ user, token }) {
               outline: 'none',
               width: '100%',
               fontSize: '13px',
-              color: '#334155'
+              color: '#111111',
+              fontWeight: 700
             }}
             placeholder="Search..."
             value={searchQuery}
@@ -436,7 +452,7 @@ function WebNotifications({ user, token }) {
           {/* Notifications Envelope */}
           <div 
             onClick={() => setActiveFilter('unread')}
-            style={{ position: 'relative', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#64748b' }}
+            style={{ position: 'relative', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#111111' }}
             title="Unread Alerts"
           >
             <Mail size={18} />
@@ -445,13 +461,14 @@ function WebNotifications({ user, token }) {
                 position: 'absolute',
                 top: '-6px',
                 right: '-6px',
-                backgroundColor: '#3b82f6',
+                backgroundColor: 'var(--danger)',
                 color: '#ffffff',
-                borderRadius: '50%',
-                width: '14px',
-                height: '14px',
+                border: '1.5px solid #111',
+                borderRadius: '4px',
+                width: '15px',
+                height: '15px',
                 fontSize: '8px',
-                fontWeight: 700,
+                fontWeight: 900,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
@@ -464,44 +481,56 @@ function WebNotifications({ user, token }) {
           {/* Get Help Button */}
           <button 
             style={{
-              backgroundColor: '#2563eb',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '20px',
+              backgroundColor: '#ffffff',
+              color: '#111111',
+              border: '2px solid #111111',
               padding: '6px 14px',
-              fontSize: '12px',
-              fontWeight: 600,
+              fontSize: '11px',
+              fontWeight: 800,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '4px'
+              gap: '4px',
+              boxShadow: '2px 2px 0px #111',
+              fontFamily: 'var(--font-family-body)',
+              textTransform: 'uppercase',
+              transition: 'all 0.1s'
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.transform = 'translate(-1px, -1px)';
+              e.currentTarget.style.boxShadow = '3px 3px 0px #111';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.transform = 'none';
+              e.currentTarget.style.boxShadow = '2px 2px 0px #111';
             }}
           >
-            Get Help <span style={{ opacity: 0.7, fontSize: '10px' }}>Ctrl K</span>
+            Get Help <span style={{ opacity: 0.7, fontSize: '9px' }}>Ctrl K</span>
           </button>
 
           {/* Theme Switcher (Static) */}
-          <div style={{ display: 'flex', alignItems: 'center', color: '#94a3b8', cursor: 'pointer' }}>
+          <div style={{ display: 'flex', alignItems: 'center', color: '#111111', cursor: 'pointer' }}>
             <Sun size={18} />
           </div>
 
           {/* User Profile */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderLeft: '1px solid #e2e8f0', paddingLeft: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderLeft: '2px solid #111111', paddingLeft: '16px' }}>
             <div style={{
               width: '28px',
               height: '28px',
-              borderRadius: '50%',
-              backgroundColor: '#cbd5e1',
-              color: '#334155',
+              border: '1.5px solid #111',
+              boxShadow: '1.5px 1.5px 0px #111',
+              backgroundColor: '#ffffff',
+              color: '#111111',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '12px',
-              fontWeight: 700
+              fontSize: '11px',
+              fontWeight: 900
             }}>
               {user && user.username ? user.username.substring(0, 2).toUpperCase() : 'AD'}
             </div>
-            <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>
+            <span style={{ fontSize: '13px', fontWeight: 800, color: '#111111', textTransform: 'uppercase' }}>
               {user && user.username ? user.username : 'admin'}
             </span>
           </div>
@@ -514,7 +543,8 @@ function WebNotifications({ user, token }) {
         {/* Far-Left Narrow Slate Toolbar */}
         <div style={{
           width: '48px',
-          backgroundColor: '#0f172a',
+          backgroundColor: '#ffffff',
+          borderRight: '2px solid #111111',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -526,40 +556,104 @@ function WebNotifications({ user, token }) {
           <div 
             onClick={() => setActiveFilter('all')}
             style={{ 
-              color: activeFilter !== 'history' ? '#3b82f6' : '#94a3b8', 
+              color: activeFilter !== 'history' ? '#ffffff' : '#111111', 
               cursor: 'pointer', 
               display: 'flex', 
               alignItems: 'center', 
               justifyContent: 'center',
               width: '32px',
               height: '32px',
-              borderRadius: '4px',
-              backgroundColor: activeFilter !== 'history' ? 'rgba(59, 130, 246, 0.15)' : 'transparent'
+              border: activeFilter !== 'history' ? '1.5px solid #111111' : '1.5px solid transparent',
+              backgroundColor: activeFilter !== 'history' ? '#111111' : 'transparent',
+              boxShadow: activeFilter !== 'history' ? '1.5px 1.5px 0px #111' : 'none'
             }}
             title="Watchlist"
           >
             <List size={18} />
           </div>
           
-          <div style={{ color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Analytics">
+          <div 
+            style={{ 
+              color: '#111111', 
+              cursor: 'pointer', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              width: '32px',
+              height: '32px',
+              border: '1.5px solid transparent',
+              transition: 'all 0.1s'
+            }} 
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = '#111111';
+              e.currentTarget.style.backgroundColor = '#f1f5f9';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = 'transparent';
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+            title="Analytics"
+          >
             <BarChart2 size={18} />
           </div>
           
-          <div style={{ color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Team">
+          <div 
+            style={{ 
+              color: '#111111', 
+              cursor: 'pointer', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              width: '32px',
+              height: '32px',
+              border: '1.5px solid transparent',
+              transition: 'all 0.1s'
+            }} 
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = '#111111';
+              e.currentTarget.style.backgroundColor = '#f1f5f9';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = 'transparent';
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+            title="Team"
+          >
             <Users size={18} />
           </div>
           
-          <div style={{ color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Documentation">
+          <div 
+            style={{ 
+              color: '#111111', 
+              cursor: 'pointer', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              width: '32px',
+              height: '32px',
+              border: '1.5px solid transparent',
+              transition: 'all 0.1s'
+            }} 
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = '#111111';
+              e.currentTarget.style.backgroundColor = '#f1f5f9';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = 'transparent';
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+            title="Documentation"
+          >
             <BookOpen size={18} />
           </div>
           
           <div style={{ flex: 1 }} />
           
-          <div style={{ color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Feedback">
+          <div style={{ color: '#111111', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Feedback">
             <MessageSquare size={18} />
           </div>
           
-          <div style={{ color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Language">
+          <div style={{ color: '#111111', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Language">
             <Languages size={18} />
           </div>
         </div>
@@ -567,8 +661,8 @@ function WebNotifications({ user, token }) {
         {/* Filters Sidebar */}
         <div style={{
           width: '180px',
-          backgroundColor: '#f8fafc',
-          borderRight: '1px solid #e2e8f0',
+          backgroundColor: 'var(--bg-main)',
+          borderRight: '2px solid #111111',
           padding: '16px 12px',
           display: 'flex',
           flexDirection: 'column',
@@ -580,51 +674,69 @@ function WebNotifications({ user, token }) {
             onClick={() => setShowAddForm(true)}
             style={{
               width: '100%',
-              backgroundColor: '#10b981',
+              backgroundColor: 'var(--success)',
               color: '#ffffff',
-              border: 'none',
-              borderRadius: '4px',
+              border: '2px solid #111111',
+              borderRadius: '0px',
               padding: '8px 12px',
-              fontWeight: 600,
-              fontSize: '13px',
+              fontWeight: 900,
+              fontSize: '12px',
+              fontFamily: 'var(--font-family-title)',
+              textTransform: 'uppercase',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: '6px',
-              transition: 'background-color 0.2s'
+              boxShadow: '2px 2px 0px #111111',
+              transition: 'all 0.1s'
             }}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#059669'}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = '#10b981'}
+            onMouseEnter={e => {
+              e.currentTarget.style.transform = 'translate(-1px, -1px)';
+              e.currentTarget.style.boxShadow = '3px 3px 0px #111';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.transform = 'none';
+              e.currentTarget.style.boxShadow = '2px 2px 0px #111';
+            }}
           >
             <Plus size={14} /> Add Monitor
           </button>
 
           {/* Filter Items */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {renderFilterItem('all', 'All', sites.length, '#2563eb')}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {renderFilterItem('all', 'All', sites.length, '#111111')}
             {renderFilterItem('history', 'Feed', notifications.length, '#64748b')}
-            {renderFilterItem('unread', 'Unread', unreadSitesCount, '#2563eb')}
-            {renderFilterItem('error', 'Error', errorSitesCount, '#ef4444')}
+            {renderFilterItem('unread', 'Unread', unreadSitesCount, '#111111')}
+            {renderFilterItem('error', 'Error', errorSitesCount, 'var(--danger)')}
             {renderFilterItem('trash', 'Trash', 0, '#94a3b8')}
           </div>
 
           {/* Add Label Button */}
           <button 
             style={{
-              border: '1px dashed #cbd5e1',
-              borderRadius: '4px',
+              border: '2px dashed #111111',
+              borderRadius: '0px',
               padding: '8px',
               textAlign: 'center',
-              color: '#64748b',
+              color: '#111111',
               fontSize: '12px',
-              fontWeight: 600,
+              fontWeight: 800,
               cursor: 'pointer',
-              background: 'transparent',
-              marginTop: 'auto'
+              background: '#ffffff',
+              marginTop: 'auto',
+              boxShadow: '2px 2px 0px #111',
+              textTransform: 'uppercase',
+              transition: 'all 0.1s'
             }}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+            onMouseEnter={e => {
+              e.currentTarget.style.transform = 'translate(-1px, -1px)';
+              e.currentTarget.style.boxShadow = '3px 3px 0px #111';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.transform = 'none';
+              e.currentTarget.style.boxShadow = '2px 2px 0px #111';
+            }}
           >
             Add label
           </button>
@@ -641,16 +753,16 @@ function WebNotifications({ user, token }) {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                padding: '8px 16px',
-                backgroundColor: '#f8fafc',
-                borderBottom: '1px solid #e2e8f0'
+                padding: '10px 16px',
+                backgroundColor: 'var(--bg-main)',
+                borderBottom: '2px solid #111111'
               }}>
                 {/* Left controls */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   {/* Select All Checkbox */}
                   <div 
                     onClick={handleSelectAll}
-                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', color: selectedSiteIds.length > 0 ? '#3b82f6' : '#94a3b8' }}
+                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#111111' }}
                   >
                     {selectedSiteIds.length > 0 && selectedSiteIds.length === filteredSites.length ? (
                       <CheckSquare size={16} />
@@ -660,64 +772,76 @@ function WebNotifications({ user, token }) {
                   </div>
                   
                   {/* Action carets */}
-                  <ChevronDown size={14} style={{ color: '#64748b', cursor: 'pointer' }} />
+                  <ChevronDown size={14} style={{ color: '#111111', cursor: 'pointer' }} />
                   
-                  <div style={{ height: '14px', width: '1px', backgroundColor: '#e2e8f0', margin: '0 4px' }} />
+                  <div style={{ height: '14px', width: '2px', backgroundColor: '#111111', margin: '0 4px' }} />
                   
                   {/* View/Sort selector button */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: '#64748b' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: '#111111' }}>
                     <Sliders size={14} />
                     <ChevronDown size={10} />
                   </div>
                 </div>
 
                 {/* Right controls */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: '#64748b' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: '#111111', fontWeight: 800 }}>
                   {/* Scan All button inline */}
                   <button 
                     onClick={handleTriggerCheckAll}
                     disabled={checkingAll}
                     style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#2563eb',
-                      fontWeight: 600,
+                      backgroundColor: '#ffffff',
+                      border: '2px solid #111111',
+                      color: '#111111',
+                      fontWeight: 800,
                       cursor: 'pointer',
-                      fontSize: '12px',
+                      fontSize: '11px',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '4px'
+                      gap: '4px',
+                      padding: '4px 10px',
+                      boxShadow: '1.5px 1.5px 0px #111',
+                      textTransform: 'uppercase',
+                      transition: 'all 0.1s'
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.transform = 'translate(-0.5px, -0.5px)';
+                      e.currentTarget.style.boxShadow = '2px 2px 0px #111';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = 'none';
+                      e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111';
                     }}
                   >
-                    <RefreshCw size={12} className={checkingAll ? 'spin' : ''} />
+                    <RefreshCw size={11} className={checkingAll ? 'spin' : ''} />
                     {checkingAll ? 'Scanning...' : 'Scan All'}
                   </button>
 
-                  <div style={{ height: '14px', width: '1px', backgroundColor: '#e2e8f0' }} />
+                  <div style={{ height: '14px', width: '2px', backgroundColor: '#111111' }} />
 
                   {/* Pagination text */}
-                  <span>1 - {filteredSites.length} of {filteredSites.length}</span>
+                  <span style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>1 - {filteredSites.length} of {filteredSites.length}</span>
                   
                   {/* Pagination chevrons */}
-                  <div style={{ display: 'flex', gap: '4px' }}>
+                  <div style={{ display: 'flex', gap: '4px', color: '#111111' }}>
                     <ChevronLeft size={14} style={{ opacity: 0.5, cursor: 'not-allowed' }} />
                     <ChevronRight size={14} style={{ opacity: 0.5, cursor: 'not-allowed' }} />
                   </div>
 
-                  <div style={{ height: '14px', width: '1px', backgroundColor: '#e2e8f0' }} />
+                  <div style={{ height: '14px', width: '2px', backgroundColor: '#111111' }} />
 
                   {/* Settings gear icon */}
-                  <Settings size={14} style={{ cursor: 'pointer' }} />
+                  <Settings size={14} style={{ cursor: 'pointer', color: '#111111' }} />
                 </div>
               </div>
 
               {/* Table Body */}
               <div style={{ flex: 1, overflowY: 'auto' }}>
                 {filteredSites.length === 0 ? (
-                  <div style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
-                    <Info size={32} style={{ margin: '0 auto 8px auto', opacity: 0.6 }} />
-                    <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>No Monitors Found</div>
-                    <p style={{ fontSize: '12px', margin: '4px 0 0 0' }}>
+                  <div style={{ padding: '60px 20px', textAlign: 'center', color: '#111111' }}>
+                    <Info size={32} style={{ margin: '0 auto 8px auto', color: '#111111' }} />
+                    <div style={{ fontWeight: 900, fontSize: '15px', color: '#111111', textTransform: 'uppercase' }}>No Monitors Found</div>
+                    <p style={{ fontSize: '13px', margin: '4px 0 0 0', fontWeight: 600 }}>
                       {searchQuery ? 'No websites match your search query.' : 'Click "Add Monitor" to start tracking.'}
                     </p>
                   </div>
@@ -735,7 +859,7 @@ function WebNotifications({ user, token }) {
                         style={{
                           display: 'flex',
                           flexDirection: 'column',
-                          borderBottom: '1px solid #e2e8f0',
+                          borderBottom: '1.5px solid #111111',
                           backgroundColor: hasAlert ? '#f0fdf4' : (isExpanded ? '#f8fafc' : 'transparent'),
                           transition: 'background-color 0.2s'
                         }}
@@ -747,7 +871,7 @@ function WebNotifications({ user, token }) {
                             display: 'flex',
                             flexDirection: 'row',
                             alignItems: 'center',
-                            padding: '10px 16px',
+                            padding: '12px 16px',
                             gap: '12px',
                             cursor: 'pointer'
                           }}
@@ -760,13 +884,13 @@ function WebNotifications({ user, token }) {
                               e.stopPropagation();
                               handleSelectRow(site.id);
                             }}
-                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', color: isSelected ? '#3b82f6' : '#94a3b8' }}
+                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#111111' }}
                           >
                             {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
                           </div>
 
                           {/* Expand chevron caret */}
-                          <div style={{ color: '#64748b', display: 'flex', alignItems: 'center' }}>
+                          <div style={{ color: '#111111', display: 'flex', alignItems: 'center' }}>
                             {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                           </div>
 
@@ -775,7 +899,7 @@ function WebNotifications({ user, token }) {
                             <img 
                               src={getFaviconUrl(site.url)} 
                               alt="" 
-                              style={{ width: '16px', height: '16px', borderRadius: '2px', flexShrink: 0, backgroundColor: '#f1f5f9' }}
+                              style={{ width: '16px', height: '16px', border: '1px solid #111', borderRadius: '0px', flexShrink: 0, backgroundColor: '#ffffff' }}
                               onError={(e) => { e.currentTarget.src = 'https://www.google.com/s2/favicons?sz=64&domain=google.com'; }}
                             />
                             <a 
@@ -784,29 +908,27 @@ function WebNotifications({ user, token }) {
                               rel="noreferrer"
                               onClick={e => e.stopPropagation()}
                               style={{
-                                fontWeight: 600,
+                                fontWeight: 800,
                                 fontSize: '13px',
                                 color: '#2563eb',
-                                textDecoration: 'none',
+                                textDecoration: 'underline',
                                 whiteSpace: 'nowrap',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 maxWidth: '200px',
                                 flexShrink: 0
                               }}
-                              onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
-                              onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
                             >
                               {site.name}
                             </a>
                             {site.latestContentText && (
                               <span style={{
-                                color: '#64748b',
+                                color: '#475569',
                                 fontSize: '12px',
                                 whiteSpace: 'nowrap',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
-                                fontWeight: 400
+                                fontWeight: 600
                               }}>
                                 — {site.latestContentText.substring(0, 120)}
                               </span>
@@ -814,16 +936,16 @@ function WebNotifications({ user, token }) {
                           </div>
 
                           {/* Interval */}
-                          <div style={{ width: '90px', color: '#2563eb', fontSize: '12px', fontWeight: 600, textAlign: 'left', flexShrink: 0 }}>
+                          <div style={{ width: '90px', color: '#2563eb', fontSize: '12px', fontWeight: 800, textAlign: 'left', flexShrink: 0 }}>
                             30 mins
                           </div>
 
                           {/* Last Checked */}
                           <div style={{ 
                             width: '110px', 
-                            color: hasAlert ? '#ef4444' : '#64748b', 
+                            color: hasAlert ? 'var(--danger)' : '#111111', 
                             fontSize: '12px', 
-                            fontWeight: hasAlert ? 700 : 500, 
+                            fontWeight: 800, 
                             textAlign: 'left',
                             flexShrink: 0
                           }}>
@@ -831,7 +953,7 @@ function WebNotifications({ user, token }) {
                           </div>
 
                           {/* Device / Cloud Indicator */}
-                          <div style={{ width: '40px', display: 'flex', justifyContent: 'center', color: '#94a3b8', flexShrink: 0 }}>
+                          <div style={{ width: '40px', display: 'flex', justifyContent: 'center', color: '#111111', flexShrink: 0 }}>
                             <Cloud size={15} />
                           </div>
 
@@ -844,17 +966,28 @@ function WebNotifications({ user, token }) {
                             style={{ width: '60px', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}
                           >
                             <button style={{
-                              backgroundColor: isEnabled ? '#10b981' : '#94a3b8',
-                              color: '#ffffff',
-                              border: 'none',
-                              borderRadius: '4px',
+                              backgroundColor: isEnabled ? 'var(--success)' : '#ffffff',
+                              color: isEnabled ? '#ffffff' : '#111111',
+                              border: '1.5px solid #111111',
+                              borderRadius: '0px',
                               padding: '2px 8px',
                               fontSize: '10px',
-                              fontWeight: 700,
+                              fontWeight: 900,
                               cursor: 'pointer',
-                              minWidth: '36px',
-                              textAlign: 'center'
-                            }}>
+                              minWidth: '38px',
+                              textAlign: 'center',
+                              boxShadow: '1.5px 1.5px 0px #111',
+                              transition: 'all 0.1s'
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.transform = 'translate(-0.5px, -0.5px)';
+                              e.currentTarget.style.boxShadow = '2.2px 2.2px 0px #111';
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.transform = 'none';
+                              e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111';
+                            }}
+                            >
                               {isEnabled ? 'ON' : 'OFF'}
                             </button>
                           </div>
@@ -865,7 +998,7 @@ function WebNotifications({ user, token }) {
                           <div style={{
                             padding: '16px 24px',
                             backgroundColor: '#f8fafc',
-                            borderTop: '1px solid #e2e8f0',
+                            borderTop: '2px solid #111111',
                             display: 'flex',
                             flexDirection: 'row',
                             gap: '24px'
@@ -873,11 +1006,20 @@ function WebNotifications({ user, token }) {
                             {/* Preview box */}
                             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#64748b' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', color: '#111111', letterSpacing: '0.03em' }}>
                                   🔍 Latest Extracted Content Preview
                                 </span>
                                 {site.scrapedVia && (
-                                  <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', backgroundColor: '#e0f2fe', color: '#0369a1' }}>
+                                  <span style={{ 
+                                    fontSize: '10px', 
+                                    fontWeight: 800, 
+                                    padding: '2px 6px', 
+                                    border: '1.5px solid #111',
+                                    borderRadius: '0px', 
+                                    backgroundColor: '#e0f2fe', 
+                                    color: '#0369a1',
+                                    boxShadow: '1px 1px 0px #111'
+                                  }}>
                                     ⚡ Scraped via: {site.scrapedVia}
                                   </span>
                                 )}
@@ -886,27 +1028,28 @@ function WebNotifications({ user, token }) {
                               <div style={{
                                 fontFamily: 'monospace',
                                 fontSize: '12px',
-                                padding: '12px',
-                                borderRadius: '6px',
-                                border: '1px solid #e2e8f0',
+                                padding: '16px',
+                                border: '2px solid #111111',
+                                borderRadius: '0px',
                                 backgroundColor: '#ffffff',
-                                color: '#334155',
+                                color: '#111111',
                                 maxHeight: '180px',
                                 overflowY: 'auto',
                                 lineHeight: 1.5,
-                                whiteSpace: 'pre-wrap'
+                                whiteSpace: 'pre-wrap',
+                                fontWeight: 500
                               }}>
                                 {site.latestContentText ? (
                                   <>
                                     {hasAlert && (
-                                      <div style={{ color: '#166534', fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', marginBottom: '4px' }}>
+                                      <div style={{ color: '#166534', fontWeight: 900, fontSize: '11px', textTransform: 'uppercase', marginBottom: '4px' }}>
                                         🟢 UNREAD CHANGE ALERT DETECTED:
                                       </div>
                                     )}
                                     {site.latestContentText}
                                   </>
                                 ) : (
-                                  <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+                                  <span style={{ color: '#64748b', fontStyle: 'italic' }}>
                                     No content has been fetched yet. Click "Scan" to fetch initial data.
                                   </span>
                                 )}
@@ -916,35 +1059,35 @@ function WebNotifications({ user, token }) {
                             {/* Profile details */}
                             <div style={{
                               width: '260px',
-                              borderLeft: '1px solid #e2e8f0',
+                              borderLeft: '2px solid #111111',
                               paddingLeft: '20px',
                               display: 'flex',
                               flexDirection: 'column',
                               gap: '8px',
                               fontSize: '12px'
                             }}>
-                              <h5 style={{ margin: 0, fontWeight: 700, textTransform: 'uppercase', color: '#64748b' }}>Scraper Profile</h5>
+                              <h5 style={{ margin: 0, fontWeight: 900, textTransform: 'uppercase', color: '#111111', fontFamily: 'var(--font-family-title)' }}>Scraper Profile</h5>
                               
-                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '4px' }}>
-                                <span style={{ color: '#64748b' }}>Status:</span>
-                                <strong style={{ color: isEnabled ? '#10b981' : '#ef4444' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1.5px dashed #111111', paddingBottom: '4px' }}>
+                                <span style={{ color: '#111111', fontWeight: 700 }}>Status:</span>
+                                <strong style={{ color: isEnabled ? 'var(--success)' : 'var(--danger)', fontWeight: 800 }}>
                                   {isEnabled ? 'ACTIVE MONITOR' : 'PAUSED'}
                                 </strong>
                               </div>
                               
-                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '4px' }}>
-                                <span style={{ color: '#64748b' }}>Interval:</span>
-                                <span>30 Minutes</span>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1.5px dashed #111111', paddingBottom: '4px' }}>
+                                <span style={{ color: '#111111', fontWeight: 700 }}>Interval:</span>
+                                <span style={{ fontWeight: 600 }}>30 Minutes</span>
                               </div>
                               
-                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '4px' }}>
-                                <span style={{ color: '#64748b' }}>Date Added:</span>
-                                <span>{site.createdAt ? new Date(site.createdAt).toLocaleDateString() : 'Unknown'}</span>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1.5px dashed #111111', paddingBottom: '4px' }}>
+                                <span style={{ color: '#111111', fontWeight: 700 }}>Date Added:</span>
+                                <span style={{ fontWeight: 600 }}>{site.createdAt ? new Date(site.createdAt).toLocaleDateString() : 'Unknown'}</span>
                               </div>
                               
-                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '4px' }}>
-                                <span style={{ color: '#64748b' }}>Hash ID:</span>
-                                <span style={{ fontFamily: 'monospace', fontSize: '10px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1.5px dashed #111111', paddingBottom: '4px' }}>
+                                <span style={{ color: '#111111', fontWeight: 700 }}>Hash ID:</span>
+                                <span style={{ fontFamily: 'monospace', fontSize: '10px', fontWeight: 600 }}>
                                   {site.lastContentHash ? site.lastContentHash.substring(0, 16) + '...' : 'No Hash'}
                                 </span>
                               </div>
@@ -960,15 +1103,25 @@ function WebNotifications({ user, token }) {
                                     flex: 1,
                                     padding: '5px',
                                     fontSize: '11px',
-                                    borderRadius: '4px',
-                                    border: '1px solid #cbd5e1',
                                     backgroundColor: '#ffffff',
+                                    border: '2px solid #111111',
+                                    boxShadow: '1.5px 1.5px 0px #111',
                                     cursor: 'pointer',
-                                    fontWeight: 600,
+                                    fontWeight: 900,
+                                    textTransform: 'uppercase',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    gap: '2px'
+                                    gap: '2px',
+                                    transition: 'all 0.1s'
+                                  }}
+                                  onMouseEnter={e => {
+                                    e.currentTarget.style.transform = 'translate(-0.5px, -0.5px)';
+                                    e.currentTarget.style.boxShadow = '2.2px 2.2px 0px #111';
+                                  }}
+                                  onMouseLeave={e => {
+                                    e.currentTarget.style.transform = 'none';
+                                    e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111';
                                   }}
                                 >
                                   <RefreshCw size={10} className={checkingSiteId === site.id ? 'spin' : ''} />
@@ -983,16 +1136,25 @@ function WebNotifications({ user, token }) {
                                     flex: 1,
                                     padding: '5px',
                                     fontSize: '11px',
-                                    borderRadius: '4px',
-                                    border: '1px solid #bfdbfe',
-                                    backgroundColor: '#eff6ff',
-                                    color: '#1d4ed8',
+                                    backgroundColor: '#ffffff',
+                                    border: '2px solid #111111',
+                                    boxShadow: '1.5px 1.5px 0px #111',
                                     cursor: 'pointer',
-                                    fontWeight: 600,
+                                    fontWeight: 900,
+                                    textTransform: 'uppercase',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    gap: '2px'
+                                    gap: '2px',
+                                    transition: 'all 0.1s'
+                                  }}
+                                  onMouseEnter={e => {
+                                    e.currentTarget.style.transform = 'translate(-0.5px, -0.5px)';
+                                    e.currentTarget.style.boxShadow = '2.2px 2.2px 0px #111';
+                                  }}
+                                  onMouseLeave={e => {
+                                    e.currentTarget.style.transform = 'none';
+                                    e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111';
                                   }}
                                 >
                                   <Sparkles size={10} />
@@ -1006,12 +1168,21 @@ function WebNotifications({ user, token }) {
                                   style={{
                                     padding: '5px 8px',
                                     fontSize: '11px',
-                                    borderRadius: '4px',
-                                    border: '1px solid #fca5a5',
-                                    backgroundColor: '#fef2f2',
-                                    color: '#dc2626',
+                                    backgroundColor: '#ffffff',
+                                    color: 'var(--danger)',
+                                    border: '2px solid #111111',
+                                    boxShadow: '1.5px 1.5px 0px #111',
                                     cursor: 'pointer',
-                                    fontWeight: 600
+                                    fontWeight: 900,
+                                    transition: 'all 0.1s'
+                                  }}
+                                  onMouseEnter={e => {
+                                    e.currentTarget.style.transform = 'translate(-0.5px, -0.5px)';
+                                    e.currentTarget.style.boxShadow = '2.2px 2.2px 0px #111';
+                                  }}
+                                  onMouseLeave={e => {
+                                    e.currentTarget.style.transform = 'none';
+                                    e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111';
                                   }}
                                 >
                                   <Trash2 size={10} />
@@ -1028,13 +1199,23 @@ function WebNotifications({ user, token }) {
                                     width: '100%',
                                     padding: '6px',
                                     fontSize: '11px',
-                                    borderRadius: '4px',
-                                    border: 'none',
-                                    backgroundColor: '#cbd5e1',
-                                    color: '#1e293b',
-                                    fontWeight: 700,
+                                    backgroundColor: '#ffffff',
+                                    border: '2px solid #111111',
+                                    boxShadow: '2px 2px 0px #111',
+                                    color: '#111111',
+                                    fontWeight: 900,
+                                    textTransform: 'uppercase',
                                     cursor: 'pointer',
-                                    marginTop: '4px'
+                                    marginTop: '4px',
+                                    transition: 'all 0.1s'
+                                  }}
+                                  onMouseEnter={e => {
+                                    e.currentTarget.style.transform = 'translate(-1px, -1px)';
+                                    e.currentTarget.style.boxShadow = '3px 3px 0px #111';
+                                  }}
+                                  onMouseLeave={e => {
+                                    e.currentTarget.style.transform = 'none';
+                                    e.currentTarget.style.boxShadow = '2px 2px 0px #111';
                                   }}
                                 >
                                   Mark alerts as read
@@ -1055,7 +1236,7 @@ function WebNotifications({ user, token }) {
           {activeFilter === 'history' && (
             <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', flex: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>
+                <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 900, color: '#111111', fontFamily: 'var(--font-family-title)', letterSpacing: '-0.02em' }}>
                   📜 Change Log Feed
                 </h3>
                 {notifications.length > 0 && (
@@ -1063,16 +1244,26 @@ function WebNotifications({ user, token }) {
                     onClick={handleClearNotifications}
                     style={{
                       padding: '6px 12px',
-                      borderRadius: '4px',
-                      border: '1px solid #fca5a5',
-                      backgroundColor: '#fef2f2',
-                      color: '#dc2626',
-                      fontWeight: 600,
-                      fontSize: '12px',
+                      backgroundColor: '#ffffff',
+                      border: '2px solid #111111',
+                      boxShadow: '2px 2px 0px #111',
+                      color: 'var(--danger)',
+                      fontWeight: 900,
+                      fontSize: '11px',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '4px'
+                      gap: '4px',
+                      textTransform: 'uppercase',
+                      transition: 'all 0.1s'
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.transform = 'translate(-1px, -1px)';
+                      e.currentTarget.style.boxShadow = '3px 3px 0px #111';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = 'none';
+                      e.currentTarget.style.boxShadow = '2px 2px 0px #111';
                     }}
                   >
                     <Trash size={12} /> Clear Logs
@@ -1084,14 +1275,13 @@ function WebNotifications({ user, token }) {
                 <div style={{ 
                   textAlign: 'center', 
                   padding: '48px 20px', 
-                  color: '#64748b',
-                  backgroundColor: '#f8fafc',
-                  borderRadius: '6px',
-                  border: '1px dashed #cbd5e1'
+                  color: '#111111',
+                  backgroundColor: 'var(--bg-main)',
+                  border: '2px dashed #111111'
                 }}>
-                  <Info size={28} style={{ opacity: 0.5, marginBottom: '8px' }} />
-                  <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>No Changes Logged</div>
-                  <p style={{ fontSize: '12px', margin: '4px 0 0 0' }}>
+                  <Info size={28} style={{ marginBottom: '8px' }} />
+                  <div style={{ fontWeight: 900, fontSize: '14px', textTransform: 'uppercase' }}>No Changes Logged</div>
+                  <p style={{ fontSize: '12px', margin: '4px 0 0 0', fontWeight: 600 }}>
                     All websites currently match their recorded states. When a change is detected, it will be listed here.
                   </p>
                 </div>
@@ -1101,39 +1291,38 @@ function WebNotifications({ user, token }) {
                     <div 
                       key={notif.id}
                       style={{
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '6px',
+                        border: '2px solid #111111',
                         padding: '16px',
                         backgroundColor: '#ffffff',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                        boxShadow: '3px 3px 0px #111111'
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
                         <div>
-                          <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', margin: 0 }}>{notif.title}</h4>
+                          <h4 style={{ fontSize: '13px', fontWeight: 900, color: '#111111', margin: 0 }}>{notif.title}</h4>
                           <a 
                             href={notif.url} 
                             target="_blank" 
                             rel="noreferrer"
-                            style={{ fontSize: '11px', color: '#2563eb', textDecoration: 'underline' }}
+                            style={{ fontSize: '11px', color: '#2563eb', textDecoration: 'underline', fontWeight: 800 }}
                           >
                             {notif.url}
                           </a>
                         </div>
-                        <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>
+                        <span style={{ fontSize: '11px', color: '#111111', fontWeight: 700 }}>
                           🕒 {new Date(notif.createdAt).toLocaleDateString()} {new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                       <p style={{ 
                         fontSize: '12px', 
-                        color: '#334155', 
-                        backgroundColor: '#f8fafc',
+                        color: '#111111', 
+                        backgroundColor: 'var(--bg-main)',
                         padding: '10px',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '4px',
+                        border: '1.5px solid #111111',
                         margin: 0,
                         fontFamily: 'monospace',
-                        whiteSpace: 'pre-wrap'
+                        whiteSpace: 'pre-wrap',
+                        fontWeight: 600
                       }}>
                         {notif.description}
                       </p>
@@ -1152,8 +1341,8 @@ function WebNotifications({ user, token }) {
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.4)',
-          backdropFilter: 'blur(4px)',
+          backgroundColor: 'rgba(17, 17, 17, 0.35)',
+          backdropFilter: 'blur(8px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 9999
         }} onClick={() => {
@@ -1163,9 +1352,8 @@ function WebNotifications({ user, token }) {
         }}>
           <div style={{
             backgroundColor: '#ffffff',
-            borderRadius: '8px',
-            border: '1px solid #e2e8f0',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            border: '3px solid #111111',
+            boxShadow: '8px 8px 0px #111111',
             width: '100%',
             maxWidth: '500px',
             padding: '24px',
@@ -1173,8 +1361,8 @@ function WebNotifications({ user, token }) {
             flexDirection: 'column',
             gap: '16px'
           }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a', textTransform: 'capitalize' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #111111', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, color: '#111111', fontFamily: 'var(--font-family-title)', letterSpacing: '-0.02em', textTransform: 'uppercase' }}>
                 Add Website Monitor
               </h3>
               <button 
@@ -1183,7 +1371,7 @@ function WebNotifications({ user, token }) {
                   setFormError('');
                   setFormSuccess('');
                 }}
-                style={{ background: 'transparent', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#64748b' }}
+                style={{ background: 'transparent', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#111111', fontWeight: 900 }}
               >
                 &times;
               </button>
@@ -1191,10 +1379,10 @@ function WebNotifications({ user, token }) {
             
             <form onSubmit={handleAddWebsite} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>MONITOR NAME</label>
+                <label style={{ fontSize: '11px', fontWeight: 800, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>MONITOR NAME</label>
                 <input 
                   type="text" 
-                  style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px' }}
+                  style={{ padding: '8px 12px', border: '2px solid #111111', outline: 'none', fontSize: '13px', fontWeight: 700 }}
                   placeholder="e.g. Sairam NCC Portal"
                   value={siteName}
                   onChange={e => setSiteName(e.target.value)}
@@ -1203,10 +1391,10 @@ function WebNotifications({ user, token }) {
               </div>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>WEBSITE URL</label>
+                <label style={{ fontSize: '11px', fontWeight: 800, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>WEBSITE URL</label>
                 <input 
                   type="text" 
-                  style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px' }}
+                  style={{ padding: '8px 12px', border: '2px solid #111111', outline: 'none', fontSize: '13px', fontWeight: 700 }}
                   placeholder="e.g. sairamncc.in"
                   value={siteUrl}
                   onChange={e => setSiteUrl(e.target.value)}
@@ -1215,24 +1403,24 @@ function WebNotifications({ user, token }) {
               </div>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>CSS SELECTOR (OPTIONAL)</label>
+                <label style={{ fontSize: '11px', fontWeight: 800, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>CSS SELECTOR (OPTIONAL)</label>
                 <input 
                   type="text" 
-                  style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px' }}
+                  style={{ padding: '8px 12px', border: '2px solid #111111', outline: 'none', fontSize: '13px', fontWeight: 700 }}
                   placeholder="e.g. .announcement-card"
                   value={siteSelector}
                   onChange={e => setSiteSelector(e.target.value)}
                 />
               </div>
               
-              <p style={{ margin: 0, fontSize: '11px', color: '#64748b', lineHeight: 1.4 }}>
+              <p style={{ margin: 0, fontSize: '11px', color: '#111111', lineHeight: 1.4, fontWeight: 600 }}>
                 💡 Leave CSS selector blank to monitor the full page. Use selector (e.g. <code>.announcement-card</code>) to track changes in a specific element.
               </p>
               
-              {formError && <div style={{ color: '#ef4444', fontSize: '12px', fontWeight: 500 }}>{formError}</div>}
-              {formSuccess && <div style={{ color: '#10b981', fontSize: '12px', fontWeight: 500 }}>{formSuccess}</div>}
+              {formError && <div style={{ color: 'var(--danger)', fontSize: '12px', fontWeight: 800 }}>{formError}</div>}
+              {formSuccess && <div style={{ color: 'var(--success)', fontSize: '12px', fontWeight: 800 }}>{formSuccess}</div>}
               
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '10px' }}>
                 <button 
                   type="button" 
                   onClick={() => {
@@ -1240,13 +1428,50 @@ function WebNotifications({ user, token }) {
                     setFormError('');
                     setFormSuccess('');
                   }}
-                  style={{ padding: '8px 16px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#ffffff', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
+                  style={{ 
+                    padding: '8px 16px', 
+                    border: '2px solid #111111', 
+                    background: '#ffffff', 
+                    boxShadow: '2px 2px 0px #111', 
+                    cursor: 'pointer', 
+                    fontSize: '12px', 
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    transition: 'all 0.1s'
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.transform = 'translate(-1px, -1px)';
+                    e.currentTarget.style.boxShadow = '3px 3px 0px #111';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.transform = 'none';
+                    e.currentTarget.style.boxShadow = '2px 2px 0px #111';
+                  }}
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit" 
-                  style={{ padding: '8px 16px', borderRadius: '4px', border: 'none', background: '#10b981', color: '#ffffff', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
+                  style={{ 
+                    padding: '8px 16px', 
+                    border: '2px solid #111111', 
+                    background: 'var(--success)', 
+                    color: '#ffffff',
+                    boxShadow: '2px 2px 0px #111', 
+                    cursor: 'pointer', 
+                    fontSize: '12px', 
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    transition: 'all 0.1s'
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.transform = 'translate(-1px, -1px)';
+                    e.currentTarget.style.boxShadow = '3px 3px 0px #111';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.transform = 'none';
+                    e.currentTarget.style.boxShadow = '2px 2px 0px #111';
+                  }}
                 >
                   Start Monitoring
                 </button>

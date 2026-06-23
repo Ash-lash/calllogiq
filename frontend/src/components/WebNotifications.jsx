@@ -449,9 +449,6 @@ function WebNotifications({ user, token }) {
         alignItems: 'center',
         justifyContent: 'center',
         padding: '5rem 2rem',
-        backgroundColor: '#ffffff',
-        border: '2.5px solid #111111',
-        boxShadow: 'var(--shadow-flat)',
         fontFamily: 'var(--font-family-body)',
         gap: '1.5rem',
         textAlign: 'center'
@@ -489,127 +486,85 @@ function WebNotifications({ user, token }) {
 
   return (
     <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      backgroundColor: '#ffffff',
-      border: '2.5px solid #111111',
-      boxShadow: 'var(--shadow-flat)',
-      overflow: 'hidden',
+      padding: '1.5rem',
+      maxWidth: '1400px',
+      margin: '0 auto',
       fontFamily: 'var(--font-family-body)',
       color: 'var(--text-primary)'
     }}>
-      {/* Top Header Bar */}
-      <div style={{
+      {/* Page Header — matches Asset Manager style */}
+      <header style={{
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '14px 20px',
-        borderBottom: '2.5px solid #111111',
-        backgroundColor: '#ffffff'
+        alignItems: 'flex-start',
+        marginBottom: '1.5rem',
+        borderBottom: '2px solid var(--border-color)',
+        paddingBottom: '1rem',
+        gap: '16px'
       }}>
-        {/* Title */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '1.4rem', fontWeight: 900, fontFamily: 'var(--font-family-title)', color: '#111111', letterSpacing: '-0.02em' }}>WATCHLIST</span>
-          <span style={{
-            fontSize: '0.72rem',
-            fontWeight: 800,
-            color: '#111111',
-            backgroundColor: '#ffffff',
-            padding: '2px 8px',
-            border: '2px solid #111111',
-            boxShadow: '1.5px 1.5px 0px #111'
+        {/* Left: title + subtitle */}
+        <div>
+          <h1 style={{
+            fontFamily: 'var(--font-family-title)',
+            fontSize: '2.2rem',
+            fontWeight: 900,
+            textTransform: 'uppercase',
+            letterSpacing: '-0.02em',
+            margin: 0,
+            color: '#111111'
           }}>
-            CLOUD - CALL LOGIQ SERVERS
-          </span>
+            Web Watchlist
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', margin: '0.2rem 0 0 0', fontWeight: 600, fontSize: '0.9rem' }}>
+            Monitor websites for content changes and receive alerts
+          </p>
         </div>
 
-        {/* Search Input */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          background: '#ffffff',
-          padding: '6px 12px',
-          border: '2px solid #111111',
-          width: '260px',
-          marginLeft: '20px',
-          marginRight: 'auto'
-        }}>
-          <Search size={14} style={{ color: '#111111' }} />
-          <input 
-            type="text"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              width: '100%',
-              fontSize: '13px',
-              color: '#111111',
-              fontWeight: 700
-            }}
-            placeholder="Search..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-          />
-        </div>
-
-        {/* Right Section Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {/* Notifications Envelope */}
-          <div 
-            onClick={() => setActiveFilter('unread')}
-            style={{ position: 'relative', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#111111' }}
-            title="Unread Alerts"
-          >
-            <Mail size={18} />
-            {unreadSitesCount > 0 && (
-              <span style={{
-                position: 'absolute',
-                top: '-6px',
-                right: '-6px',
-                backgroundColor: 'var(--danger)',
-                color: '#ffffff',
-                border: '1.5px solid #111',
-                borderRadius: '4px',
-                width: '15px',
-                height: '15px',
-                fontSize: '8px',
-                fontWeight: 900,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                {unreadSitesCount}
-              </span>
-            )}
+        {/* Right: search + unread badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+          {/* Search */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            background: '#ffffff', padding: '6px 12px',
+            border: '2px solid var(--border-color)',
+            boxShadow: 'var(--shadow-flat-sm)',
+            width: '260px'
+          }}>
+            <Search size={14} style={{ color: '#64748b' }} />
+            <input
+              type="text"
+              style={{ background: 'transparent', border: 'none', outline: 'none', width: '100%', fontSize: '13px', color: '#111111', fontWeight: 600 }}
+              placeholder="Search monitors..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
           </div>
 
-          {/* User Profile */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{
-              width: '28px',
-              height: '28px',
-              border: '1.5px solid #111',
-              boxShadow: '1.5px 1.5px 0px #111',
-              backgroundColor: '#ffffff',
-              color: '#111111',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '11px',
-              fontWeight: 900
-            }}>
-              {user && user.username ? user.username.substring(0, 2).toUpperCase() : 'AD'}
+          {/* Unread badge shortcut */}
+          {unreadSitesCount > 0 && (
+            <div
+              onClick={() => setActiveFilter('unread')}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '6px 12px',
+                border: '2px solid var(--danger)',
+                backgroundColor: '#fef2f2',
+                color: 'var(--danger)',
+                fontWeight: 900, fontSize: '12px',
+                cursor: 'pointer',
+                boxShadow: '2px 2px 0px var(--danger)',
+                textTransform: 'uppercase'
+              }}
+            >
+              <Bell size={13} />
+              {unreadSitesCount} Unread
             </div>
-            <span style={{ fontSize: '13px', fontWeight: 800, color: '#111111', textTransform: 'uppercase' }}>
-              {user && user.username ? user.username : 'admin'}
-            </span>
-          </div>
+          )}
         </div>
-      </div>
+      </header>
 
       {/* Main Workspace split */}
-      <div style={{ display: 'flex', flexDirection: 'row', minHeight: '520px', backgroundColor: '#ffffff' }}>
+      <div style={{ display: 'flex', flexDirection: 'row', gap: '0', border: '2px solid var(--border-color)', boxShadow: 'var(--shadow-flat)' }}>
         
         {/* Filters Sidebar */}
         <div style={{

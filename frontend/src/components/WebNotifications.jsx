@@ -23,6 +23,8 @@ function WebNotifications({ user, token }) {
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [expandedSiteId, setExpandedSiteId] = useState(null);
+
 
   // Fetch initial websites and change logs
   useEffect(() => {
@@ -199,6 +201,43 @@ function WebNotifications({ user, token }) {
       console.error('Error clearing notifications:', err);
     }
   };
+
+  const handleToggleSite = async (id, currentEnabled) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/web-notifications/sites/${id}/toggle`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ enabled: !currentEnabled })
+      });
+      if (res.ok) {
+        await fetchSitesAndNotifications();
+      } else {
+        alert('Failed to toggle monitor status.');
+      }
+    } catch (err) {
+      console.error('Error toggling site status:', err);
+    }
+  };
+
+  const handleClearSiteAlerts = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/web-notifications/sites/${id}/clear-alerts`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        await fetchSitesAndNotifications();
+      } else {
+        alert('Failed to clear alerts.');
+      }
+    } catch (err) {
+      console.error('Error clearing site alerts:', err);
+    }
+  };
+
 
   // Helper to format last checked string
   const formatTimeAgo = (isoString) => {
@@ -417,7 +456,7 @@ function WebNotifications({ user, token }) {
             </div>
           )}
 
-          {/* VIEW: WATCHLIST MONITORS LIST */}
+          {/* VIEW: WATCHLIST MONITORS LIST (Distill.io Tabular Style) */}
           {activeFilter !== 'history' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {filteredSites.length === 0 ? (
@@ -429,150 +468,274 @@ function WebNotifications({ user, token }) {
                   </p>
                 </div>
               ) : (
-                filteredSites.map(site => {
-                  // Check if this website has an unread notification alert
-                  const siteAlerts = notifications.filter(n => n.websiteId === site.id);
-                  const hasAlert = siteAlerts.length > 0;
-                  
-                  return (
-                    <div 
-                      key={site.id}
-                      className="card"
-                      style={{
-                        padding: '1.25rem',
-                        border: '2.5px solid #111',
-                        boxShadow: '4px 4px 0px #111',
-                        backgroundColor: '#ffffff',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '0.75rem',
-                        position: 'relative'
-                      }}
-                    >
-                      {/* Row Header */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                            <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: '#111', margin: 0 }}>
-                              {site.name}
-                            </h3>
-                            <span className="badge" style={{ backgroundColor: 'var(--primary-light)', color: 'var(--primary)', borderColor: 'var(--primary)' }}>
-                              ON
-                            </span>
-                            {hasAlert && (
-                              <span className="badge badge-danger" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                <Sparkles size={11} /> UPDATE DETECTED
-                              </span>
-                            )}
-                          </div>
-                          <a 
-                            href={site.url} 
-                            target="_blank" 
-                            rel="noreferrer"
-                            style={{ fontSize: '0.78rem', color: 'var(--primary)', textDecoration: 'underline', display: 'inline-flex', alignItems: 'center', gap: '2px', marginTop: '0.25rem' }}
-                          >
-                            {site.url} <ExternalLink size={10} />
-                          </a>
-                          {/* Selector Tag */}
-                          <div style={{ marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                            <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', border: '1px solid #111', backgroundColor: site.selector ? '#e0e7ff' : '#f3f4f6', color: '#111' }}>
-                              🎯 {site.selector ? `Selector: ${site.selector}` : 'Selector: Full Page'}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Status/Check info */}
-                        <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                          <div>Last Checked: <strong style={{ color: '#111' }}>{formatTimeAgo(site.lastCheckedAt)}</strong></div>
-                          <div style={{ marginTop: '0.2rem' }}>Interval: <span style={{ color: 'var(--success)', fontWeight: 800 }}>30 mins</span></div>
-                        </div>
-                      </div>
-
-                      {/* Display Latest Content updates preview box (Distill-style) */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
-                          <span>🔍 Latest Webpage Content Snippet:</span>
-                          {site.lastCheckedAt && <span style={{ textTransform: 'none', color: 'var(--primary)' }}>Loaded via Puppeteer Chrome Scraper</span>}
-                        </div>
-                        <div 
-                          style={{
-                            fontFamily: 'monospace',
-                            fontSize: '0.82rem',
-                            padding: '1rem',
-                            borderRadius: '6px',
-                            border: '1.5px solid #111',
-                            backgroundColor: hasAlert ? '#f0fdf4' : 'var(--bg-main)', // Highlight soft green if updated
-                            borderColor: hasAlert ? '#22c55e' : '#111',
-                            boxShadow: hasAlert ? 'inset 0 0 10px rgba(34, 197, 94, 0.1)' : 'none',
-                            color: '#1e293b',
-                            lineHeight: 1.5,
-                            wordBreak: 'break-word',
-                            maxHeight: '120px',
-                            overflowY: 'auto'
-                          }}
-                        >
-                          {site.latestContentText ? (
-                            <>
-                              {hasAlert && <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#15803d', marginBottom: '0.4rem', textTransform: 'uppercase' }}>🟢 NEW UPDATE DETECTED:</div>}
-                              {site.latestContentText}
-                            </>
-                          ) : (
-                            <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                              No content fetched yet. Click "Scan Now" to crawl the URL.
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Action Row */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed var(--border-color)' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button
-                            onClick={() => handleCheckSingleSite(site.id, site.name)}
-                            disabled={checkingSiteId === site.id}
-                            className="btn btn-secondary"
-                            style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '3px' }}
-                          >
-                            <RefreshCw size={12} className={checkingSiteId === site.id ? 'spin' : ''} />
-                            {checkingSiteId === site.id ? 'Scanning...' : 'Scan Now'}
-                          </button>
-                          <button
-                            onClick={() => handleSimulateChange(site.id, site.name)}
-                            className="btn btn-secondary"
-                            style={{ 
-                              padding: '0.35rem 0.75rem', 
-                              fontSize: '0.75rem', 
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              gap: '3px',
-                              borderColor: 'var(--primary)',
-                              color: 'var(--primary)'
-                            }}
-                            title="Generate a mock change on this website to test alerts"
-                          >
-                            <Sparkles size={12} /> Simulate Update
-                          </button>
-                        </div>
+                <div className="card" style={{ padding: 0, border: '2.5px solid #111', boxShadow: '4px 4px 0px #111', overflowX: 'auto', backgroundColor: '#fff' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '850px' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: 'var(--bg-main)', borderBottom: '2.5px solid #111' }}>
+                        <th style={{ padding: '0.75rem 1rem', width: '80px', fontWeight: 900, textTransform: 'uppercase', fontSize: '0.78rem' }}>Status</th>
+                        <th style={{ padding: '0.75rem 1rem', fontWeight: 900, textTransform: 'uppercase', fontSize: '0.78rem' }}>Name & Source URL</th>
+                        <th style={{ padding: '0.75rem 1rem', width: '180px', fontWeight: 900, textTransform: 'uppercase', fontSize: '0.78rem' }}>CSS Selector</th>
+                        <th style={{ padding: '0.75rem 1rem', width: '160px', fontWeight: 900, textTransform: 'uppercase', fontSize: '0.78rem' }}>Last Checked</th>
+                        <th style={{ padding: '0.75rem 1rem', width: '120px', fontWeight: 900, textTransform: 'uppercase', fontSize: '0.78rem', textAlign: 'center' }}>Alerts</th>
+                        <th style={{ padding: '0.75rem 1rem', width: '220px', fontWeight: 900, textTransform: 'uppercase', fontSize: '0.78rem', textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredSites.map(site => {
+                        const siteAlerts = notifications.filter(n => n.websiteId === site.id);
+                        const hasAlert = siteAlerts.length > 0;
+                        const isEnabled = site.enabled !== false;
+                        const isExpanded = expandedSiteId === site.id;
                         
-                        <button
-                          onClick={() => handleDeleteSite(site.id, site.name)}
-                          className="btn btn-secondary"
-                          style={{ 
-                            padding: '0.35rem 0.75rem', 
-                            fontSize: '0.75rem', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '3px',
-                            borderColor: 'var(--danger)',
-                            color: 'var(--danger)'
-                          }}
-                        >
-                          <Trash2 size={12} /> Stop Tracking
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
+                        return (
+                          <React.Fragment key={site.id}>
+                            <tr 
+                              onClick={() => setExpandedSiteId(isExpanded ? null : site.id)}
+                              style={{ 
+                                borderBottom: '1.5px solid #111', 
+                                backgroundColor: hasAlert ? '#f0fdf4' : (isExpanded ? '#f8fafc' : 'transparent'),
+                                cursor: 'pointer',
+                                transition: 'background-color 0.2s'
+                              }}
+                              className="watchlist-row"
+                            >
+                              {/* Status switch */}
+                              <td style={{ padding: '0.75rem 1rem' }} onClick={e => e.stopPropagation()}>
+                                <label className="toggle-switch" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                                  <input 
+                                    type="checkbox"
+                                    checked={isEnabled}
+                                    onChange={() => handleToggleSite(site.id, isEnabled)}
+                                    style={{ display: 'none' }}
+                                  />
+                                  <div style={{
+                                    width: '38px',
+                                    height: '20px',
+                                    backgroundColor: isEnabled ? 'var(--success)' : '#cbd5e1',
+                                    borderRadius: '20px',
+                                    padding: '2px',
+                                    transition: 'background-color 0.2s',
+                                    border: '1.5px solid #111',
+                                    position: 'relative'
+                                  }}>
+                                    <div style={{
+                                      width: '12px',
+                                      height: '12px',
+                                      backgroundColor: '#fff',
+                                      borderRadius: '50%',
+                                      border: '1px solid #111',
+                                      transition: 'transform 0.2s',
+                                      transform: isEnabled ? 'translateX(18px)' : 'translateX(0)',
+                                    }} />
+                                  </div>
+                                </label>
+                              </td>
+                              
+                              {/* Name & Source */}
+                              <td style={{ padding: '0.75rem 1rem' }}>
+                                <div style={{ fontWeight: 800, color: '#111', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                  {site.name}
+                                  {isExpanded ? <Sliders size={12} style={{ color: 'var(--primary)' }} /> : null}
+                                </div>
+                                <a 
+                                  href={site.url} 
+                                  target="_blank" 
+                                  rel="noreferrer"
+                                  onClick={e => e.stopPropagation()}
+                                  style={{ fontSize: '0.72rem', color: 'var(--primary)', textDecoration: 'underline', display: 'inline-flex', alignItems: 'center', gap: '2px', marginTop: '0.15rem' }}
+                                >
+                                  {site.url.length > 50 ? site.url.substring(0, 47) + '...' : site.url} <ExternalLink size={10} />
+                                </a>
+                              </td>
+                              
+                              {/* Selector */}
+                              <td style={{ padding: '0.75rem 1rem' }}>
+                                <span style={{ 
+                                  fontSize: '0.7rem', 
+                                  fontWeight: 800, 
+                                  padding: '2px 6px', 
+                                  borderRadius: '4px', 
+                                  border: '1.5px solid #111', 
+                                  backgroundColor: site.selector ? '#e2e8f0' : '#f1f5f9', 
+                                  color: '#111',
+                                  fontFamily: site.selector ? 'monospace' : 'inherit'
+                                }}>
+                                  {site.selector ? `${site.selector}` : 'document.body'}
+                                </span>
+                              </td>
+                              
+                              {/* Last Checked */}
+                              <td style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                <strong style={{ color: '#111' }}>{formatTimeAgo(site.lastCheckedAt)}</strong>
+                              </td>
+                              
+                              {/* Alerts count badge */}
+                              <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                                {hasAlert ? (
+                                  <span className="badge badge-danger" style={{ fontWeight: 900, animation: 'pulse 2s infinite' }}>
+                                    {siteAlerts.length} Alert{siteAlerts.length > 1 ? 's' : ''}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#cbd5e1', fontWeight: 800, fontSize: '0.75rem' }}>-</span>
+                                )}
+                              </td>
+                              
+                              {/* Actions */}
+                              <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                                <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                                  <button
+                                    onClick={() => handleCheckSingleSite(site.id, site.name)}
+                                    disabled={checkingSiteId === site.id}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                    title="Scan Now"
+                                  >
+                                    <RefreshCw size={11} className={checkingSiteId === site.id ? 'spin' : ''} />
+                                    Scan
+                                  </button>
+                                  <button
+                                    onClick={() => handleSimulateChange(site.id, site.name)}
+                                    className="btn btn-secondary"
+                                    style={{ 
+                                      padding: '0.25rem 0.5rem', 
+                                      fontSize: '0.7rem', 
+                                      display: 'flex', 
+                                      alignItems: 'center', 
+                                      gap: '2px',
+                                      borderColor: 'var(--primary)',
+                                      color: 'var(--primary)'
+                                    }}
+                                    title="Simulate Website Change"
+                                  >
+                                    <Sparkles size={11} />
+                                    Simulate
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteSite(site.id, site.name)}
+                                    className="btn btn-secondary"
+                                    style={{ 
+                                      padding: '0.25rem 0.5rem', 
+                                      fontSize: '0.7rem', 
+                                      display: 'flex', 
+                                      alignItems: 'center', 
+                                      gap: '2px',
+                                      borderColor: 'var(--danger)',
+                                      color: 'var(--danger)'
+                                    }}
+                                    title="Delete Monitor"
+                                  >
+                                    <Trash2 size={11} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                            
+                            {/* Collapsible detail drawer */}
+                            {isExpanded && (
+                              <tr>
+                                <td colSpan={6} style={{ backgroundColor: '#f8fafc', padding: '1rem', borderBottom: '1.5px solid #111' }}>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '1.5rem' }}>
+                                    
+                                    {/* Snippet display */}
+                                    <div>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                                          🔍 Latest Extracted Content Preview
+                                        </span>
+                                        {site.scrapedVia && (
+                                          <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', border: '1px solid #111', backgroundColor: '#e0f2fe', color: '#0369a1' }}>
+                                            ⚡ Scraped via: {site.scrapedVia}
+                                          </span>
+                                        )}
+                                      </div>
+                                      
+                                      <div 
+                                        style={{
+                                          fontFamily: 'monospace',
+                                          fontSize: '0.8rem',
+                                          padding: '1rem',
+                                          borderRadius: '6px',
+                                          border: '1.5px solid #111',
+                                          backgroundColor: hasAlert ? '#f0fdf4' : '#fff',
+                                          borderColor: hasAlert ? 'var(--success)' : '#111',
+                                          color: '#1e293b',
+                                          maxHeight: '180px',
+                                          overflowY: 'auto',
+                                          lineHeight: 1.5,
+                                          whiteSpace: 'pre-wrap',
+                                          boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)'
+                                        }}
+                                      >
+                                        {site.latestContentText ? (
+                                          <>
+                                            {hasAlert && (
+                                              <div style={{ color: '#15803d', fontWeight: 900, fontSize: '0.72rem', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
+                                                🟢 UNREAD CHANGE ALERT DETECTED:
+                                              </div>
+                                            )}
+                                            {site.latestContentText}
+                                          </>
+                                        ) : (
+                                          <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                            No content has been fetched yet. Click the "Scan" button to fetch initial data.
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    
+                                    {/* Technical details side-card */}
+                                    <div style={{ borderLeft: '1.5px solid #cbd5e1', paddingLeft: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.75rem' }}>
+                                      <h5 style={{ margin: 0, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Scraper Profile</h5>
+                                      
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '0.25rem' }}>
+                                        <span style={{ color: 'var(--text-secondary)' }}>Status:</span>
+                                        <strong style={{ color: isEnabled ? 'var(--success)' : 'var(--danger)' }}>
+                                          {isEnabled ? 'ACTIVE MONITOR' : 'PAUSED'}
+                                        </strong>
+                                      </div>
+                                      
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '0.25rem' }}>
+                                        <span style={{ color: 'var(--text-secondary)' }}>Interval:</span>
+                                        <span>30 Minutes (Cron)</span>
+                                      </div>
+                                      
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '0.25rem' }}>
+                                        <span style={{ color: 'var(--text-secondary)' }}>Date Added:</span>
+                                        <span>{site.createdAt ? new Date(site.createdAt).toLocaleDateString() : 'Unknown'}</span>
+                                      </div>
+                                      
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '0.25rem' }}>
+                                        <span style={{ color: 'var(--text-secondary)' }}>Hash ID:</span>
+                                        <span style={{ fontFamily: 'monospace', fontSize: '0.68rem' }}>
+                                          {site.lastContentHash ? site.lastContentHash.substring(0, 16) + '...' : 'No Hash'}
+                                        </span>
+                                      </div>
+                                      
+                                      {hasAlert && (
+                                        <div style={{ marginTop: '0.5rem' }}>
+                                          <button 
+                                            onClick={async () => {
+                                              await handleClearSiteAlerts(site.id);
+                                            }}
+                                            className="btn btn-secondary" 
+                                            style={{ width: '100%', padding: '0.3rem', fontSize: '0.72rem', backgroundColor: '#e2e8f0' }}
+                                          >
+                                            Mark alerts as read
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                    
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           )}

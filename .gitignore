@@ -26,3 +26,8 @@ backend/test_out.xlsx
 .gemini/
 scratch/
 .system_generated/
+
+# Puppeteer Cache
+backend/.puppeteer-cache/
+.puppeteer-cache/
+

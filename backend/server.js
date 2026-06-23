@@ -2216,9 +2216,6 @@ async function migrateDomainCategories() {
         } else if (['support', 'hr', 'operations'].includes(lowerAssignee)) {
           await db.deleteTask(task.id);
           console.log(`Deleted task "${task.title}" (ID: ${task.id}) assigned to removed domain: ${task.assignedTo}`);
-          continue;
-        }
-
         if (updatedAssignee) {
           await db.updateTask(task.id, { assignedTo: updatedAssignee });
           console.log(`Migrated task "${task.title}" assignee from "${task.assignedTo}" to "${updatedAssignee}"`);
@@ -2234,47 +2231,43 @@ async function migrateDomainCategories() {
 // --- WEB MONITORING CRAWLER HELPERS ---
 const crypto = require('crypto');
 const puppeteer = require('puppeteer');
+const cheerio = require('cheerio');
 
-function extractTextFromHtml(html) {
-  // Remove script and style tags and their contents
-  let clean = html.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '');
-  // Remove HTML tags
-  clean = clean.replace(/<[^>]+>/g, ' ');
-  // Decode common HTML entities
-  clean = clean.replace(/&nbsp;/g, ' ')
-               .replace(/&amp;/g, '&')
-               .replace(/&lt;/g, '<')
-               .replace(/&gt;/g, '>');
-  // Collapse whitespace
-  return clean.replace(/\s+/g, ' ').trim();
-}
+let globalBrowser = null;
 
 async function getBrowserInstance() {
+  if (globalBrowser) {
+    try {
+      await globalBrowser.pages();
+      return globalBrowser;
+    } catch (err) {
+      console.log('Cached browser instance is unresponsive, launching a new one...', err.message);
+      globalBrowser = null;
+    }
+  }
+
   const launchOptions = {
     headless: 'new',
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   };
   
   try {
-    return await puppeteer.launch(launchOptions);
+    globalBrowser = await puppeteer.launch(launchOptions);
+    return globalBrowser;
   } catch (err) {
     if (err.message.includes('Could not find Chrome') || err.message.includes('executable')) {
       console.log('Chrome binary not found in cache. Attempting to download Chrome programmatically...');
       try {
-        const cacheDir = process.env.RENDER ? '/opt/render/.cache/puppeteer' : undefined;
         const installCmd = 'npx puppeteer browsers install chrome';
         console.log(`Running: ${installCmd}`);
         
         execSync(installCmd, {
-          env: { 
-            ...process.env, 
-            ...(cacheDir ? { PUPPETEER_CACHE_DIR: cacheDir } : {}) 
-          },
           stdio: 'inherit'
         });
         
         console.log('Chrome downloaded successfully. Retrying browser launch...');
-        return await puppeteer.launch(launchOptions);
+        globalBrowser = await puppeteer.launch(launchOptions);
+        return globalBrowser;
       } catch (installErr) {
         console.error('Failed to auto-install Chrome:', installErr);
         throw err;
@@ -2285,112 +2278,161 @@ async function getBrowserInstance() {
   }
 }
 
-async function checkWebsiteForChanges(site) {
-  let browser = null;
-  try {
-    console.log(`Checking website "${site.name}" (${site.url}) using Puppeteer...`);
-    browser = await getBrowserInstance();
-    
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    
-    // Set viewport to look like desktop
-    await page.setViewport({ width: 1280, height: 800 });
-    
-    // Navigate and wait for networkidle2 (max 25 seconds timeout)
-    await page.goto(site.url, { waitUntil: 'networkidle2', timeout: 25000 });
-    
-    // Extract text based on whether a CSS selector is specified
-    let text = '';
-    let selectorNotFound = false;
-    
-    if (site.selector) {
-      const selectedText = await page.evaluate((sel) => {
-        const elements = Array.from(document.querySelectorAll(sel));
-        if (elements.length === 0) return null;
-        return elements.map(el => el.innerText || el.textContent).join('\n');
-      }, site.selector);
-      
-      if (selectedText === null) {
-        selectorNotFound = true;
-        text = `[SELECTOR NOT FOUND] The CSS selector "${site.selector}" could not be found on the page.`;
-      } else {
-        text = selectedText;
-      }
-    } else {
-      text = await page.evaluate(() => document.body.innerText);
-    }
-    
-    await browser.close();
-    browser = null; // Mark as closed
-    
-    const hash = crypto.createHash('md5').update(text).digest('hex');
-    const previousHash = site.lastContentHash;
-    const nowStr = new Date().toISOString();
-    const cleanSnippet = text.substring(0, 300) + (text.length > 300 ? '...' : '');
-    
-    // Save current status
-    await db.updateTrackedWebsite(site.id, {
-      lastContentHash: hash,
-      lastCheckedAt: nowStr,
-      latestContentText: cleanSnippet
-    });
-    
-    // If selector was not found, don't trigger notification (just log error in status snippet)
-    if (selectorNotFound) {
-      console.warn(`Selector "${site.selector}" not found on page ${site.name}`);
-      return false;
-    }
-    
-    // If it's the first check, don't trigger notification (just initialize hash)
-    if (!previousHash) {
-      console.log(`Initialized content hash for tracked website: ${site.name} (${site.url})`);
-      return false;
-    }
-    
-    // If hash differs, trigger notification
-    if (hash !== previousHash) {
-      console.log(`Detected change on monitored website: ${site.name} (${site.url})`);
-      
-      const snippetLimit = text.substring(0, 180) + (text.length > 180 ? '...' : '');
-      
-      await db.createWebNotification({
-        websiteId: site.id,
-        websiteName: site.name,
-        url: site.url,
-        title: `Change detected on ${site.name}`,
-        description: site.selector 
-          ? `Selected element change detected. Content: "${snippetLimit}"` 
-          : `Content updated on website. Preview: "${snippetLimit}"`,
-        createdAt: nowStr
-      });
-      
-      return true;
-    }
-    
-    return false;
-  } catch (err) {
-    console.error(`Error checking website ${site.name} (${site.url}):`, err.message);
-    if (browser) {
-      try {
-        await browser.close();
-      } catch (closeErr) {
-        // ignore
-      }
-    }
-    return false;
+process.on('exit', async () => {
+  if (globalBrowser) {
+    try {
+      await globalBrowser.close();
+    } catch (e) {}
   }
+});
+
+function extractTextFromHtml(html) {
+  let clean = html.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '');
+  clean = clean.replace(/<[^>]+>/g, ' ');
+  clean = clean.replace(/&nbsp;/g, ' ')
+               .replace(/&amp;/g, '&')
+               .replace(/&lt;/g, '<')
+               .replace(/&gt;/g, '>');
+  return clean.replace(/\s+/g, ' ').trim();
 }
 
-// Background scheduler
+async function checkWebsiteForChanges(site) {
+  let text = '';
+  let scrapedVia = 'Cheerio Fast Fetch';
+  let selectorNotFound = false;
+  
+  try {
+    console.log(`Checking website "${site.name}" (${site.url}) using Cheerio fast-fetch...`);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    
+    const response = await fetch(site.url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    
+    if (response.ok) {
+      const html = await response.text();
+      const $ = cheerio.load(html);
+      
+      if (site.selector) {
+        const elements = $(site.selector);
+        if (elements.length > 0) {
+          const clone = elements.clone();
+          clone.find('script, style, noscript, iframe, svg').remove();
+          text = clone.map((i, el) => $(el).text() || '').get().join('\n').replace(/\s+/g, ' ').trim();
+        } else {
+          selectorNotFound = true;
+        }
+      } else {
+        const clone = $('body').clone();
+        clone.find('script, style, noscript, iframe, svg').remove();
+        text = clone.text().replace(/\s+/g, ' ').trim();
+      }
+    }
+  } catch (cheerioErr) {
+    console.log(`Cheerio fast-fetch failed for ${site.name}: ${cheerioErr.message}. Falling back to Puppeteer...`);
+  }
+  
+  const needsPuppeteer = !text || selectorNotFound || text.toLowerCase().includes('javascript to run this app') || text.toLowerCase().includes('enable javascript');
+  
+  if (needsPuppeteer) {
+    console.log(`Using Puppeteer fallback scraper for "${site.name}" (reusing browser instance)...`);
+    scrapedVia = 'Puppeteer Headless Chrome';
+    let browser = null;
+    try {
+      browser = await getBrowserInstance();
+      const page = await browser.newPage();
+      
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+      await page.setViewport({ width: 1280, height: 800 });
+      
+      await page.goto(site.url, { waitUntil: 'networkidle2', timeout: 25000 });
+      
+      selectorNotFound = false;
+      
+      if (site.selector) {
+        const selectedText = await page.evaluate((sel) => {
+          const elements = Array.from(document.querySelectorAll(sel));
+          if (elements.length === 0) return null;
+          return elements.map(el => el.innerText || el.textContent).join('\n');
+        }, site.selector);
+        
+        if (selectedText === null) {
+          selectorNotFound = true;
+          text = `[SELECTOR NOT FOUND] The CSS selector "${site.selector}" could not be found on the page.`;
+        } else {
+          text = selectedText;
+        }
+      } else {
+        text = await page.evaluate(() => document.body.innerText);
+      }
+      
+      await page.close();
+    } catch (puppeteerErr) {
+      console.error(`Puppeteer fallback scraper failed for ${site.name}:`, puppeteerErr.message);
+      if (!text) {
+        throw puppeteerErr;
+      }
+    }
+  }
+  
+  const hash = crypto.createHash('md5').update(text).digest('hex');
+  const previousHash = site.lastContentHash;
+  const nowStr = new Date().toISOString();
+  const cleanSnippet = text.substring(0, 300) + (text.length > 300 ? '...' : '');
+  
+  await db.updateTrackedWebsite(site.id, {
+    lastContentHash: hash,
+    lastCheckedAt: nowStr,
+    latestContentText: cleanSnippet,
+    scrapedVia
+  });
+  
+  if (selectorNotFound) {
+    console.warn(`Selector "${site.selector}" not found on page ${site.name}`);
+    return false;
+  }
+  
+  if (!previousHash) {
+    console.log(`Initialized content hash for tracked website: ${site.name} (${site.url})`);
+    return false;
+  }
+  
+  if (hash !== previousHash) {
+    console.log(`Detected change on monitored website: ${site.name} (${site.url})`);
+    const snippetLimit = text.substring(0, 180) + (text.length > 180 ? '...' : '');
+    
+    await db.createWebNotification({
+      websiteId: site.id,
+      websiteName: site.name,
+      url: site.url,
+      title: `Change detected on ${site.name}`,
+      description: site.selector 
+        ? `Selected element change detected. Content: "${snippetLimit}"` 
+        : `Content updated on website. Preview: "${snippetLimit}"`,
+      createdAt: nowStr
+    });
+    
+    return true;
+  }
+  
+  return false;
+}
+
 function startWebNotificationCrawlLoop() {
-  // Check every 30 minutes
   setInterval(async () => {
     console.log('Running background web monitor check...');
     try {
       const sites = await db.listTrackedWebsites();
       for (const site of sites) {
-        await checkWebsiteForChanges(site);
+        if (site.enabled !== false) {
+          await checkWebsiteForChanges(site);
+        }
       }
     } catch (err) {
       console.error('Error running web monitor loop:', err);
@@ -2415,13 +2457,31 @@ app.post('/api/admin/web-notifications/sites', authenticateToken, requireAdmin, 
     return res.status(400).json({ error: 'Name and URL are required' });
   }
   try {
-    const newSite = await db.createTrackedWebsite({ url, name, selector });
-    // Perform initial check to save the hash without notification
-    await checkWebsiteForChanges(newSite);
+    const newSite = await db.createTrackedWebsite({ url, name, selector, enabled: true });
+    checkWebsiteForChanges(newSite).catch(err => {
+      console.error(`Initial check background error for ${name}:`, err);
+    });
     res.status(201).json(newSite);
   } catch (err) {
     console.error('Error adding tracked site:', err);
     res.status(500).json({ error: 'Failed to add tracked website' });
+  }
+});
+
+app.patch('/api/admin/web-notifications/sites/:id/toggle', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { enabled } = req.body;
+  try {
+    const sites = await db.listTrackedWebsites();
+    const site = sites.find(s => s.id === id);
+    if (!site) {
+      return res.status(404).json({ error: 'Website not found' });
+    }
+    await db.updateTrackedWebsite(id, { enabled: !!enabled });
+    res.json({ message: `Website monitor ${enabled ? 'enabled' : 'disabled'} successfully`, site: { ...site, enabled: !!enabled } });
+  } catch (err) {
+    console.error('Error toggling website monitor:', err);
+    res.status(500).json({ error: 'Failed to toggle website monitor' });
   }
 });
 
@@ -2472,14 +2532,39 @@ app.post('/api/admin/web-notifications/clear', authenticateToken, requireAdmin, 
   }
 });
 
+app.post('/api/admin/web-notifications/sites/:id/clear-alerts', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const firestore = db.getFirestore ? db.getFirestore() : null;
+    if (firestore) {
+      const snapshot = await firestore.collection('web_notifications').where('websiteId', '==', id).get();
+      const batch = firestore.batch();
+      snapshot.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+    } else {
+      const data = fs.readFileSync(path.join(__dirname, 'db.json'), 'utf8');
+      const parsed = JSON.parse(data);
+      parsed.webNotifications = (parsed.webNotifications || []).filter(n => n.websiteId !== id);
+      fs.writeFileSync(path.join(__dirname, 'db.json'), JSON.stringify(parsed, null, 2), 'utf8');
+    }
+    res.json({ message: 'Alerts cleared for website' });
+  } catch (err) {
+    console.error('Error clearing alerts for website:', err);
+    res.status(500).json({ error: 'Failed to clear alerts' });
+  }
+});
+
+
 app.post('/api/admin/web-notifications/trigger-check', authenticateToken, requireAdmin, async (req, res) => {
   try {
     console.log('Manual web monitor check triggered by admin');
     const sites = await db.listTrackedWebsites();
     let changeCount = 0;
     for (const site of sites) {
-      const changed = await checkWebsiteForChanges(site);
-      if (changed) changeCount++;
+      if (site.enabled !== false) {
+        const changed = await checkWebsiteForChanges(site);
+        if (changed) changeCount++;
+      }
     }
     res.json({ message: `Check completed. Detected changes on ${changeCount} site(s).` });
   } catch (err) {
@@ -2497,7 +2582,6 @@ app.post('/api/admin/web-notifications/simulate-change/:siteId', authenticateTok
       return res.status(404).json({ error: 'Website not found' });
     }
     
-    // Create a mock update notification
     let updates = [];
     const lowerName = site.name.toLowerCase();
     const lowerUrl = site.url.toLowerCase();
@@ -2523,7 +2607,6 @@ app.post('/api/admin/web-notifications/simulate-change/:siteId', authenticateTok
     const mockHash = crypto.createHash('md5').update(mockContent).digest('hex');
     const nowStr = new Date().toISOString();
     
-    // Update website record with mock content
     await db.updateTrackedWebsite(site.id, {
       lastContentHash: mockHash,
       lastCheckedAt: nowStr,

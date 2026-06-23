@@ -2216,12 +2216,16 @@ async function migrateDomainCategories() {
         } else if (['support', 'hr', 'operations'].includes(lowerAssignee)) {
           await db.deleteTask(task.id);
           console.log(`Deleted task "${task.title}" (ID: ${task.id}) assigned to removed domain: ${task.assignedTo}`);
+          continue;
+        }
+
         if (updatedAssignee) {
           await db.updateTask(task.id, { assignedTo: updatedAssignee });
           console.log(`Migrated task "${task.title}" assignee from "${task.assignedTo}" to "${updatedAssignee}"`);
         }
       }
     }
+
     console.log('Domain category database migration completed successfully.');
   } catch (err) {
     console.error('Error running domain categories migration:', err);

@@ -2440,7 +2440,19 @@ app.delete('/api/admin/web-notifications/sites/:id', authenticateToken, requireA
   }
 });
 
-app.get('/api/admin/web-notifications/proxy', authenticateToken, requireAdmin, async (req, res) => {
+// Custom auth that also accepts token via query param (needed for iframe src)
+const authenticateTokenOrQuery = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = (authHeader && authHeader.split(' ')[1]) || req.query.token;
+  if (!token) return res.status(401).send('Access token required');
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).send('Invalid or expired token');
+    req.user = user;
+    next();
+  });
+};
+
+app.get('/api/admin/web-notifications/proxy', authenticateTokenOrQuery, requireAdmin, async (req, res) => {
   let targetUrl = req.query.url;
   if (!targetUrl) {
     return res.status(400).send('URL query parameter is required');

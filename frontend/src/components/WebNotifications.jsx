@@ -44,6 +44,22 @@ function WebNotifications({ user, token }) {
     setShowVisualSelector(true);
   };
 
+  const handleIframeLoad = () => {
+    // After iframe loads, send current selectMode state
+    if (iframeRef.current && iframeRef.current.contentWindow) {
+      setTimeout(() => {
+        try {
+          iframeRef.current.contentWindow.postMessage({ type: 'SET_SELECT_MODE', enabled: selectMode }, '*');
+        } catch (e) { /* cross-origin, ignore */ }
+      }, 300);
+    }
+  };
+
+  const handleConfirmVisualSelector = () => {
+    setSiteSelector(tempSelector);
+    setShowVisualSelector(false);
+  };
+
   // Synchronize selectMode with iframe
   useEffect(() => {
     if (showVisualSelector && iframeRef.current) {
@@ -1528,257 +1544,242 @@ function WebNotifications({ user, token }) {
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(17, 17, 17, 0.4)',
-          backdropFilter: 'blur(8px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backgroundColor: 'rgba(17, 17, 17, 0.55)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          flexDirection: 'column',
           zIndex: 10000,
-          padding: '24px'
+          fontFamily: 'var(--font-family-body)'
         }}>
+          {/* Top control bar */}
           <div style={{
-            backgroundColor: '#ffffff',
-            border: '3px solid #111111',
-            boxShadow: '8px 8px 0px #111111',
-            width: '100%',
-            height: '100%',
-            maxWidth: '1200px',
-            maxHeight: '800px',
             display: 'flex',
-            flexDirection: 'row',
-            overflow: 'hidden'
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: '#ffffff',
+            borderBottom: '2.5px solid #111111',
+            padding: '10px 20px',
+            gap: '16px',
+            flexShrink: 0
           }}>
-            {/* Left Main Area: Iframe Preview */}
-            <div style={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              backgroundColor: '#f1f5f9',
-              borderRight: '3px solid #111111',
-              height: '100%',
-              minWidth: 0
-            }}>
-              {/* Selector Status Header */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '12px 20px',
-                borderBottom: '2.5px solid #111111',
-                backgroundColor: '#ffffff'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 900, textTransform: 'uppercase', color: '#111111' }}>
-                    🌐 Visual Selector Preview
-                  </span>
-                  <span style={{
-                    fontSize: '10px',
-                    fontWeight: 800,
-                    color: '#2563eb',
-                    backgroundColor: '#eff6ff',
-                    padding: '2px 8px',
-                    border: '1.5px solid #2563eb'
-                  }}>
-                    {siteUrl}
-                  </span>
-                </div>
-                <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b' }}>
-                  Proxy Mode Enabled
-                </div>
+            {/* Left: title + URL badge */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Globe size={16} style={{ color: '#111111' }} />
+                <span style={{ fontSize: '13px', fontWeight: 900, fontFamily: 'var(--font-family-title)', textTransform: 'uppercase', letterSpacing: '-0.01em', color: '#111111', whiteSpace: 'nowrap' }}>
+                  Select Elements
+                </span>
               </div>
+              <div style={{ height: '16px', width: '2px', backgroundColor: '#111111', flexShrink: 0 }} />
+              <span style={{
+                fontSize: '11px', fontWeight: 700, color: '#2563eb',
+                backgroundColor: '#eff6ff', padding: '3px 10px',
+                border: '1.5px solid #2563eb', boxShadow: '1px 1px 0px #2563eb',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '320px'
+              }}>
+                {siteUrl}
+              </span>
+            </div>
 
-              {/* Live Proxy Website Iframe */}
+            {/* Center: mode toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, color: '#111111', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Mode:</span>
+              <div style={{ display: 'flex', border: '2px solid #111111', boxShadow: '2px 2px 0px #111' }}>
+                <button
+                  type="button"
+                  onClick={() => setSelectMode(true)}
+                  style={{
+                    padding: '5px 14px',
+                    backgroundColor: selectMode ? '#111111' : '#ffffff',
+                    color: selectMode ? '#ffffff' : '#111111',
+                    border: 'none',
+                    fontWeight: 800, fontSize: '11px', textTransform: 'uppercase',
+                    cursor: 'pointer', fontFamily: 'var(--font-family-body)', transition: 'all 0.1s'
+                  }}
+                >
+                  ✦ Select
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectMode(false)}
+                  style={{
+                    padding: '5px 14px',
+                    backgroundColor: !selectMode ? '#111111' : '#ffffff',
+                    color: !selectMode ? '#ffffff' : '#111111',
+                    borderLeft: '2px solid #111111',
+                    fontWeight: 800, fontSize: '11px', textTransform: 'uppercase',
+                    cursor: 'pointer', fontFamily: 'var(--font-family-body)', transition: 'all 0.1s'
+                  }}
+                >
+                  Browse
+                </button>
+              </div>
+              <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600, maxWidth: '200px' }}>
+                {selectMode ? '↖ Hover & click to select element' : '↖ Click to navigate, then switch back to Select'}
+              </span>
+            </div>
+
+            {/* Right: Close */}
+            <button
+              type="button"
+              onClick={() => setShowVisualSelector(false)}
+              style={{
+                padding: '5px 14px', border: '2px solid #111111', background: '#ffffff',
+                color: '#111111', fontWeight: 900, fontSize: '12px', textTransform: 'uppercase',
+                cursor: 'pointer', boxShadow: '2px 2px 0px #111', transition: 'all 0.1s',
+                display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0
+              }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-1px,-1px)'; e.currentTarget.style.boxShadow = '3px 3px 0px #111'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '2px 2px 0px #111'; }}
+            >
+              ✕ Close
+            </button>
+          </div>
+
+          {/* Main body: iframe (left) + sidebar (right) */}
+          <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+
+            {/* iframe area */}
+            <div style={{ flex: 1, position: 'relative', backgroundColor: '#f1f5f9', minWidth: 0 }}>
               <iframe
                 ref={iframeRef}
-                src={`${API_BASE}/api/admin/web-notifications/proxy?url=${encodeURIComponent(siteUrl)}`}
+                src={`${API_BASE}/api/admin/web-notifications/proxy?url=${encodeURIComponent(siteUrl)}&token=${encodeURIComponent(token)}`}
                 onLoad={handleIframeLoad}
-                style={{
-                  flex: 1,
-                  width: '100%',
-                  height: '100%',
-                  border: 'none',
-                  backgroundColor: '#ffffff'
-                }}
+                style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
                 title="Visual Selector Website Proxy"
               />
             </div>
 
-            {/* Right Sidebar: Selector Controls */}
+            {/* Right sidebar */}
             <div style={{
-              width: '320px',
-              backgroundColor: 'var(--bg-main)',
-              padding: '20px',
+              width: '280px',
+              backgroundColor: '#ffffff',
+              borderLeft: '2.5px solid #111111',
               display: 'flex',
               flexDirection: 'column',
-              gap: '20px',
-              height: '100%',
-              overflowY: 'auto',
+              gap: '0',
               flexShrink: 0
             }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 900, fontFamily: 'var(--font-family-title)', color: '#111111', textTransform: 'uppercase', letterSpacing: '-0.02em' }}>
-                  Select Elements
-                </h3>
-                <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
-                  Point and click on the elements of the live webpage to extract their CSS selector.
-                </p>
-              </div>
-
-              <div style={{ height: '2px', backgroundColor: '#111111' }} />
-
-              {/* Mode Toggle Button Group */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '10px', fontWeight: 900, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Selection Mode
-                </label>
-                <div style={{ display: 'flex', border: '2px solid #111111' }}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectMode(true)}
-                    style={{
-                      flex: 1,
-                      padding: '8px',
-                      backgroundColor: selectMode ? '#111111' : '#ffffff',
-                      color: selectMode ? '#ffffff' : '#111111',
-                      border: 'none',
-                      fontWeight: 800,
-                      fontSize: '11px',
-                      textTransform: 'uppercase',
-                      cursor: 'pointer',
-                      transition: 'all 0.1s'
-                    }}
-                  >
-                    Select On
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectMode(false)}
-                    style={{
-                      flex: 1,
-                      padding: '8px',
-                      backgroundColor: !selectMode ? '#111111' : '#ffffff',
-                      color: !selectMode ? '#ffffff' : '#111111',
-                      borderLeft: '2px solid #111111',
-                      fontWeight: 800,
-                      fontSize: '11px',
-                      textTransform: 'uppercase',
-                      cursor: 'pointer',
-                      transition: 'all 0.1s'
-                    }}
-                  >
-                    Browse Mode
-                  </button>
+              {/* Sidebar header */}
+              <div style={{
+                padding: '14px 16px',
+                borderBottom: '2px solid #111111',
+                backgroundColor: 'var(--bg-main)'
+              }}>
+                <div style={{ fontSize: '12px', fontWeight: 900, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.04em', fontFamily: 'var(--font-family-title)' }}>
+                  Selector Result
                 </div>
-                <p style={{ margin: '4px 0 0 0', fontSize: '10px', color: '#64748b', lineHeight: 1.3 }}>
-                  {selectMode 
-                    ? "💡 Hover highlights in blue, click selects elements." 
-                    : "💡 Hovering is disabled, clicking operates normally (e.g. toggles dropdown menus)."}
-                </p>
+                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>
+                  Click an element in the preview to capture it
+                </div>
               </div>
 
-              {/* Selected Selector input (editable) */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {/* CSS Selector field */}
+              <div style={{ padding: '14px 16px', borderBottom: '2px solid #111111', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <label style={{ fontSize: '10px', fontWeight: 900, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Target CSS Selector
+                  CSS Selector
                 </label>
                 <input
                   type="text"
                   value={tempSelector}
                   onChange={e => setTempSelector(e.target.value)}
                   style={{
-                    padding: '8px 12px',
+                    padding: '7px 10px',
                     border: '2px solid #111111',
                     outline: 'none',
-                    fontSize: '12px',
+                    fontSize: '11px',
                     fontWeight: 700,
                     fontFamily: 'monospace',
-                    backgroundColor: '#ffffff'
+                    backgroundColor: tempSelector ? '#f0fdf4' : '#ffffff',
+                    boxShadow: tempSelector ? '2px 2px 0px #16a34a' : 'none',
+                    transition: 'all 0.1s'
                   }}
-                  placeholder="No element selected"
+                  placeholder="Click element to auto-fill..."
                 />
+                {tempSelector && (
+                  <div style={{
+                    fontSize: '10px', color: '#16a34a', fontWeight: 800,
+                    display: 'flex', alignItems: 'center', gap: '4px'
+                  }}>
+                    <Check size={10} /> Selector captured
+                  </div>
+                )}
               </div>
 
-              {/* Text Preview */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minHeight: 0 }}>
+              {/* Text preview */}
+              <div style={{ padding: '14px 16px', borderBottom: '2px solid #111111', display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minHeight: 0 }}>
                 <label style={{ fontSize: '10px', fontWeight: 900, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Selected Text Preview
+                  Content Preview
                 </label>
                 <div style={{
-                  flex: 1,
                   border: '2px solid #111111',
-                  backgroundColor: '#ffffff',
+                  backgroundColor: 'var(--bg-main)',
                   padding: '10px',
-                  fontSize: '12px',
+                  fontSize: '11px',
                   fontFamily: 'monospace',
                   overflowY: 'auto',
                   whiteSpace: 'pre-wrap',
                   color: tempSelectorText ? '#111111' : '#94a3b8',
                   fontWeight: 500,
-                  maxHeight: '200px'
+                  lineHeight: 1.5,
+                  flex: 1,
+                  maxHeight: '220px'
                 }}>
-                  {tempSelectorText || "No content selected. Click on an element in the live website to view a preview."}
+                  {tempSelectorText || 'No element selected yet.\n\nSwitch to Select mode, then click any element on the website preview.'}
                 </div>
               </div>
 
-              {/* Bottom buttons */}
-              <div style={{ display: 'flex', gap: '12px', marginTop: 'auto' }}>
+              {/* Action buttons */}
+              <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={handleConfirmVisualSelector}
+                  disabled={!tempSelector}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: '2px solid #111111',
+                    background: tempSelector ? 'var(--success)' : '#f1f5f9',
+                    color: tempSelector ? '#ffffff' : '#94a3b8',
+                    boxShadow: tempSelector ? '3px 3px 0px #111' : 'none',
+                    cursor: tempSelector ? 'pointer' : 'not-allowed',
+                    fontSize: '12px', fontWeight: 900,
+                    textTransform: 'uppercase',
+                    transition: 'all 0.1s',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                  }}
+                  onMouseEnter={e => { if (tempSelector) { e.currentTarget.style.transform = 'translate(-1px,-1px)'; e.currentTarget.style.boxShadow = '4px 4px 0px #111'; } }}
+                  onMouseLeave={e => { if (tempSelector) { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '3px 3px 0px #111'; } }}
+                >
+                  <Check size={13} /> Use This Selector
+                </button>
                 <button
                   type="button"
                   onClick={() => setShowVisualSelector(false)}
                   style={{
-                    flex: 1,
-                    padding: '10px',
+                    width: '100%',
+                    padding: '8px',
                     border: '2px solid #111111',
                     background: '#ffffff',
                     color: '#111111',
-                    boxShadow: '2.5px 2.5px 0px #111',
+                    boxShadow: '2px 2px 0px #111',
                     cursor: 'pointer',
-                    fontSize: '12px',
-                    fontWeight: 900,
+                    fontSize: '11px', fontWeight: 800,
                     textTransform: 'uppercase',
                     transition: 'all 0.1s'
                   }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.transform = 'translate(-1px, -1px)';
-                    e.currentTarget.style.boxShadow = '3.5px 3.5px 0px #111';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.transform = 'none';
-                    e.currentTarget.style.boxShadow = '2.5px 2.5px 0px #111';
-                  }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-1px,-1px)'; e.currentTarget.style.boxShadow = '3px 3px 0px #111'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '2px 2px 0px #111'; }}
                 >
                   Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmVisualSelector}
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    border: '2px solid #111111',
-                    background: 'var(--success)',
-                    color: '#ffffff',
-                    boxShadow: '2.5px 2.5px 0px #111',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    fontWeight: 900,
-                    textTransform: 'uppercase',
-                    transition: 'all 0.1s'
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.transform = 'translate(-1px, -1px)';
-                    e.currentTarget.style.boxShadow = '3.5px 3.5px 0px #111';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.transform = 'none';
-                    e.currentTarget.style.boxShadow = '2.5px 2.5px 0px #111';
-                  }}
-                >
-                  Confirm
                 </button>
               </div>
             </div>
           </div>
         </div>
       )}
+
+
 
     </div>
 

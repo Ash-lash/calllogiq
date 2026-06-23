@@ -2,19 +2,28 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Send, Bot, Settings, MessageSquare, Megaphone, Plus, Trash2, 
   Play, RefreshCw, Smartphone, Search, CheckCircle, AlertCircle, 
-  HelpCircle, Check, Eye
+  HelpCircle, Check, Eye, LayoutDashboard
 } from 'lucide-react';
 import API_BASE from '../api';
 
 export default function WhatsAppManager({ user, token }) {
   const [portal, setPortal] = useState('gyc'); // 'gyc' | 'vtr'
-  const [activeSubTab, setActiveSubTab] = useState('inbox'); // 'inbox' | 'broadcast' | 'chatbot' | 'settings'
+  const [activeSubTab, setActiveSubTab] = useState('dashboard'); // 'dashboard' | 'inbox' | 'broadcast' | 'chatbot' | 'settings'
 
   // Lists
   const [chats, setChats] = useState([]);
   const [messages, setMessages] = useState([]);
   const [broadcasts, setBroadcasts] = useState([]);
   const [chatbots, setChatbots] = useState([]);
+
+  // Dashboard Metrics
+  const [stats, setStats] = useState({
+    totalChats: 0,
+    totalMessagesSent: 0,
+    totalMessagesReceived: 0,
+    totalBroadcasts: 0,
+    totalChatbots: 0
+  });
 
   // Selections & Inputs
   const [selectedChat, setSelectedChat] = useState(null);
@@ -61,6 +70,7 @@ export default function WhatsAppManager({ user, token }) {
   // Fetch initial data based on portal
   useEffect(() => {
     fetchChats();
+    fetchStats();
     if (activeSubTab === 'broadcast') fetchBroadcasts();
     if (activeSubTab === 'chatbot') fetchChatbots();
   }, [portal, activeSubTab]);
@@ -78,6 +88,20 @@ export default function WhatsAppManager({ user, token }) {
     }, 4000);
     return () => clearInterval(interval);
   }, [selectedChat, activeSubTab]);
+
+  const fetchStats = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/whatsapp/stats?portal=${portal}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+      }
+    } catch (err) {
+      console.error('Error fetching stats:', err);
+    }
+  };
 
   const fetchChats = async () => {
     try {
@@ -362,6 +386,19 @@ export default function WhatsAppManager({ user, token }) {
       {/* Inner Sub-Navigation Tabs */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexShrink: 0 }}>
         <button 
+          onClick={() => setActiveSubTab('dashboard')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            padding: '8px 14px', fontSize: '0.85rem', fontWeight: 700,
+            border: '2px solid #111111',
+            borderRadius: '4px',
+            backgroundColor: activeSubTab === 'dashboard' ? '#fee2e2' : '#ffffff',
+            cursor: 'pointer'
+          }}
+        >
+          <LayoutDashboard size={16} /> Overview Dashboard
+        </button>
+        <button 
           onClick={() => setActiveSubTab('inbox')}
           style={{
             display: 'flex', alignItems: 'center', gap: '6px',
@@ -427,6 +464,151 @@ export default function WhatsAppManager({ user, token }) {
         flexDirection: 'column'
       }}>
         
+        {/* ========================================== */}
+        {/* TAB 0: OVERVIEW DASHBOARD                  */}
+        {/* ========================================== */}
+        {activeSubTab === 'dashboard' && (
+          <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', gap: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontWeight: 900, textTransform: 'uppercase' }}>Account Overview</h3>
+                <span style={{ fontSize: '0.85rem', color: '#666' }}>Real-time usage statistics and status metrics</span>
+              </div>
+              <button 
+                onClick={() => { fetchStats(); fetchChats(); }}
+                style={{
+                  padding: '6px 12px',
+                  backgroundColor: '#ffffff',
+                  color: '#111',
+                  border: '2px solid #111111',
+                  borderRadius: '4px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '2px 2px 0px #111111'
+                }}
+              >
+                <RefreshCw size={14} /> Refresh Stats
+              </button>
+            </div>
+
+            {/* Stats Cards Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+              
+              {/* Card 1: Active Conversations */}
+              <div style={{ 
+                border: '2.5px solid #111111', 
+                borderRadius: '6px', 
+                padding: '20px', 
+                backgroundColor: '#fee2e2', 
+                boxShadow: '3px 3px 0px #111111' 
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontWeight: 800, fontSize: '0.8rem', color: '#555', textTransform: 'uppercase' }}>Conversations</span>
+                  <MessageSquare size={18} style={{ color: '#ef4444' }} />
+                </div>
+                <div style={{ fontSize: '2.2rem', fontWeight: 900 }}>{stats.totalChats}</div>
+                <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px', fontWeight: 500 }}>Active chat threads</div>
+              </div>
+
+              {/* Card 2: Sent Messages */}
+              <div style={{ 
+                border: '2.5px solid #111111', 
+                borderRadius: '6px', 
+                padding: '20px', 
+                backgroundColor: '#dcfce7', 
+                boxShadow: '3px 3px 0px #111111' 
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontWeight: 800, fontSize: '0.8rem', color: '#555', textTransform: 'uppercase' }}>Sent Messages</span>
+                  <Send size={18} style={{ color: '#22c55e' }} />
+                </div>
+                <div style={{ fontSize: '2.2rem', fontWeight: 900 }}>{stats.totalMessagesSent}</div>
+                <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px', fontWeight: 500 }}>Outbound replies & broadcasts</div>
+              </div>
+
+              {/* Card 3: Received Messages */}
+              <div style={{ 
+                border: '2.5px solid #111111', 
+                borderRadius: '6px', 
+                padding: '20px', 
+                backgroundColor: '#dbeafe', 
+                boxShadow: '3px 3px 0px #111111' 
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontWeight: 800, fontSize: '0.8rem', color: '#555', textTransform: 'uppercase' }}>Received Messages</span>
+                  <Smartphone size={18} style={{ color: '#3b82f6' }} />
+                </div>
+                <div style={{ fontSize: '2.2rem', fontWeight: 900 }}>{stats.totalMessagesReceived}</div>
+                <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px', fontWeight: 500 }}>Inbound customer messages</div>
+              </div>
+
+              {/* Card 4: Broadcasts */}
+              <div style={{ 
+                border: '2.5px solid #111111', 
+                borderRadius: '6px', 
+                padding: '20px', 
+                backgroundColor: '#f3e8ff', 
+                boxShadow: '3px 3px 0px #111111' 
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontWeight: 800, fontSize: '0.8rem', color: '#555', textTransform: 'uppercase' }}>Campaigns Run</span>
+                  <Megaphone size={18} style={{ color: '#a855f7' }} />
+                </div>
+                <div style={{ fontSize: '2.2rem', fontWeight: 900 }}>{stats.totalBroadcasts}</div>
+                <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px', fontWeight: 500 }}>Bulk template broadcasts</div>
+              </div>
+
+              {/* Card 5: Chatbots */}
+              <div style={{ 
+                border: '2.5px solid #111111', 
+                borderRadius: '6px', 
+                padding: '20px', 
+                backgroundColor: '#fef9c3', 
+                boxShadow: '3px 3px 0px #111111' 
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontWeight: 800, fontSize: '0.8rem', color: '#555', textTransform: 'uppercase' }}>Bot Rules</span>
+                  <Bot size={18} style={{ color: '#eab308' }} />
+                </div>
+                <div style={{ fontSize: '2.2rem', fontWeight: 900 }}>{stats.totalChatbots}</div>
+                <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px', fontWeight: 500 }}>FAQ keyword triggers</div>
+              </div>
+
+            </div>
+
+            {/* Quick Status Block */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', border: '2.5px solid #111111', borderRadius: '6px', padding: '16px', backgroundColor: '#fcfcfc', boxShadow: '3px 3px 0px #111111' }}>
+              <h4 style={{ margin: '0 0 4px 0', fontWeight: 900, textTransform: 'uppercase', fontSize: '0.95rem' }}>Connection & Status</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.85rem' }}>
+                <div><strong>Business Name:</strong> {portalDetails[portal].name}</div>
+                <div><strong>Connection Status:</strong> <span style={{ color: '#15803d', fontWeight: 800 }}>● Connected (Active)</span></div>
+                <div><strong>Active Phone:</strong> {portalDetails[portal].number}</div>
+                <div><strong>WhatsApp Business ID:</strong> 2410097762707241</div>
+              </div>
+            </div>
+
+            {/* Next Steps / Testing Help banner */}
+            {stats.totalChats === 0 && (
+              <div style={{ border: '2.5px solid #111111', borderRadius: '6px', padding: '16px', backgroundColor: '#fffbeb', display: 'flex', gap: '12px', alignItems: 'flex-start', boxShadow: '3px 3px 0px #111111' }}>
+                <AlertCircle size={20} style={{ color: '#d97706', flexShrink: 0, marginTop: '2px' }} />
+                <div>
+                  <h5 style={{ margin: '0 0 4px 0', fontWeight: 800, fontSize: '0.9rem', color: '#92400e' }}>No Conversations Stored Yet</h5>
+                  <p style={{ margin: 0, fontSize: '0.8rem', color: '#b45309', lineHeight: '1.4' }}>
+                    Since this is a fresh database instance, it starts completely empty. To see this list fill up and start chatting:
+                    <ol style={{ paddingLeft: '16px', margin: '4px 0 0 0' }}>
+                      <li>Send a test WhatsApp message from a personal phone to your business number <strong>{portalDetails[portal].number}</strong>.</li>
+                      <li>It will immediately receive the message in real-time, register the contact, trigger any matching auto-responders, and display the conversation under the <strong>Chat Inbox</strong> tab!</li>
+                    </ol>
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ========================================== */}
         {/* TAB 1: REAL-TIME CHAT INBOX                 */}
         {/* ========================================== */}

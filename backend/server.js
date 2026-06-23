@@ -2943,6 +2943,54 @@ app.post('/api/admin/whatsapp/webhook', async (req, res) => {
   }
 });
 
+// Get Stats Summary
+app.get('/api/admin/whatsapp/stats', authenticateToken, requireAdmin, async (req, res) => {
+  const { portal } = req.query;
+  if (!portal) {
+    return res.status(400).json({ error: 'Portal parameter is required' });
+  }
+  try {
+    const chats = await db.listWhatsappChats();
+    const broadcasts = await db.listWhatsappBroadcasts();
+    const chatbots = await db.listWhatsappChatbots();
+    
+    // Read local db to count messages
+    const firestore = admin.apps.length > 0 ? admin.firestore() : null;
+    let sentCount = 0;
+    let receivedCount = 0;
+    
+    if (firestore) {
+      const messagesSnap = await firestore.collection('whatsapp_messages')
+        .where('portal', '==', portal)
+        .get();
+      const allMsgs = messagesSnap.docs.map(doc => doc.data());
+      sentCount = allMsgs.filter(m => m.fromMe).length;
+      receivedCount = allMsgs.filter(m => !m.fromMe).length;
+    } else {
+      const parsedData = JSON.parse(fs.readFileSync(path.join(__dirname, 'db.json'), 'utf8'));
+      const allMsgs = parsedData.whatsappMessages || [];
+      const portalMessages = allMsgs.filter(m => m.portal === portal);
+      sentCount = portalMessages.filter(m => m.fromMe).length;
+      receivedCount = portalMessages.filter(m => !m.fromMe).length;
+    }
+    
+    const portalChats = chats.filter(c => c.portal === portal);
+    const portalBroadcasts = broadcasts.filter(b => b.portal === portal);
+    const portalChatbots = chatbots.filter(c => c.portal === portal);
+    
+    res.json({
+      totalChats: portalChats.length,
+      totalMessagesSent: sentCount,
+      totalMessagesReceived: receivedCount,
+      totalBroadcasts: portalBroadcasts.length,
+      totalChatbots: portalChatbots.length
+    });
+  } catch (err) {
+    console.error('Error fetching stats:', err);
+    res.status(500).json({ error: 'Failed to fetch WhatsApp statistics' });
+  }
+});
+
 // 3. Get Chat Contacts List
 app.get('/api/admin/whatsapp/chats', authenticateToken, requireAdmin, async (req, res) => {
   const { portal } = req.query;

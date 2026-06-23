@@ -2620,7 +2620,7 @@ app.get('/api/admin/web-notifications/proxy', authenticateToken, requireAdmin, a
     res.send($.html());
   } catch (err) {
     console.error('Proxy error:', err);
-    res.status(500).send(\`Error proxying website: \${err.message}\`);
+    res.status(500).send(`Error proxying website: ${err.message}`);
   }
 });
 

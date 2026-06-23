@@ -5,8 +5,9 @@ import AdminDashboard from './components/AdminDashboard';
 import AssetManager from './components/AssetManager';
 import UserProfile from './components/UserProfile';
 import WebNotifications from './components/WebNotifications';
+import WhatsAppManager from './components/WhatsAppManager';
 import API_BASE from './api';
-import { LogOut, LayoutDashboard, CheckSquare, ShieldAlert, Laptop, User, Globe } from 'lucide-react';
+import { LogOut, LayoutDashboard, CheckSquare, ShieldAlert, Laptop, User, Globe, MessageSquare } from 'lucide-react';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
@@ -175,6 +176,13 @@ function App() {
                 Web Notifications
               </button>
               <button 
+                onClick={() => setActiveTab('whatsapp')} 
+                className={`sidebar-item-btn ${activeTab === 'whatsapp' ? 'active' : ''}`}
+              >
+                <MessageSquare size={18} />
+                WhatsApp Manager
+              </button>
+              <button 
                 onClick={() => setActiveTab('profile')} 
                 className={`sidebar-item-btn ${activeTab === 'profile' ? 'active' : ''}`}
               >
@@ -226,6 +234,8 @@ function App() {
             <AdminDashboard user={user} token={token} />
           ) : activeTab === 'webnotifications' && isUserAdmin ? (
             <WebNotifications user={user} token={token} />
+          ) : activeTab === 'whatsapp' && isUserAdmin ? (
+            <WhatsAppManager user={user} token={token} />
           ) : activeTab === 'assets' ? (
             <AssetManager user={user} token={token} />
           ) : activeTab === 'profile' ? (

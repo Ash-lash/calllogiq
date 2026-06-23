@@ -16,7 +16,11 @@ if (!fs.existsSync(DB_FILE)) {
     assetNotifications: [],
     fieldVisits: [],
     trackedWebsites: [],
-    webNotifications: []
+    webNotifications: [],
+    whatsappChats: [],
+    whatsappMessages: [],
+    whatsappBroadcasts: [],
+    whatsappChatbots: []
   }, null, 2), 'utf8');
 }
 
@@ -30,10 +34,19 @@ function readLocalDB() {
     if (!parsed.fieldVisits) parsed.fieldVisits = [];
     if (!parsed.trackedWebsites) parsed.trackedWebsites = [];
     if (!parsed.webNotifications) parsed.webNotifications = [];
+    if (!parsed.whatsappChats) parsed.whatsappChats = [];
+    if (!parsed.whatsappMessages) parsed.whatsappMessages = [];
+    if (!parsed.whatsappBroadcasts) parsed.whatsappBroadcasts = [];
+    if (!parsed.whatsappChatbots) parsed.whatsappChatbots = [];
     return parsed;
   } catch (err) {
     console.error('Error reading database file:', err);
-    return { users: [], logs: [], tasks: [], otps: [], assets: [], assetVerifications: [], assetNotifications: [], fieldVisits: [], trackedWebsites: [], webNotifications: [] };
+    return { 
+      users: [], logs: [], tasks: [], otps: [], assets: [], 
+      assetVerifications: [], assetNotifications: [], fieldVisits: [], 
+      trackedWebsites: [], webNotifications: [],
+      whatsappChats: [], whatsappMessages: [], whatsappBroadcasts: [], whatsappChatbots: []
+    };
   }
 }
 
@@ -921,6 +934,228 @@ const db = {
     } else {
       const data = readLocalDB();
       data.webNotifications = [];
+      writeLocalDB(data);
+      return true;
+    }
+  },
+
+  // --- WHATSAPP CHATS ---
+  listWhatsappChats: async () => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const snapshot = await firestore.collection('whatsapp_chats').orderBy('lastMessageTime', 'desc').get();
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } else {
+      const data = readLocalDB();
+      return (data.whatsappChats || []).sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
+    }
+  },
+
+  findWhatsappChat: async (id) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const doc = await firestore.collection('whatsapp_chats').doc(id).get();
+      if (!doc.exists) return null;
+      return { id: doc.id, ...doc.data() };
+    } else {
+      const data = readLocalDB();
+      return data.whatsappChats.find(c => c.id === id) || null;
+    }
+  },
+
+  upsertWhatsappChat: async (id, chatData) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      await firestore.collection('whatsapp_chats').doc(id).set(chatData, { merge: true });
+      const doc = await firestore.collection('whatsapp_chats').doc(id).get();
+      return { id: doc.id, ...doc.data() };
+    } else {
+      const data = readLocalDB();
+      const idx = data.whatsappChats.findIndex(c => c.id === id);
+      if (idx > -1) {
+        data.whatsappChats[idx] = { ...data.whatsappChats[idx], ...chatData, id };
+      } else {
+        data.whatsappChats.push({ ...chatData, id, unreadCount: chatData.unreadCount || 0 });
+      }
+      writeLocalDB(data);
+      return data.whatsappChats.find(c => c.id === id);
+    }
+  },
+
+  // --- WHATSAPP MESSAGES ---
+  listWhatsappMessages: async (chatNumber, portal) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const snapshot = await firestore.collection('whatsapp_messages')
+        .where('chatNumber', '==', chatNumber)
+        .where('portal', '==', portal)
+        .get();
+      // Firestore sort in JS because composite indexing requires meta configuration
+      return snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+    } else {
+      const data = readLocalDB();
+      return (data.whatsappMessages || [])
+        .filter(m => m.chatNumber === chatNumber && m.portal === portal)
+        .sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+    }
+  },
+
+  createWhatsappMessage: async (msg) => {
+    const firestore = getFirestore();
+    const id = msg.id || (Date.now().toString() + Math.random().toString(36).substr(2, 5));
+    const newMsg = {
+      id,
+      timestamp: msg.timestamp || new Date().toISOString(),
+      status: msg.status || 'sent',
+      ...msg
+    };
+
+    if (firestore) {
+      await firestore.collection('whatsapp_messages').doc(id).set(newMsg);
+      return newMsg;
+    } else {
+      const data = readLocalDB();
+      data.whatsappMessages.push(newMsg);
+      writeLocalDB(data);
+      return newMsg;
+    }
+  },
+
+  updateWhatsappMessageStatus: async (id, status) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const docRef = firestore.collection('whatsapp_messages').doc(id);
+      const doc = await docRef.get();
+      if (doc.exists) {
+        await docRef.update({ status });
+        return true;
+      }
+      return false;
+    } else {
+      const data = readLocalDB();
+      const idx = data.whatsappMessages.findIndex(m => m.id === id);
+      if (idx > -1) {
+        data.whatsappMessages[idx].status = status;
+        writeLocalDB(data);
+        return true;
+      }
+      return false;
+    }
+  },
+
+  // --- WHATSAPP BROADCASTS ---
+  listWhatsappBroadcasts: async () => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const snapshot = await firestore.collection('whatsapp_broadcasts').orderBy('createdAt', 'desc').get();
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } else {
+      const data = readLocalDB();
+      return (data.whatsappBroadcasts || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+  },
+
+  createWhatsappBroadcast: async (bc) => {
+    const firestore = getFirestore();
+    const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+    const newBc = {
+      id,
+      createdAt: new Date().toISOString(),
+      sentCount: 0,
+      successCount: 0,
+      failedCount: 0,
+      status: 'pending',
+      ...bc
+    };
+
+    if (firestore) {
+      await firestore.collection('whatsapp_broadcasts').doc(id).set(newBc);
+      return newBc;
+    } else {
+      const data = readLocalDB();
+      data.whatsappBroadcasts.push(newBc);
+      writeLocalDB(data);
+      return newBc;
+    }
+  },
+
+  updateWhatsappBroadcast: async (id, updates) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      await firestore.collection('whatsapp_broadcasts').doc(id).update(updates);
+      return true;
+    } else {
+      const data = readLocalDB();
+      const idx = data.whatsappBroadcasts.findIndex(b => b.id === id);
+      if (idx > -1) {
+        data.whatsappBroadcasts[idx] = { ...data.whatsappBroadcasts[idx], ...updates };
+        writeLocalDB(data);
+        return true;
+      }
+      return false;
+    }
+  },
+
+  // --- WHATSAPP CHATBOTS ---
+  listWhatsappChatbots: async () => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const snapshot = await firestore.collection('whatsapp_chatbots').get();
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } else {
+      const data = readLocalDB();
+      return data.whatsappChatbots || [];
+    }
+  },
+
+  createWhatsappChatbot: async (bot) => {
+    const firestore = getFirestore();
+    const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+    const newBot = {
+      id,
+      active: true,
+      triggerType: bot.triggerType || 'contains',
+      ...bot
+    };
+
+    if (firestore) {
+      await firestore.collection('whatsapp_chatbots').doc(id).set(newBot);
+      return newBot;
+    } else {
+      const data = readLocalDB();
+      data.whatsappChatbots.push(newBot);
+      writeLocalDB(data);
+      return newBot;
+    }
+  },
+
+  updateWhatsappChatbot: async (id, updates) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      await firestore.collection('whatsapp_chatbots').doc(id).update(updates);
+      return true;
+    } else {
+      const data = readLocalDB();
+      const idx = data.whatsappChatbots.findIndex(b => b.id === id);
+      if (idx > -1) {
+        data.whatsappChatbots[idx] = { ...data.whatsappChatbots[idx], ...updates };
+        writeLocalDB(data);
+        return true;
+      }
+      return false;
+    }
+  },
+
+  deleteWhatsappChatbot: async (id) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      await firestore.collection('whatsapp_chatbots').doc(id).delete();
+      return true;
+    } else {
+      const data = readLocalDB();
+      data.whatsappChatbots = data.whatsappChatbots.filter(b => b.id !== id);
       writeLocalDB(data);
       return true;
     }

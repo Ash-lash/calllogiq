@@ -2759,6 +2759,414 @@ app.post('/api/admin/web-notifications/simulate-change/:siteId', authenticateTok
   }
 });
 
+// ======================================================
+// WhatsApp Business API Integration
+// ======================================================
+const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
+const WHATSAPP_WABA_ID = process.env.WHATSAPP_WABA_ID;
+const WHATSAPP_GYC_PHONE_NUMBER_ID = process.env.WHATSAPP_GYC_PHONE_NUMBER_ID;
+const WHATSAPP_VTR_PHONE_NUMBER_ID = process.env.WHATSAPP_VTR_PHONE_NUMBER_ID;
+const WHATSAPP_VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || 'calllogiq_whatsapp_verify_token_2026';
+
+// Helper to send message via Meta WhatsApp Cloud API
+async function sendMetaWhatsAppMessage(portal, to, payload) {
+  const phoneId = portal === 'gyc' ? WHATSAPP_GYC_PHONE_NUMBER_ID : WHATSAPP_VTR_PHONE_NUMBER_ID;
+  if (!phoneId) throw new Error(`Phone ID for portal ${portal} is not configured`);
+  if (!WHATSAPP_TOKEN) throw new Error('WhatsApp access token is not configured');
+
+  const url = `https://graph.facebook.com/v18.0/${phoneId}/messages`;
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to,
+      ...payload
+    })
+  });
+
+  const resJson = await response.json();
+  if (!response.ok) {
+    console.error('Meta API Error Response:', JSON.stringify(resJson, null, 2));
+    throw new Error(resJson.error?.message || 'Meta API returned an error');
+  }
+  return resJson;
+}
+
+// 1. Webhook Verification (GET)
+app.get('/api/admin/whatsapp/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+  
+  if (mode && token) {
+    if (mode === 'subscribe' && token === WHATSAPP_VERIFY_TOKEN) {
+      console.log('WhatsApp webhook verified successfully!');
+      return res.status(200).send(challenge);
+    }
+  }
+  return res.status(403).send('Verification failed');
+});
+
+// 2. Webhook Event Handler (POST)
+app.post('/api/admin/whatsapp/webhook', async (req, res) => {
+  const body = req.body;
+  
+  // Acknowledge receipt of the webhook to Meta immediately
+  res.sendStatus(200);
+
+  try {
+    if (body.object === 'whatsapp_business_account') {
+      for (const entry of body.entry) {
+        for (const change of entry.changes) {
+          const value = change.value;
+          if (!value) continue;
+          
+          const metadata = value.metadata || {};
+          const phoneId = metadata.phone_number_id;
+          let portal = null;
+          if (phoneId === WHATSAPP_GYC_PHONE_NUMBER_ID) portal = 'gyc';
+          else if (phoneId === WHATSAPP_VTR_PHONE_NUMBER_ID) portal = 'vtr';
+          
+          if (!portal) continue; // ignore unregistered numbers
+          
+          // Handle delivery status updates
+          if (value.statuses && value.statuses.length > 0) {
+            for (const statusObj of value.statuses) {
+              const msgId = statusObj.id;
+              const status = statusObj.status; // delivered, read, failed, etc.
+              await db.updateWhatsappMessageStatus(msgId, status);
+            }
+          }
+          
+          // Handle incoming messages
+          if (value.messages && value.messages.length > 0) {
+            for (const message of value.messages) {
+              const chatNumber = message.from;
+              const msgId = message.id;
+              const timestamp = parseInt(message.timestamp) * 1000;
+              const isoTime = new Date(timestamp).toISOString();
+              
+              let msgBody = '';
+              if (message.type === 'text') {
+                msgBody = message.text.body;
+              } else if (message.type === 'interactive') {
+                msgBody = message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || '[Interactive Reply]';
+              } else if (message.type === 'button') {
+                msgBody = message.button?.text || '[Button Click]';
+              } else {
+                msgBody = `[Received ${message.type} message]`;
+              }
+              
+              const contact = value.contacts?.find(c => c.wa_id === chatNumber);
+              const contactName = contact?.profile?.name || chatNumber;
+              
+              // Record incoming message in DB
+              await db.createWhatsappMessage({
+                id: msgId,
+                portal,
+                chatNumber,
+                fromMe: false,
+                body: msgBody,
+                timestamp: isoTime,
+                status: 'read'
+              });
+              
+              // Increment unread and update chat log
+              const existingChat = await db.findWhatsappChat(portal + '_' + chatNumber);
+              const unread = existingChat ? (existingChat.unreadCount || 0) : 0;
+              await db.upsertWhatsappChat(portal + '_' + chatNumber, {
+                portal,
+                number: chatNumber,
+                name: contactName,
+                lastMessage: msgBody,
+                lastMessageTime: isoTime,
+                unreadCount: unread + 1
+              });
+              
+              // Trigger Chatbot Auto-responders
+              const chatbots = await db.listWhatsappChatbots();
+              const activeBots = chatbots.filter(b => b.active && b.portal === portal);
+              
+              for (const bot of activeBots) {
+                let isMatch = false;
+                const cleanBody = msgBody.toLowerCase().trim();
+                const cleanTrigger = bot.triggerWord.toLowerCase().trim();
+                
+                if (bot.triggerType === 'exact') {
+                  isMatch = (cleanBody === cleanTrigger);
+                } else {
+                  isMatch = cleanBody.includes(cleanTrigger);
+                }
+                
+                if (isMatch) {
+                  try {
+                    const replyPayload = {
+                      type: 'text',
+                      text: { body: bot.replyText }
+                    };
+                    const metaRes = await sendMetaWhatsAppMessage(portal, chatNumber, replyPayload);
+                    
+                    // Log auto-responder message
+                    await db.createWhatsappMessage({
+                      id: metaRes.messages[0].id,
+                      portal,
+                      chatNumber,
+                      fromMe: true,
+                      body: bot.replyText,
+                      timestamp: new Date().toISOString(),
+                      status: 'sent'
+                    });
+                    
+                    // Update chat details
+                    await db.upsertWhatsappChat(portal + '_' + chatNumber, {
+                      lastMessage: bot.replyText,
+                      lastMessageTime: new Date().toISOString()
+                    });
+                  } catch (replyErr) {
+                    console.error('Chatbot auto-reply failed:', replyErr);
+                  }
+                  break; // Stop checking other rules for this message
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error processing WhatsApp Webhook body:', err);
+  }
+});
+
+// 3. Get Chat Contacts List
+app.get('/api/admin/whatsapp/chats', authenticateToken, requireAdmin, async (req, res) => {
+  const { portal } = req.query;
+  try {
+    let chats = await db.listWhatsappChats();
+    if (portal) {
+      chats = chats.filter(c => c.portal === portal);
+    }
+    res.json(chats);
+  } catch (err) {
+    console.error('Error fetching chats:', err);
+    res.status(500).json({ error: 'Failed to fetch WhatsApp chats' });
+  }
+});
+
+// 4. Get Chat Messages Thread
+app.get('/api/admin/whatsapp/chats/:number/messages', authenticateToken, requireAdmin, async (req, res) => {
+  const { number } = req.params;
+  const { portal } = req.query;
+  if (!portal) {
+    return res.status(400).json({ error: 'Portal parameter is required' });
+  }
+  try {
+    // Reset unread count since chat is opened
+    await db.upsertWhatsappChat(portal + '_' + number, { unreadCount: 0 });
+    
+    const messages = await db.listWhatsappMessages(number, portal);
+    res.json(messages);
+  } catch (err) {
+    console.error('Error fetching chat messages:', err);
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+// 5. Send WhatsApp Message (Text Reply)
+app.post('/api/admin/whatsapp/chats/:number/messages', authenticateToken, requireAdmin, async (req, res) => {
+  const { number } = req.params;
+  const { portal, body } = req.body;
+  if (!portal || !body) {
+    return res.status(400).json({ error: 'Portal and body parameters are required' });
+  }
+  try {
+    const replyPayload = {
+      type: 'text',
+      text: { body }
+    };
+    const metaRes = await sendMetaWhatsAppMessage(portal, number, replyPayload);
+    
+    const newMsg = await db.createWhatsappMessage({
+      id: metaRes.messages[0].id,
+      portal,
+      chatNumber: number,
+      fromMe: true,
+      body,
+      timestamp: new Date().toISOString(),
+      status: 'sent'
+    });
+    
+    await db.upsertWhatsappChat(portal + '_' + number, {
+      portal,
+      number,
+      lastMessage: body,
+      lastMessageTime: new Date().toISOString()
+    });
+    
+    res.status(201).json(newMsg);
+  } catch (err) {
+    console.error('Error sending WhatsApp message:', err);
+    res.status(500).json({ error: err.message || 'Failed to send WhatsApp message' });
+  }
+});
+
+// 6. Get Broadcast Campaigns History
+app.get('/api/admin/whatsapp/broadcasts', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const broadcasts = await db.listWhatsappBroadcasts();
+    res.json(broadcasts);
+  } catch (err) {
+    console.error('Error fetching broadcasts:', err);
+    res.status(500).json({ error: 'Failed to fetch broadcasts' });
+  }
+});
+
+// 7. Send Template Broadcast Campaign
+app.post('/api/admin/whatsapp/broadcasts', authenticateToken, requireAdmin, async (req, res) => {
+  const { name, portal, templateName, contacts, languageCode, variables } = req.body;
+  if (!name || !portal || !templateName || !contacts || !Array.isArray(contacts)) {
+    return res.status(400).json({ error: 'Missing required broadcast fields' });
+  }
+  
+  try {
+    const broadcast = await db.createWhatsappBroadcast({
+      name,
+      portal,
+      templateName,
+      totalContacts: contacts.length,
+      status: 'running'
+    });
+    
+    // Asynchronous broadcast runner
+    (async () => {
+      let success = 0;
+      let failed = 0;
+      
+      for (const number of contacts) {
+        try {
+          const cleanNumber = number.replace(/[^0-9]/g, '');
+          if (!cleanNumber) continue;
+          
+          const components = [];
+          if (variables && Array.isArray(variables) && variables.length > 0) {
+            components.push({
+              type: 'body',
+              parameters: variables.map(v => ({ type: 'text', text: v }))
+            });
+          }
+          
+          const payload = {
+            type: 'template',
+            template: {
+              name: templateName,
+              language: { code: languageCode || 'en_US' },
+              components: components.length > 0 ? components : undefined
+            }
+          };
+          
+          const metaRes = await sendMetaWhatsAppMessage(portal, cleanNumber, payload);
+          
+          await db.createWhatsappMessage({
+            id: metaRes.messages[0].id,
+            portal,
+            chatNumber: cleanNumber,
+            fromMe: true,
+            body: `[Template Broadcast: ${templateName}]`,
+            timestamp: new Date().toISOString(),
+            status: 'sent'
+          });
+          
+          await db.upsertWhatsappChat(portal + '_' + cleanNumber, {
+            portal,
+            number: cleanNumber,
+            lastMessage: `[Template Broadcast: ${templateName}]`,
+            lastMessageTime: new Date().toISOString()
+          });
+          
+          success++;
+        } catch (err) {
+          console.error(`Broadcast sending failed to ${number}:`, err);
+          failed++;
+        }
+        
+        // Brief sleep to respect API rate limits
+        await new Promise(r => setTimeout(r, 100));
+      }
+      
+      await db.updateWhatsappBroadcast(broadcast.id, {
+        sentCount: success + failed,
+        successCount: success,
+        failedCount: failed,
+        status: 'completed'
+      });
+    })().catch(err => {
+      console.error('Async broadcast runner crashed:', err);
+      db.updateWhatsappBroadcast(broadcast.id, { status: 'failed' });
+    });
+    
+    res.status(201).json(broadcast);
+  } catch (err) {
+    console.error('Failed to trigger broadcast campaign:', err);
+    res.status(500).json({ error: 'Failed to launch broadcast campaign' });
+  }
+});
+
+// 8. Auto-responder Rule List
+app.get('/api/admin/whatsapp/chatbots', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const bots = await db.listWhatsappChatbots();
+    res.json(bots);
+  } catch (err) {
+    console.error('Error fetching chatbots:', err);
+    res.status(500).json({ error: 'Failed to fetch auto-responders' });
+  }
+});
+
+// 9. Create Auto-responder Rule
+app.post('/api/admin/whatsapp/chatbots', authenticateToken, requireAdmin, async (req, res) => {
+  const { portal, triggerWord, triggerType, replyText } = req.body;
+  if (!portal || !triggerWord || !replyText) {
+    return res.status(400).json({ error: 'Portal, triggerWord, and replyText are required' });
+  }
+  try {
+    const newBot = await db.createWhatsappChatbot({ portal, triggerWord, triggerType, replyText });
+    res.status(201).json(newBot);
+  } catch (err) {
+    console.error('Error creating chatbot:', err);
+    res.status(500).json({ error: 'Failed to create auto-responder' });
+  }
+});
+
+// 10. Update Auto-responder Rule
+app.put('/api/admin/whatsapp/chatbots/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { triggerWord, triggerType, replyText, active } = req.body;
+  try {
+    await db.updateWhatsappChatbot(id, { triggerWord, triggerType, replyText, active });
+    res.json({ message: 'Auto-responder updated successfully' });
+  } catch (err) {
+    console.error('Error updating chatbot:', err);
+    res.status(500).json({ error: 'Failed to update auto-responder' });
+  }
+});
+
+// 11. Delete Auto-responder Rule
+app.delete('/api/admin/whatsapp/chatbots/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.deleteWhatsappChatbot(id);
+    res.json({ message: 'Auto-responder deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting chatbot:', err);
+    res.status(500).json({ error: 'Failed to delete auto-responder' });
+  }
+});
+
 // Start Express server
 app.listen(PORT, async () => {
   console.log(`CallLogIQ backend running on port ${PORT}`);

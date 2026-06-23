@@ -27,15 +27,63 @@ function WebNotifications({ user, token }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [expandedSiteId, setExpandedSiteId] = useState(null);
   const [selectedSiteIds, setSelectedSiteIds] = useState([]);
+  const [dialog, setDialog] = useState(null); // { type: 'alert' | 'confirm', title: '', message: '', onConfirm: () => {} }
 
+  // Visual Selector States
+  const [showVisualSelector, setShowVisualSelector] = useState(false);
+  const [selectMode, setSelectMode] = useState(true);
+  const [tempSelector, setTempSelector] = useState('');
+  const [tempSelectorText, setTempSelectorText] = useState('');
+  const iframeRef = React.useRef(null);
+
+  const handleOpenVisualSelector = () => {
+    if (!siteUrl) return;
+    setTempSelector(siteSelector || '');
+    setTempSelectorText('');
+    setSelectMode(true);
+    setShowVisualSelector(true);
+  };
+
+  // Synchronize selectMode with iframe
+  useEffect(() => {
+    if (showVisualSelector && iframeRef.current) {
+      const iframeWindow = iframeRef.current.contentWindow;
+      if (iframeWindow) {
+        iframeWindow.postMessage({ type: 'SET_SELECT_MODE', enabled: selectMode }, '*');
+      }
+    }
+  }, [selectMode, showVisualSelector]);
+
+  // Listen to selector messages from iframe
+  useEffect(() => {
+    const handleIframeMessage = (event) => {
+      if (event.data && event.data.type === 'SELECTOR_SELECTED') {
+        setTempSelector(event.data.selector);
+        setTempSelectorText(event.data.text);
+      }
+    };
+    window.addEventListener('message', handleIframeMessage);
+    return () => {
+      window.removeEventListener('message', handleIframeMessage);
+    };
+  }, []);
+
+
+  const showModalAlert = (title, message) => {
+    setDialog({ type: 'alert', title, message });
+  };
+
+  const showModalConfirm = (title, message, onConfirm) => {
+    setDialog({ type: 'confirm', title, message, onConfirm });
+  };
 
   // Fetch initial websites and change logs
   useEffect(() => {
-    fetchSitesAndNotifications();
+    fetchSitesAndNotifications(true);
   }, [token]);
 
-  const fetchSitesAndNotifications = async () => {
-    setLoading(true);
+  const fetchSitesAndNotifications = async (showSpinner = false) => {
+    if (showSpinner) setLoading(true);
     try {
       const [sitesRes, notifRes] = await Promise.all([
         fetch(`${API_BASE}/api/admin/web-notifications/sites`, {
@@ -55,7 +103,7 @@ function WebNotifications({ user, token }) {
     } catch (err) {
       console.error('Error fetching web notifications data:', err);
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   };
 
@@ -93,8 +141,8 @@ function WebNotifications({ user, token }) {
         setSiteSelector('');
         setShowAddForm(false);
         
-        // Refresh data
-        await fetchSitesAndNotifications();
+        // Refresh data silently
+        await fetchSitesAndNotifications(false);
       } else {
         setFormError(data.error || 'Failed to add website.');
       }
@@ -105,23 +153,25 @@ function WebNotifications({ user, token }) {
   };
 
   const handleDeleteSite = async (id, name) => {
-    if (!window.confirm(`Are you sure you want to stop monitoring "${name}"? All associated change logs will be deleted.`)) {
-      return;
-    }
-
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/web-notifications/sites/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        await fetchSitesAndNotifications();
-      } else {
-        alert('Failed to delete monitored website.');
+    showModalConfirm(
+      'Stop Monitoring?',
+      `Are you sure you want to stop monitoring "${name}"? All associated change logs will be deleted.`,
+      async () => {
+        try {
+          const res = await fetch(`${API_BASE}/api/admin/web-notifications/sites/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            await fetchSitesAndNotifications(false);
+          } else {
+            showModalAlert('Error', 'Failed to delete monitored website.');
+          }
+        } catch (err) {
+          console.error('Error deleting site:', err);
+        }
       }
-    } catch (err) {
-      console.error('Error deleting site:', err);
-    }
+    );
   };
 
   const handleCheckSingleSite = async (id, name) => {
@@ -133,11 +183,11 @@ function WebNotifications({ user, token }) {
       });
       const data = await res.json();
       if (res.ok) {
-        // Refresh data
-        await fetchSitesAndNotifications();
-        alert(`Check completed for "${name}": ${data.message}`);
+        // Refresh data silently
+        await fetchSitesAndNotifications(false);
+        showModalAlert('Scan Complete', `Check completed for "${name}": ${data.message}`);
       } else {
-        alert(data.error || 'Failed to check website.');
+        showModalAlert('Error', data.error || 'Failed to check website.');
       }
     } catch (err) {
       console.error('Error checking site:', err);
@@ -155,10 +205,10 @@ function WebNotifications({ user, token }) {
       });
       const data = await res.json();
       if (res.ok) {
-        alert(data.message);
-        await fetchSitesAndNotifications();
+        showModalAlert('Bulk Scan Complete', data.message);
+        await fetchSitesAndNotifications(false);
       } else {
-        alert(data.error || 'Failed to trigger check.');
+        showModalAlert('Error', data.error || 'Failed to trigger check.');
       }
     } catch (err) {
       console.error('Error triggering check:', err);
@@ -174,10 +224,10 @@ function WebNotifications({ user, token }) {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
-        await fetchSitesAndNotifications();
+        await fetchSitesAndNotifications(false);
       } else {
         const data = await res.json();
-        alert(data.error || 'Failed to simulate change.');
+        showModalAlert('Error', data.error || 'Failed to simulate change.');
       }
     } catch (err) {
       console.error('Error simulating change:', err);
@@ -186,23 +236,25 @@ function WebNotifications({ user, token }) {
 
   const handleClearNotifications = async () => {
     if (notifications.length === 0) return;
-    if (!window.confirm('Are you sure you want to clear all notification change logs?')) {
-      return;
-    }
-
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/web-notifications/clear`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        await fetchSitesAndNotifications();
-      } else {
-        alert('Failed to clear notifications.');
+    showModalConfirm(
+      'Clear Logs?',
+      'Are you sure you want to clear all notification change logs?',
+      async () => {
+        try {
+          const res = await fetch(`${API_BASE}/api/admin/web-notifications/clear`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            await fetchSitesAndNotifications(false);
+          } else {
+            showModalAlert('Error', 'Failed to clear notifications.');
+          }
+        } catch (err) {
+          console.error('Error clearing notifications:', err);
+        }
       }
-    } catch (err) {
-      console.error('Error clearing notifications:', err);
-    }
+    );
   };
 
   const handleToggleSite = async (id, currentEnabled) => {
@@ -216,9 +268,9 @@ function WebNotifications({ user, token }) {
         body: JSON.stringify({ enabled: !currentEnabled })
       });
       if (res.ok) {
-        await fetchSitesAndNotifications();
+        await fetchSitesAndNotifications(false);
       } else {
-        alert('Failed to toggle monitor status.');
+        showModalAlert('Error', 'Failed to toggle monitor status.');
       }
     } catch (err) {
       console.error('Error toggling site status:', err);
@@ -232,9 +284,9 @@ function WebNotifications({ user, token }) {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
-        await fetchSitesAndNotifications();
+        await fetchSitesAndNotifications(false);
       } else {
-        alert('Failed to clear alerts.');
+        showModalAlert('Error', 'Failed to clear alerts.');
       }
     } catch (err) {
       console.error('Error clearing site alerts:', err);
@@ -375,8 +427,46 @@ function WebNotifications({ user, token }) {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '5rem' }}>
-        <div className="spinner"></div>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '5rem 2rem',
+        backgroundColor: '#ffffff',
+        border: '2.5px solid #111111',
+        boxShadow: 'var(--shadow-flat)',
+        fontFamily: 'var(--font-family-body)',
+        gap: '1.5rem',
+        textAlign: 'center'
+      }}>
+        <div style={{
+          width: '64px',
+          height: '64px',
+          border: '2.5px solid #111111',
+          boxShadow: '3px 3px 0px #111',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: '#f1f5f9',
+          animation: 'spin 4s linear infinite'
+        }}>
+          <Globe size={32} style={{ color: '#2563eb' }} />
+        </div>
+        <div>
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#111111', textTransform: 'uppercase', letterSpacing: '-0.02em', margin: 0 }}>
+            Loading Web Watchlist...
+          </h3>
+          <p style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 600, marginTop: '0.4rem', margin: 0 }}>
+            Checking crawler server connection & fetching active monitors
+          </p>
+        </div>
+        <style dangerouslySetInnerHTML={{__html: `
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+        `}} />
       </div>
     );
   }
@@ -478,43 +568,8 @@ function WebNotifications({ user, token }) {
             )}
           </div>
 
-          {/* Get Help Button */}
-          <button 
-            style={{
-              backgroundColor: '#ffffff',
-              color: '#111111',
-              border: '2px solid #111111',
-              padding: '6px 14px',
-              fontSize: '11px',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              boxShadow: '2px 2px 0px #111',
-              fontFamily: 'var(--font-family-body)',
-              textTransform: 'uppercase',
-              transition: 'all 0.1s'
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.transform = 'translate(-1px, -1px)';
-              e.currentTarget.style.boxShadow = '3px 3px 0px #111';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.transform = 'none';
-              e.currentTarget.style.boxShadow = '2px 2px 0px #111';
-            }}
-          >
-            Get Help <span style={{ opacity: 0.7, fontSize: '9px' }}>Ctrl K</span>
-          </button>
-
-          {/* Theme Switcher (Static) */}
-          <div style={{ display: 'flex', alignItems: 'center', color: '#111111', cursor: 'pointer' }}>
-            <Sun size={18} />
-          </div>
-
           {/* User Profile */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderLeft: '2px solid #111111', paddingLeft: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{
               width: '28px',
               height: '28px',
@@ -540,124 +595,6 @@ function WebNotifications({ user, token }) {
       {/* Main Workspace split */}
       <div style={{ display: 'flex', flexDirection: 'row', minHeight: '520px', backgroundColor: '#ffffff' }}>
         
-        {/* Far-Left Narrow Slate Toolbar */}
-        <div style={{
-          width: '48px',
-          backgroundColor: '#ffffff',
-          borderRight: '2px solid #111111',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          paddingTop: '16px',
-          paddingBottom: '16px',
-          gap: '20px',
-          flexShrink: 0
-        }}>
-          <div 
-            onClick={() => setActiveFilter('all')}
-            style={{ 
-              color: activeFilter !== 'history' ? '#ffffff' : '#111111', 
-              cursor: 'pointer', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              width: '32px',
-              height: '32px',
-              border: activeFilter !== 'history' ? '1.5px solid #111111' : '1.5px solid transparent',
-              backgroundColor: activeFilter !== 'history' ? '#111111' : 'transparent',
-              boxShadow: activeFilter !== 'history' ? '1.5px 1.5px 0px #111' : 'none'
-            }}
-            title="Watchlist"
-          >
-            <List size={18} />
-          </div>
-          
-          <div 
-            style={{ 
-              color: '#111111', 
-              cursor: 'pointer', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              width: '32px',
-              height: '32px',
-              border: '1.5px solid transparent',
-              transition: 'all 0.1s'
-            }} 
-            onMouseEnter={e => {
-              e.currentTarget.style.borderColor = '#111111';
-              e.currentTarget.style.backgroundColor = '#f1f5f9';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.borderColor = 'transparent';
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-            title="Analytics"
-          >
-            <BarChart2 size={18} />
-          </div>
-          
-          <div 
-            style={{ 
-              color: '#111111', 
-              cursor: 'pointer', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              width: '32px',
-              height: '32px',
-              border: '1.5px solid transparent',
-              transition: 'all 0.1s'
-            }} 
-            onMouseEnter={e => {
-              e.currentTarget.style.borderColor = '#111111';
-              e.currentTarget.style.backgroundColor = '#f1f5f9';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.borderColor = 'transparent';
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-            title="Team"
-          >
-            <Users size={18} />
-          </div>
-          
-          <div 
-            style={{ 
-              color: '#111111', 
-              cursor: 'pointer', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              width: '32px',
-              height: '32px',
-              border: '1.5px solid transparent',
-              transition: 'all 0.1s'
-            }} 
-            onMouseEnter={e => {
-              e.currentTarget.style.borderColor = '#111111';
-              e.currentTarget.style.backgroundColor = '#f1f5f9';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.borderColor = 'transparent';
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-            title="Documentation"
-          >
-            <BookOpen size={18} />
-          </div>
-          
-          <div style={{ flex: 1 }} />
-          
-          <div style={{ color: '#111111', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Feedback">
-            <MessageSquare size={18} />
-          </div>
-          
-          <div style={{ color: '#111111', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Language">
-            <Languages size={18} />
-          </div>
-        </div>
-
         {/* Filters Sidebar */}
         <div style={{
           width: '180px',
@@ -711,35 +648,6 @@ function WebNotifications({ user, token }) {
             {renderFilterItem('error', 'Error', errorSitesCount, 'var(--danger)')}
             {renderFilterItem('trash', 'Trash', 0, '#94a3b8')}
           </div>
-
-          {/* Add Label Button */}
-          <button 
-            style={{
-              border: '2px dashed #111111',
-              borderRadius: '0px',
-              padding: '8px',
-              textAlign: 'center',
-              color: '#111111',
-              fontSize: '12px',
-              fontWeight: 800,
-              cursor: 'pointer',
-              background: '#ffffff',
-              marginTop: 'auto',
-              boxShadow: '2px 2px 0px #111',
-              textTransform: 'uppercase',
-              transition: 'all 0.1s'
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.transform = 'translate(-1px, -1px)';
-              e.currentTarget.style.boxShadow = '3px 3px 0px #111';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.transform = 'none';
-              e.currentTarget.style.boxShadow = '2px 2px 0px #111';
-            }}
-          >
-            Add label
-          </button>
         </div>
 
         {/* Main Workspace content */}
@@ -769,17 +677,6 @@ function WebNotifications({ user, token }) {
                     ) : (
                       <Square size={16} />
                     )}
-                  </div>
-                  
-                  {/* Action carets */}
-                  <ChevronDown size={14} style={{ color: '#111111', cursor: 'pointer' }} />
-                  
-                  <div style={{ height: '14px', width: '2px', backgroundColor: '#111111', margin: '0 4px' }} />
-                  
-                  {/* View/Sort selector button */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: '#111111' }}>
-                    <Sliders size={14} />
-                    <ChevronDown size={10} />
                   </div>
                 </div>
 
@@ -821,17 +718,6 @@ function WebNotifications({ user, token }) {
 
                   {/* Pagination text */}
                   <span style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>1 - {filteredSites.length} of {filteredSites.length}</span>
-                  
-                  {/* Pagination chevrons */}
-                  <div style={{ display: 'flex', gap: '4px', color: '#111111' }}>
-                    <ChevronLeft size={14} style={{ opacity: 0.5, cursor: 'not-allowed' }} />
-                    <ChevronRight size={14} style={{ opacity: 0.5, cursor: 'not-allowed' }} />
-                  </div>
-
-                  <div style={{ height: '14px', width: '2px', backgroundColor: '#111111' }} />
-
-                  {/* Settings gear icon */}
-                  <Settings size={14} style={{ cursor: 'pointer', color: '#111111' }} />
                 </div>
               </div>
 
@@ -1404,13 +1290,49 @@ function WebNotifications({ user, token }) {
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <label style={{ fontSize: '11px', fontWeight: 800, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>CSS SELECTOR (OPTIONAL)</label>
-                <input 
-                  type="text" 
-                  style={{ padding: '8px 12px', border: '2px solid #111111', outline: 'none', fontSize: '13px', fontWeight: 700 }}
-                  placeholder="e.g. .announcement-card"
-                  value={siteSelector}
-                  onChange={e => setSiteSelector(e.target.value)}
-                />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input 
+                    type="text" 
+                    style={{ flex: 1, padding: '8px 12px', border: '2px solid #111111', outline: 'none', fontSize: '13px', fontWeight: 700 }}
+                    placeholder="e.g. .announcement-card"
+                    value={siteSelector}
+                    onChange={e => setSiteSelector(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleOpenVisualSelector}
+                    disabled={!siteUrl}
+                    style={{
+                      padding: '8px 12px',
+                      backgroundColor: siteUrl ? '#ffffff' : '#f1f5f9',
+                      color: siteUrl ? '#111111' : '#94a3b8',
+                      border: '2px solid #111111',
+                      boxShadow: siteUrl ? '2px 2px 0px #111' : 'none',
+                      cursor: siteUrl ? 'pointer' : 'not-allowed',
+                      fontWeight: 800,
+                      fontSize: '12px',
+                      textTransform: 'uppercase',
+                      transition: 'all 0.1s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                    onMouseEnter={e => {
+                      if (siteUrl) {
+                        e.currentTarget.style.transform = 'translate(-1px, -1px)';
+                        e.currentTarget.style.boxShadow = '3px 3px 0px #111';
+                      }
+                    }}
+                    onMouseLeave={e => {
+                      if (siteUrl) {
+                        e.currentTarget.style.transform = 'none';
+                        e.currentTarget.style.boxShadow = '2px 2px 0px #111';
+                      }
+                    }}
+                  >
+                    <Sliders size={12} /> Select Visually
+                  </button>
+                </div>
               </div>
               
               <p style={{ margin: 0, fontSize: '11px', color: '#111111', lineHeight: 1.4, fontWeight: 600 }}>
@@ -1481,7 +1403,385 @@ function WebNotifications({ user, token }) {
         </div>
       )}
 
+      {/* Custom iOS/Neobrutalist Alert & Confirm Modal Dialog */}
+      {dialog && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(17, 17, 17, 0.4)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 10000
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            border: '3px solid #111111',
+            boxShadow: '6px 6px 0px #111111',
+            width: '100%',
+            maxWidth: '380px',
+            padding: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            textAlign: 'center'
+          }}>
+            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 900, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {dialog.title}
+            </h4>
+            <p style={{ margin: 0, fontSize: '13px', color: '#111111', fontWeight: 600, lineHeight: 1.4 }}>
+              {dialog.message}
+            </p>
+            
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '4px' }}>
+              {dialog.type === 'confirm' ? (
+                <>
+                  <button 
+                    onClick={() => setDialog(null)}
+                    style={{ 
+                      flex: 1,
+                      padding: '8px 16px', 
+                      border: '2px solid #111111', 
+                      background: '#ffffff', 
+                      boxShadow: '2px 2px 0px #111', 
+                      cursor: 'pointer', 
+                      fontSize: '12px', 
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      transition: 'all 0.1s'
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.transform = 'translate(-1px, -1px)';
+                      e.currentTarget.style.boxShadow = '3px 3px 0px #111';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = 'none';
+                      e.currentTarget.style.boxShadow = '2px 2px 0px #111';
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={() => {
+                      dialog.onConfirm();
+                      setDialog(null);
+                    }}
+                    style={{ 
+                      flex: 1,
+                      padding: '8px 16px', 
+                      border: '2px solid #111111', 
+                      background: '#111111', 
+                      color: '#ffffff',
+                      boxShadow: '2px 2px 0px #111', 
+                      cursor: 'pointer', 
+                      fontSize: '12px', 
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      transition: 'all 0.1s'
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.transform = 'translate(-1px, -1px)';
+                      e.currentTarget.style.boxShadow = '3px 3px 0px #111';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = 'none';
+                      e.currentTarget.style.boxShadow = '2px 2px 0px #111';
+                    }}
+                  >
+                    Confirm
+                  </button>
+                </>
+              ) : (
+                <button 
+                  onClick={() => setDialog(null)}
+                  style={{ 
+                    width: '100%',
+                    padding: '8px 16px', 
+                    border: '2px solid #111111', 
+                    background: '#111111', 
+                    color: '#ffffff',
+                    boxShadow: '2px 2px 0px #111', 
+                    cursor: 'pointer', 
+                    fontSize: '12px', 
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    transition: 'all 0.1s'
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.transform = 'translate(-1px, -1px)';
+                    e.currentTarget.style.boxShadow = '3px 3px 0px #111';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.transform = 'none';
+                    e.currentTarget.style.boxShadow = '2px 2px 0px #111';
+                  }}
+                >
+                  OK
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Visual Element Selector Modal */}
+      {showVisualSelector && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(17, 17, 17, 0.4)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 10000,
+          padding: '24px'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            border: '3px solid #111111',
+            boxShadow: '8px 8px 0px #111111',
+            width: '100%',
+            height: '100%',
+            maxWidth: '1200px',
+            maxHeight: '800px',
+            display: 'flex',
+            flexDirection: 'row',
+            overflow: 'hidden'
+          }}>
+            {/* Left Main Area: Iframe Preview */}
+            <div style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              backgroundColor: '#f1f5f9',
+              borderRight: '3px solid #111111',
+              height: '100%',
+              minWidth: 0
+            }}>
+              {/* Selector Status Header */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '12px 20px',
+                borderBottom: '2.5px solid #111111',
+                backgroundColor: '#ffffff'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 900, textTransform: 'uppercase', color: '#111111' }}>
+                    🌐 Visual Selector Preview
+                  </span>
+                  <span style={{
+                    fontSize: '10px',
+                    fontWeight: 800,
+                    color: '#2563eb',
+                    backgroundColor: '#eff6ff',
+                    padding: '2px 8px',
+                    border: '1.5px solid #2563eb'
+                  }}>
+                    {siteUrl}
+                  </span>
+                </div>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b' }}>
+                  Proxy Mode Enabled
+                </div>
+              </div>
+
+              {/* Live Proxy Website Iframe */}
+              <iframe
+                ref={iframeRef}
+                src={`${API_BASE}/api/admin/web-notifications/proxy?url=${encodeURIComponent(siteUrl)}`}
+                onLoad={handleIframeLoad}
+                style={{
+                  flex: 1,
+                  width: '100%',
+                  height: '100%',
+                  border: 'none',
+                  backgroundColor: '#ffffff'
+                }}
+                title="Visual Selector Website Proxy"
+              />
+            </div>
+
+            {/* Right Sidebar: Selector Controls */}
+            <div style={{
+              width: '320px',
+              backgroundColor: 'var(--bg-main)',
+              padding: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px',
+              height: '100%',
+              overflowY: 'auto',
+              flexShrink: 0
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 900, fontFamily: 'var(--font-family-title)', color: '#111111', textTransform: 'uppercase', letterSpacing: '-0.02em' }}>
+                  Select Elements
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                  Point and click on the elements of the live webpage to extract their CSS selector.
+                </p>
+              </div>
+
+              <div style={{ height: '2px', backgroundColor: '#111111' }} />
+
+              {/* Mode Toggle Button Group */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '10px', fontWeight: 900, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Selection Mode
+                </label>
+                <div style={{ display: 'flex', border: '2px solid #111111' }}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectMode(true)}
+                    style={{
+                      flex: 1,
+                      padding: '8px',
+                      backgroundColor: selectMode ? '#111111' : '#ffffff',
+                      color: selectMode ? '#ffffff' : '#111111',
+                      border: 'none',
+                      fontWeight: 800,
+                      fontSize: '11px',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                      transition: 'all 0.1s'
+                    }}
+                  >
+                    Select On
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectMode(false)}
+                    style={{
+                      flex: 1,
+                      padding: '8px',
+                      backgroundColor: !selectMode ? '#111111' : '#ffffff',
+                      color: !selectMode ? '#ffffff' : '#111111',
+                      borderLeft: '2px solid #111111',
+                      fontWeight: 800,
+                      fontSize: '11px',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                      transition: 'all 0.1s'
+                    }}
+                  >
+                    Browse Mode
+                  </button>
+                </div>
+                <p style={{ margin: '4px 0 0 0', fontSize: '10px', color: '#64748b', lineHeight: 1.3 }}>
+                  {selectMode 
+                    ? "💡 Hover highlights in blue, click selects elements." 
+                    : "💡 Hovering is disabled, clicking operates normally (e.g. toggles dropdown menus)."}
+                </p>
+              </div>
+
+              {/* Selected Selector input (editable) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '10px', fontWeight: 900, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Target CSS Selector
+                </label>
+                <input
+                  type="text"
+                  value={tempSelector}
+                  onChange={e => setTempSelector(e.target.value)}
+                  style={{
+                    padding: '8px 12px',
+                    border: '2px solid #111111',
+                    outline: 'none',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    fontFamily: 'monospace',
+                    backgroundColor: '#ffffff'
+                  }}
+                  placeholder="No element selected"
+                />
+              </div>
+
+              {/* Text Preview */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minHeight: 0 }}>
+                <label style={{ fontSize: '10px', fontWeight: 900, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Selected Text Preview
+                </label>
+                <div style={{
+                  flex: 1,
+                  border: '2px solid #111111',
+                  backgroundColor: '#ffffff',
+                  padding: '10px',
+                  fontSize: '12px',
+                  fontFamily: 'monospace',
+                  overflowY: 'auto',
+                  whiteSpace: 'pre-wrap',
+                  color: tempSelectorText ? '#111111' : '#94a3b8',
+                  fontWeight: 500,
+                  maxHeight: '200px'
+                }}>
+                  {tempSelectorText || "No content selected. Click on an element in the live website to view a preview."}
+                </div>
+              </div>
+
+              {/* Bottom buttons */}
+              <div style={{ display: 'flex', gap: '12px', marginTop: 'auto' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowVisualSelector(false)}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    border: '2px solid #111111',
+                    background: '#ffffff',
+                    color: '#111111',
+                    boxShadow: '2.5px 2.5px 0px #111',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    transition: 'all 0.1s'
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.transform = 'translate(-1px, -1px)';
+                    e.currentTarget.style.boxShadow = '3.5px 3.5px 0px #111';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.transform = 'none';
+                    e.currentTarget.style.boxShadow = '2.5px 2.5px 0px #111';
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmVisualSelector}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    border: '2px solid #111111',
+                    background: 'var(--success)',
+                    color: '#ffffff',
+                    boxShadow: '2.5px 2.5px 0px #111',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    transition: 'all 0.1s'
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.transform = 'translate(-1px, -1px)';
+                    e.currentTarget.style.boxShadow = '3.5px 3.5px 0px #111';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.transform = 'none';
+                    e.currentTarget.style.boxShadow = '2.5px 2.5px 0px #111';
+                  }}
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
+
   );
 }
 

@@ -2440,6 +2440,191 @@ app.delete('/api/admin/web-notifications/sites/:id', authenticateToken, requireA
   }
 });
 
+app.get('/api/admin/web-notifications/proxy', authenticateToken, requireAdmin, async (req, res) => {
+  let targetUrl = req.query.url;
+  if (!targetUrl) {
+    return res.status(400).send('URL query parameter is required');
+  }
+
+  // Prepend protocol if missing
+  if (!/^https?:\/\//i.test(targetUrl)) {
+    targetUrl = 'https://' + targetUrl;
+  }
+
+  try {
+    console.log(`Proxying request for visual selector: ${targetUrl}`);
+    const response = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).send(`Failed to fetch target URL. Status: ${response.status}`);
+    }
+
+    const rawHtml = await response.text();
+    const $ = cheerio.load(rawHtml);
+
+    // Prepend base tag to head
+    $('head').prepend(`<base href="${targetUrl}">`);
+
+    // Inject highlighting styles
+    $('head').append(`
+      <style>
+        .antigravity-hovered {
+          outline: 2px solid #2563eb !important;
+          outline-offset: -2px !important;
+          background-color: rgba(37, 99, 235, 0.15) !important;
+          cursor: pointer !important;
+        }
+        .antigravity-selected {
+          outline: 3px solid #16a34a !important;
+          outline-offset: -3px !important;
+          background-color: rgba(22, 163, 74, 0.25) !important;
+        }
+      </style>
+    `);
+
+    // Inject selector JavaScript
+    $('body').append(`
+      <script>
+        (function() {
+          window.selectMode = true;
+          window.proxyBaseUrl = '/api/admin/web-notifications/proxy';
+          
+          window.addEventListener('message', function(e) {
+            if (e.data && e.data.type === 'SET_SELECT_MODE') {
+              window.selectMode = e.data.enabled;
+              if (!window.selectMode) {
+                const elements = document.querySelectorAll('.antigravity-hovered');
+                elements.forEach(el => el.classList.remove('antigravity-hovered'));
+              }
+            }
+          });
+
+          function getCssSelector(el) {
+            if (!(el instanceof Element)) return '';
+            const path = [];
+            while (el && el.nodeType === Node.ELEMENT_NODE) {
+              let selector = el.nodeName.toLowerCase();
+              if (el.id) {
+                selector += '#' + el.id;
+                path.unshift(selector);
+                break;
+              } else {
+                let className = el.className || '';
+                className = className.replace(/antigravity-hovered|antigravity-selected/g, '').trim();
+                if (className) {
+                  const classes = className.split(/\\s+/).filter(c => c.length > 0);
+                  if (classes.length > 0) {
+                    selector += '.' + classes.join('.');
+                  }
+                }
+                let sibling = el.previousElementSibling;
+                let nth = 1;
+                while (sibling) {
+                  nth++;
+                  sibling = sibling.previousElementSibling;
+                }
+                selector += ':nth-child(' + nth + ')';
+              }
+              path.unshift(selector);
+              el = el.parentElement;
+            }
+            return path.join(' > ');
+          }
+
+          let lastHovered = null;
+          document.addEventListener('mousemove', function(e) {
+            if (!window.selectMode) return;
+            const target = e.target;
+            if (target === lastHovered) return;
+            if (lastHovered) {
+              lastHovered.classList.remove('antigravity-hovered');
+            }
+            if (target && target.tagName !== 'BODY' && target.tagName !== 'HTML') {
+              target.classList.add('antigravity-hovered');
+              lastHovered = target;
+            } else {
+              lastHovered = null;
+            }
+          }, true);
+
+          document.addEventListener('click', function(e) {
+            const anchor = e.target.closest('a');
+            if (anchor && anchor.href && !anchor.href.startsWith('javascript:')) {
+              if (!window.selectMode) {
+                const hrefVal = anchor.getAttribute('href');
+                if (hrefVal && hrefVal !== '#' && !hrefVal.startsWith('#')) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  window.location.href = window.proxyBaseUrl + '?url=' + encodeURIComponent(anchor.href);
+                  return;
+                }
+              }
+            }
+
+            if (window.selectMode) {
+              e.preventDefault();
+              e.stopPropagation();
+              const target = e.target;
+              const prevSelected = document.querySelectorAll('.antigravity-selected');
+              prevSelected.forEach(el => el.classList.remove('antigravity-selected'));
+              target.classList.remove('antigravity-hovered');
+              target.classList.add('antigravity-selected');
+              
+              const selector = getCssSelector(target);
+              const text = target.innerText || target.textContent || '';
+              window.parent.postMessage({
+                type: 'SELECTOR_SELECTED',
+                selector: selector,
+                text: text.trim()
+              }, '*');
+            }
+          }, true);
+
+          function initMenuitems() {
+            const menuitems = document.querySelectorAll('menuitem');
+            menuitems.forEach(mi => {
+              if (mi.dataset.antigravityBound) return;
+              mi.dataset.antigravityBound = "true";
+              
+              mi.addEventListener('click', function(e) {
+                const subMenu = mi.querySelector('menu');
+                if (subMenu) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const childItems = subMenu.querySelectorAll('menuitem');
+                  childItems.forEach(ci => {
+                    if (ci.style.display === 'none' || ci.style.display === '') {
+                      ci.style.display = 'block';
+                    } else {
+                      ci.style.display = 'none';
+                    }
+                  });
+                }
+              });
+            });
+          }
+
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initMenuitems);
+          } else {
+            initMenuitems();
+          }
+        })();
+      </script>
+    `);
+
+    res.send($.html());
+  } catch (err) {
+    console.error('Proxy error:', err);
+    res.status(500).send(\`Error proxying website: \${err.message}\`);
+  }
+});
+
+
 app.post('/api/admin/web-notifications/sites/:id/check', authenticateToken, requireAdmin, async (req, res) => {
   const { id } = req.params;
   try {

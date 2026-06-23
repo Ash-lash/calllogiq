@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Globe, Bell, Plus, Trash2, RefreshCw, ExternalLink, 
-  AlertCircle, Info, Check, Sparkles, Search, Sliders, ToggleLeft, ToggleRight, Trash
+  AlertCircle, Info, Check, Sparkles, Search, Sliders, ToggleLeft, ToggleRight, Trash,
+  ChevronRight, ChevronDown, Settings, Play, Cloud, Laptop, HelpCircle, Tag, CheckSquare, Square,
+  List, BarChart2, Users, BookOpen, MessageSquare, Languages, ChevronLeft, Mail, Moon, Sun
 } from 'lucide-react';
 import API_BASE from '../api';
 
@@ -24,6 +26,7 @@ function WebNotifications({ user, token }) {
   const [formSuccess, setFormSuccess] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [expandedSiteId, setExpandedSiteId] = useState(null);
+  const [selectedSiteIds, setSelectedSiteIds] = useState([]);
 
 
   // Fetch initial websites and change logs
@@ -253,6 +256,38 @@ function WebNotifications({ user, token }) {
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Helper to safely extract hostname for favicon URL
+  const getFaviconUrl = (urlStr) => {
+    try {
+      let url = urlStr.trim();
+      if (!/^https?:\/\//i.test(url)) {
+        url = 'https://' + url;
+      }
+      const parsed = new URL(url);
+      return `https://www.google.com/s2/favicons?sz=64&domain=${parsed.hostname}`;
+    } catch (e) {
+      return 'https://www.google.com/s2/favicons?sz=64&domain=google.com';
+    }
+  };
+
+  // Badge count helpers
+  const unreadSitesCount = sites.filter(site => notifications.some(n => n.websiteId === site.id)).length;
+  const errorSitesCount = sites.filter(site => site.latestContentText && (site.latestContentText.startsWith('Error:') || site.latestContentText.includes('Failed'))).length;
+
+  const handleSelectRow = (id) => {
+    setSelectedSiteIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedSiteIds.length === filteredSites.length) {
+      setSelectedSiteIds([]);
+    } else {
+      setSelectedSiteIds(filteredSites.map(s => s.id));
+    }
+  };
+
   // Filter sites based on Search and active filter
   const filteredSites = sites.filter(site => {
     const matchesSearch = 
@@ -260,13 +295,67 @@ function WebNotifications({ user, token }) {
       site.url.toLowerCase().includes(searchQuery.toLowerCase());
       
     if (activeFilter === 'unread') {
-      // Find if this site has any notification
       const hasAlert = notifications.some(n => n.websiteId === site.id);
       return matchesSearch && hasAlert;
+    }
+    if (activeFilter === 'error') {
+      const isError = site.latestContentText && (site.latestContentText.startsWith('Error:') || site.latestContentText.includes('Failed'));
+      return matchesSearch && isError;
+    }
+    if (activeFilter === 'trash') {
+      return false; // trash is empty by default
     }
     
     return matchesSearch;
   });
+
+  const renderFilterItem = (filterName, label, count, activeColor) => {
+    const isActive = activeFilter === filterName;
+    return (
+      <button
+        onClick={() => {
+          setActiveFilter(filterName);
+          setSelectedSiteIds([]);
+        }}
+        style={{
+          width: '100%',
+          textAlign: 'left',
+          background: isActive ? '#2563eb' : 'transparent',
+          color: isActive ? '#ffffff' : '#334155',
+          border: 'none',
+          borderRadius: '4px',
+          padding: '8px 12px',
+          fontWeight: 600,
+          fontSize: '13px',
+          cursor: 'pointer',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          transition: 'background-color 0.15s, color 0.15s'
+        }}
+        onMouseEnter={e => {
+          if (!isActive) e.currentTarget.style.backgroundColor = '#e2e8f0';
+        }}
+        onMouseLeave={e => {
+          if (!isActive) e.currentTarget.style.backgroundColor = 'transparent';
+        }}
+      >
+        <span>{label}</span>
+        {count > 0 && (
+          <span style={{
+            backgroundColor: isActive ? '#ffffff' : activeColor || '#3b82f6',
+            color: isActive ? '#2563eb' : '#ffffff',
+            borderRadius: '10px',
+            padding: '1px 6px',
+            fontSize: '10px',
+            fontWeight: 700
+          }}>
+            {count}
+          </span>
+        )}
+      </button>
+    );
+  };
 
   if (loading) {
     return (
@@ -277,481 +366,714 @@ function WebNotifications({ user, token }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      
-      {/* Dynamic Header */}
-      <div className="card" style={{ padding: '1.25rem', backgroundColor: 'var(--bg-main)', border: '2px solid #111', boxShadow: '4px 4px 0px #111' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-          <div>
-            <h2 style={{ fontSize: '1.6rem', fontWeight: 900, textTransform: 'uppercase', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Globe size={28} style={{ color: 'var(--primary)' }} /> Watchlist Monitor
-            </h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
-              Distill.io-style website change crawling. Track real-time alerts on dynamic pages, updates, and UI notifications.
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <button 
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="btn btn-primary"
-              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem' }}
-            >
-              <Plus size={16} /> Add Monitor
-            </button>
-            <button 
-              onClick={handleTriggerCheckAll}
-              disabled={checkingAll}
-              className="btn btn-secondary"
-              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem' }}
-            >
-              <RefreshCw size={16} className={checkingAll ? 'spin' : ''} />
-              {checkingAll ? 'Scanning...' : 'Scan All Websites'}
-            </button>
-          </div>
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      backgroundColor: '#ffffff',
+      borderRadius: '8px',
+      border: '1px solid #e2e8f0',
+      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.025)',
+      overflow: 'hidden',
+      fontFamily: '"Inter", sans-serif',
+      color: '#334155'
+    }}>
+      {/* Top Header Bar */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '12px 20px',
+        borderBottom: '1px solid #e2e8f0',
+        backgroundColor: '#ffffff'
+      }}>
+        {/* Title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '15px', fontWeight: 800, letterSpacing: '0.05em', color: '#0f172a' }}>WATCHLIST</span>
+          <span style={{
+            fontSize: '10px',
+            fontWeight: 700,
+            color: '#2563eb',
+            backgroundColor: '#eff6ff',
+            padding: '2px 6px',
+            borderRadius: '4px'
+          }}>
+            CLOUD - CALL LOGIQ SERVERS
+          </span>
         </div>
 
-        {/* Add Monitor Form Overlay / Inline Drawer */}
-        {showAddForm && (
-          <div className="card" style={{ marginTop: '1.25rem', padding: '1.25rem', borderStyle: 'dashed', backgroundColor: '#fff' }}>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '1rem' }}>
-              ➕ Track New Website URL
-            </h3>
-            <form onSubmit={handleAddWebsite} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Monitor Name</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    placeholder="e.g. Sairam NCC Portal" 
-                    value={siteName}
-                    onChange={e => setSiteName(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Website URL</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    placeholder="e.g. sairamncc.in" 
-                    value={siteUrl}
-                    onChange={e => setSiteUrl(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">CSS Selector (Optional)</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    placeholder="e.g. .sc-jwTyAe" 
-                    value={siteSelector}
-                    onChange={e => setSiteSelector(e.target.value)}
-                  />
-                </div>
-              </div>
-              
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--bg-main)', padding: '0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                <span>💡 <strong>Tip:</strong> To monitor only a specific element (like an announcement card), enter its CSS selector (e.g. <code>.sc-jwTyAe</code>). To find it, open the site, right-click the element ➔ <strong>Inspect</strong> ➔ right-click the HTML tag in DevTools ➔ <strong>Copy</strong> ➔ <strong>Copy selector</strong>, then paste it here. Leave blank to monitor the full page.</span>
-                <button type="submit" className="btn btn-primary" style={{ padding: '0.4rem 1.25rem', height: 'auto', flexShrink: 0 }}>
-                  Start Monitoring
-                </button>
-              </div>
-            </form>
-            {formError && <div className="alert alert-danger" style={{ marginTop: '1rem', fontSize: '0.85rem' }}>{formError}</div>}
-            {formSuccess && <div className="alert alert-success" style={{ marginTop: '1rem', fontSize: '0.85rem' }}>{formSuccess}</div>}
+        {/* Search Input */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          background: '#f1f5f9',
+          padding: '6px 12px',
+          borderRadius: '20px',
+          width: '260px',
+          border: '1px solid transparent',
+          marginLeft: '20px',
+          marginRight: 'auto'
+        }}>
+          <Search size={14} style={{ color: '#64748b' }} />
+          <input 
+            type="text"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              width: '100%',
+              fontSize: '13px',
+              color: '#334155'
+            }}
+            placeholder="Search..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+          />
+        </div>
+
+        {/* Right Section Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          {/* Notifications Envelope */}
+          <div 
+            onClick={() => setActiveFilter('unread')}
+            style={{ position: 'relative', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#64748b' }}
+            title="Unread Alerts"
+          >
+            <Mail size={18} />
+            {unreadSitesCount > 0 && (
+              <span style={{
+                position: 'absolute',
+                top: '-6px',
+                right: '-6px',
+                backgroundColor: '#3b82f6',
+                color: '#ffffff',
+                borderRadius: '50%',
+                width: '14px',
+                height: '14px',
+                fontSize: '8px',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                {unreadSitesCount}
+              </span>
+            )}
           </div>
-        )}
+
+          {/* Get Help Button */}
+          <button 
+            style={{
+              backgroundColor: '#2563eb',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '20px',
+              padding: '6px 14px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            Get Help <span style={{ opacity: 0.7, fontSize: '10px' }}>Ctrl K</span>
+          </button>
+
+          {/* Theme Switcher (Static) */}
+          <div style={{ display: 'flex', alignItems: 'center', color: '#94a3b8', cursor: 'pointer' }}>
+            <Sun size={18} />
+          </div>
+
+          {/* User Profile */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderLeft: '1px solid #e2e8f0', paddingLeft: '16px' }}>
+            <div style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '50%',
+              backgroundColor: '#cbd5e1',
+              color: '#334155',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '12px',
+              fontWeight: 700
+            }}>
+              {user && user.username ? user.username.substring(0, 2).toUpperCase() : 'AD'}
+            </div>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>
+              {user && user.username ? user.username : 'admin'}
+            </span>
+          </div>
+        </div>
       </div>
 
-      {/* Main Panel Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '1.5rem', alignItems: 'flex-start' }}>
+      {/* Main Workspace split */}
+      <div style={{ display: 'flex', flexDirection: 'row', minHeight: '520px', backgroundColor: '#ffffff' }}>
         
-        {/* Left Sidebar Filter Section */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div className="card" style={{ padding: '1rem', border: '2px solid #111', boxShadow: '3px 3px 0px #111' }}>
-            <h4 style={{ fontSize: '0.85rem', fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-              📂 Filters
-            </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              <button 
-                onClick={() => setActiveFilter('all')}
-                className="sidebar-item-btn" 
-                style={{ 
-                  justifyContent: 'space-between',
-                  backgroundColor: activeFilter === 'all' ? '#111' : 'transparent',
-                  color: activeFilter === 'all' ? '#fff' : 'inherit'
-                }}
-              >
-                <span>🌐 All Monitors</span>
-                <span className="badge" style={{ backgroundColor: activeFilter === 'all' ? '#fff' : '#111', color: activeFilter === 'all' ? '#111' : '#fff' }}>
-                  {sites.length}
-                </span>
-              </button>
-              <button 
-                onClick={() => setActiveFilter('unread')}
-                className="sidebar-item-btn"
-                style={{ 
-                  justifyContent: 'space-between',
-                  backgroundColor: activeFilter === 'unread' ? '#111' : 'transparent',
-                  color: activeFilter === 'unread' ? '#fff' : 'inherit'
-                }}
-              >
-                <span>🔔 Has Alerts</span>
-                {notifications.length > 0 && (
-                  <span className="badge badge-danger">
-                    {notifications.length}
-                  </span>
-                )}
-              </button>
-              <button 
-                onClick={() => setActiveFilter('history')}
-                className="sidebar-item-btn"
-                style={{ 
-                  justifyContent: 'space-between',
-                  backgroundColor: activeFilter === 'history' ? '#111' : 'transparent',
-                  color: activeFilter === 'history' ? '#fff' : 'inherit'
-                }}
-              >
-                <span>📜 Change Log Feed</span>
-              </button>
-            </div>
+        {/* Far-Left Narrow Slate Toolbar */}
+        <div style={{
+          width: '48px',
+          backgroundColor: '#0f172a',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          paddingTop: '16px',
+          paddingBottom: '16px',
+          gap: '20px',
+          flexShrink: 0
+        }}>
+          <div 
+            onClick={() => setActiveFilter('all')}
+            style={{ 
+              color: activeFilter !== 'history' ? '#3b82f6' : '#94a3b8', 
+              cursor: 'pointer', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              width: '32px',
+              height: '32px',
+              borderRadius: '4px',
+              backgroundColor: activeFilter !== 'history' ? 'rgba(59, 130, 246, 0.15)' : 'transparent'
+            }}
+            title="Watchlist"
+          >
+            <List size={18} />
           </div>
-
-          {/* Quick Checker Status */}
-          <div className="card" style={{ padding: '1rem', border: '2px solid #111', boxShadow: '3px 3px 0px #111', backgroundColor: '#fff' }}>
-            <h4 style={{ fontSize: '0.85rem', fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-              ⏱️ Background Scan
-            </h4>
-            <div style={{ fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--success)' }}>
-              <Check size={14} /> ACTIVE (30m Loop)
-            </div>
-            <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '0.4rem', lineHeight: 1.4 }}>
-              Websites are scraped in the background every 30 minutes. Headless Chromium will fetch dynamic changes.
-            </p>
+          
+          <div style={{ color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Analytics">
+            <BarChart2 size={18} />
+          </div>
+          
+          <div style={{ color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Team">
+            <Users size={18} />
+          </div>
+          
+          <div style={{ color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Documentation">
+            <BookOpen size={18} />
+          </div>
+          
+          <div style={{ flex: 1 }} />
+          
+          <div style={{ color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Feedback">
+            <MessageSquare size={18} />
+          </div>
+          
+          <div style={{ color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Language">
+            <Languages size={18} />
           </div>
         </div>
 
-        {/* Right Content Watchlist */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          
-          {/* Watchlist Filter Bar */}
-          {activeFilter !== 'history' && (
-            <div className="card" style={{ padding: '0.75rem 1rem', border: '2px solid #111', boxShadow: '3px 3px 0px #111', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff' }}>
-              <div style={{ position: 'relative', flex: 1, maxWidth: '400px' }}>
-                <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
-                <input 
-                  type="text"
-                  className="form-input"
-                  style={{ paddingLeft: '2.2rem', marginBottom: 0 }}
-                  placeholder="Filter watchlist by name or URL..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                />
-              </div>
-              <div style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-secondary)' }}>
-                Showing {filteredSites.length} of {sites.length} monitors
-              </div>
-            </div>
-          )}
+        {/* Filters Sidebar */}
+        <div style={{
+          width: '180px',
+          backgroundColor: '#f8fafc',
+          borderRight: '1px solid #e2e8f0',
+          padding: '16px 12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '16px',
+          flexShrink: 0
+        }}>
+          {/* Add Monitor Button */}
+          <button 
+            onClick={() => setShowAddForm(true)}
+            style={{
+              width: '100%',
+              backgroundColor: '#10b981',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '8px 12px',
+              fontWeight: 600,
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'background-color 0.2s'
+            }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#059669'}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = '#10b981'}
+          >
+            <Plus size={14} /> Add Monitor
+          </button>
 
-          {/* VIEW: WATCHLIST MONITORS LIST (Distill.io Tabular Style) */}
+          {/* Filter Items */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {renderFilterItem('all', 'All', sites.length, '#2563eb')}
+            {renderFilterItem('history', 'Feed', notifications.length, '#64748b')}
+            {renderFilterItem('unread', 'Unread', unreadSitesCount, '#2563eb')}
+            {renderFilterItem('error', 'Error', errorSitesCount, '#ef4444')}
+            {renderFilterItem('trash', 'Trash', 0, '#94a3b8')}
+          </div>
+
+          {/* Add Label Button */}
+          <button 
+            style={{
+              border: '1px dashed #cbd5e1',
+              borderRadius: '4px',
+              padding: '8px',
+              textAlign: 'center',
+              color: '#64748b',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: 'transparent',
+              marginTop: 'auto'
+            }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            Add label
+          </button>
+        </div>
+
+        {/* Main Workspace content */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, backgroundColor: '#ffffff' }}>
+          
+          {/* VIEW: WATCHLIST TABLE */}
           {activeFilter !== 'history' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {filteredSites.length === 0 ? (
-                <div className="card" style={{ padding: '4rem 2rem', textAlign: 'center', border: '2px dashed var(--border-color)' }}>
-                  <Info size={36} style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem', opacity: 0.7 }} />
-                  <h4 style={{ fontWeight: 800 }}>No Monitors Found</h4>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-                    {searchQuery ? 'Try matching another search query.' : 'Click "Add Monitor" to add websites to your watchlist.'}
-                  </p>
+            <>
+              {/* Watchlist Table Top Toolbar */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '8px 16px',
+                backgroundColor: '#f8fafc',
+                borderBottom: '1px solid #e2e8f0'
+              }}>
+                {/* Left controls */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  {/* Select All Checkbox */}
+                  <div 
+                    onClick={handleSelectAll}
+                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', color: selectedSiteIds.length > 0 ? '#3b82f6' : '#94a3b8' }}
+                  >
+                    {selectedSiteIds.length > 0 && selectedSiteIds.length === filteredSites.length ? (
+                      <CheckSquare size={16} />
+                    ) : (
+                      <Square size={16} />
+                    )}
+                  </div>
+                  
+                  {/* Action carets */}
+                  <ChevronDown size={14} style={{ color: '#64748b', cursor: 'pointer' }} />
+                  
+                  <div style={{ height: '14px', width: '1px', backgroundColor: '#e2e8f0', margin: '0 4px' }} />
+                  
+                  {/* View/Sort selector button */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: '#64748b' }}>
+                    <Sliders size={14} />
+                    <ChevronDown size={10} />
+                  </div>
                 </div>
-              ) : (
-                <div className="card" style={{ padding: 0, border: '2.5px solid #111', boxShadow: '4px 4px 0px #111', overflowX: 'auto', backgroundColor: '#fff' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '850px' }}>
-                    <thead>
-                      <tr style={{ backgroundColor: 'var(--bg-main)', borderBottom: '2.5px solid #111' }}>
-                        <th style={{ padding: '0.75rem 1rem', width: '80px', fontWeight: 900, textTransform: 'uppercase', fontSize: '0.78rem' }}>Status</th>
-                        <th style={{ padding: '0.75rem 1rem', fontWeight: 900, textTransform: 'uppercase', fontSize: '0.78rem' }}>Name & Source URL</th>
-                        <th style={{ padding: '0.75rem 1rem', width: '180px', fontWeight: 900, textTransform: 'uppercase', fontSize: '0.78rem' }}>CSS Selector</th>
-                        <th style={{ padding: '0.75rem 1rem', width: '160px', fontWeight: 900, textTransform: 'uppercase', fontSize: '0.78rem' }}>Last Checked</th>
-                        <th style={{ padding: '0.75rem 1rem', width: '120px', fontWeight: 900, textTransform: 'uppercase', fontSize: '0.78rem', textAlign: 'center' }}>Alerts</th>
-                        <th style={{ padding: '0.75rem 1rem', width: '220px', fontWeight: 900, textTransform: 'uppercase', fontSize: '0.78rem', textAlign: 'right' }}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredSites.map(site => {
-                        const siteAlerts = notifications.filter(n => n.websiteId === site.id);
-                        const hasAlert = siteAlerts.length > 0;
-                        const isEnabled = site.enabled !== false;
-                        const isExpanded = expandedSiteId === site.id;
-                        
-                        return (
-                          <React.Fragment key={site.id}>
-                            <tr 
-                              onClick={() => setExpandedSiteId(isExpanded ? null : site.id)}
-                              style={{ 
-                                borderBottom: '1.5px solid #111', 
-                                backgroundColor: hasAlert ? '#f0fdf4' : (isExpanded ? '#f8fafc' : 'transparent'),
-                                cursor: 'pointer',
-                                transition: 'background-color 0.2s'
+
+                {/* Right controls */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: '#64748b' }}>
+                  {/* Scan All button inline */}
+                  <button 
+                    onClick={handleTriggerCheckAll}
+                    disabled={checkingAll}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#2563eb',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <RefreshCw size={12} className={checkingAll ? 'spin' : ''} />
+                    {checkingAll ? 'Scanning...' : 'Scan All'}
+                  </button>
+
+                  <div style={{ height: '14px', width: '1px', backgroundColor: '#e2e8f0' }} />
+
+                  {/* Pagination text */}
+                  <span>1 - {filteredSites.length} of {filteredSites.length}</span>
+                  
+                  {/* Pagination chevrons */}
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <ChevronLeft size={14} style={{ opacity: 0.5, cursor: 'not-allowed' }} />
+                    <ChevronRight size={14} style={{ opacity: 0.5, cursor: 'not-allowed' }} />
+                  </div>
+
+                  <div style={{ height: '14px', width: '1px', backgroundColor: '#e2e8f0' }} />
+
+                  {/* Settings gear icon */}
+                  <Settings size={14} style={{ cursor: 'pointer' }} />
+                </div>
+              </div>
+
+              {/* Table Body */}
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                {filteredSites.length === 0 ? (
+                  <div style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
+                    <Info size={32} style={{ margin: '0 auto 8px auto', opacity: 0.6 }} />
+                    <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>No Monitors Found</div>
+                    <p style={{ fontSize: '12px', margin: '4px 0 0 0' }}>
+                      {searchQuery ? 'No websites match your search query.' : 'Click "Add Monitor" to start tracking.'}
+                    </p>
+                  </div>
+                ) : (
+                  filteredSites.map(site => {
+                    const siteAlerts = notifications.filter(n => n.websiteId === site.id);
+                    const hasAlert = siteAlerts.length > 0;
+                    const isEnabled = site.enabled !== false;
+                    const isExpanded = expandedSiteId === site.id;
+                    const isSelected = selectedSiteIds.includes(site.id);
+                    
+                    return (
+                      <div 
+                        key={site.id}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          borderBottom: '1px solid #e2e8f0',
+                          backgroundColor: hasAlert ? '#f0fdf4' : (isExpanded ? '#f8fafc' : 'transparent'),
+                          transition: 'background-color 0.2s'
+                        }}
+                      >
+                        {/* Row Header */}
+                        <div 
+                          onClick={() => setExpandedSiteId(isExpanded ? null : site.id)}
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            padding: '10px 16px',
+                            gap: '12px',
+                            cursor: 'pointer'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.backgroundColor = hasAlert ? '#dcfce7' : '#f1f5f9'}
+                          onMouseLeave={e => e.currentTarget.style.backgroundColor = hasAlert ? '#f0fdf4' : (isExpanded ? '#f8fafc' : 'transparent')}
+                        >
+                          {/* Checkbox */}
+                          <div 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectRow(site.id);
+                            }}
+                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', color: isSelected ? '#3b82f6' : '#94a3b8' }}
+                          >
+                            {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                          </div>
+
+                          {/* Expand chevron caret */}
+                          <div style={{ color: '#64748b', display: 'flex', alignItems: 'center' }}>
+                            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          </div>
+
+                          {/* Favicon + Name + Inline Snippet */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+                            <img 
+                              src={getFaviconUrl(site.url)} 
+                              alt="" 
+                              style={{ width: '16px', height: '16px', borderRadius: '2px', flexShrink: 0, backgroundColor: '#f1f5f9' }}
+                              onError={(e) => { e.currentTarget.src = 'https://www.google.com/s2/favicons?sz=64&domain=google.com'; }}
+                            />
+                            <a 
+                              href={site.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              style={{
+                                fontWeight: 600,
+                                fontSize: '13px',
+                                color: '#2563eb',
+                                textDecoration: 'none',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                maxWidth: '200px',
+                                flexShrink: 0
                               }}
-                              className="watchlist-row"
+                              onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                              onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
                             >
-                              {/* Status switch */}
-                              <td style={{ padding: '0.75rem 1rem' }} onClick={e => e.stopPropagation()}>
-                                <label className="toggle-switch" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                                  <input 
-                                    type="checkbox"
-                                    checked={isEnabled}
-                                    onChange={() => handleToggleSite(site.id, isEnabled)}
-                                    style={{ display: 'none' }}
-                                  />
-                                  <div style={{
-                                    width: '38px',
-                                    height: '20px',
-                                    backgroundColor: isEnabled ? 'var(--success)' : '#cbd5e1',
-                                    borderRadius: '20px',
-                                    padding: '2px',
-                                    transition: 'background-color 0.2s',
-                                    border: '1.5px solid #111',
-                                    position: 'relative'
-                                  }}>
-                                    <div style={{
-                                      width: '12px',
-                                      height: '12px',
-                                      backgroundColor: '#fff',
-                                      borderRadius: '50%',
-                                      border: '1px solid #111',
-                                      transition: 'transform 0.2s',
-                                      transform: isEnabled ? 'translateX(18px)' : 'translateX(0)',
-                                    }} />
-                                  </div>
-                                </label>
-                              </td>
-                              
-                              {/* Name & Source */}
-                              <td style={{ padding: '0.75rem 1rem' }}>
-                                <div style={{ fontWeight: 800, color: '#111', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                  {site.name}
-                                  {isExpanded ? <Sliders size={12} style={{ color: 'var(--primary)' }} /> : null}
-                                </div>
-                                <a 
-                                  href={site.url} 
-                                  target="_blank" 
-                                  rel="noreferrer"
-                                  onClick={e => e.stopPropagation()}
-                                  style={{ fontSize: '0.72rem', color: 'var(--primary)', textDecoration: 'underline', display: 'inline-flex', alignItems: 'center', gap: '2px', marginTop: '0.15rem' }}
-                                >
-                                  {site.url.length > 50 ? site.url.substring(0, 47) + '...' : site.url} <ExternalLink size={10} />
-                                </a>
-                              </td>
-                              
-                              {/* Selector */}
-                              <td style={{ padding: '0.75rem 1rem' }}>
-                                <span style={{ 
-                                  fontSize: '0.7rem', 
-                                  fontWeight: 800, 
-                                  padding: '2px 6px', 
-                                  borderRadius: '4px', 
-                                  border: '1.5px solid #111', 
-                                  backgroundColor: site.selector ? '#e2e8f0' : '#f1f5f9', 
-                                  color: '#111',
-                                  fontFamily: site.selector ? 'monospace' : 'inherit'
-                                }}>
-                                  {site.selector ? `${site.selector}` : 'document.body'}
-                                </span>
-                              </td>
-                              
-                              {/* Last Checked */}
-                              <td style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                <strong style={{ color: '#111' }}>{formatTimeAgo(site.lastCheckedAt)}</strong>
-                              </td>
-                              
-                              {/* Alerts count badge */}
-                              <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                                {hasAlert ? (
-                                  <span className="badge badge-danger" style={{ fontWeight: 900, animation: 'pulse 2s infinite' }}>
-                                    {siteAlerts.length} Alert{siteAlerts.length > 1 ? 's' : ''}
-                                  </span>
-                                ) : (
-                                  <span style={{ color: '#cbd5e1', fontWeight: 800, fontSize: '0.75rem' }}>-</span>
-                                )}
-                              </td>
-                              
-                              {/* Actions */}
-                              <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                                <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
-                                  <button
-                                    onClick={() => handleCheckSingleSite(site.id, site.name)}
-                                    disabled={checkingSiteId === site.id}
-                                    className="btn btn-secondary"
-                                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '2px' }}
-                                    title="Scan Now"
-                                  >
-                                    <RefreshCw size={11} className={checkingSiteId === site.id ? 'spin' : ''} />
-                                    Scan
-                                  </button>
-                                  <button
-                                    onClick={() => handleSimulateChange(site.id, site.name)}
-                                    className="btn btn-secondary"
-                                    style={{ 
-                                      padding: '0.25rem 0.5rem', 
-                                      fontSize: '0.7rem', 
-                                      display: 'flex', 
-                                      alignItems: 'center', 
-                                      gap: '2px',
-                                      borderColor: 'var(--primary)',
-                                      color: 'var(--primary)'
-                                    }}
-                                    title="Simulate Website Change"
-                                  >
-                                    <Sparkles size={11} />
-                                    Simulate
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteSite(site.id, site.name)}
-                                    className="btn btn-secondary"
-                                    style={{ 
-                                      padding: '0.25rem 0.5rem', 
-                                      fontSize: '0.7rem', 
-                                      display: 'flex', 
-                                      alignItems: 'center', 
-                                      gap: '2px',
-                                      borderColor: 'var(--danger)',
-                                      color: 'var(--danger)'
-                                    }}
-                                    title="Delete Monitor"
-                                  >
-                                    <Trash2 size={11} />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                            
-                            {/* Collapsible detail drawer */}
-                            {isExpanded && (
-                              <tr>
-                                <td colSpan={6} style={{ backgroundColor: '#f8fafc', padding: '1rem', borderBottom: '1.5px solid #111' }}>
-                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '1.5rem' }}>
-                                    
-                                    {/* Snippet display */}
-                                    <div>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                                        <span style={{ fontSize: '0.75rem', fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
-                                          🔍 Latest Extracted Content Preview
-                                        </span>
-                                        {site.scrapedVia && (
-                                          <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', border: '1px solid #111', backgroundColor: '#e0f2fe', color: '#0369a1' }}>
-                                            ⚡ Scraped via: {site.scrapedVia}
-                                          </span>
-                                        )}
-                                      </div>
-                                      
-                                      <div 
-                                        style={{
-                                          fontFamily: 'monospace',
-                                          fontSize: '0.8rem',
-                                          padding: '1rem',
-                                          borderRadius: '6px',
-                                          border: '1.5px solid #111',
-                                          backgroundColor: hasAlert ? '#f0fdf4' : '#fff',
-                                          borderColor: hasAlert ? 'var(--success)' : '#111',
-                                          color: '#1e293b',
-                                          maxHeight: '180px',
-                                          overflowY: 'auto',
-                                          lineHeight: 1.5,
-                                          whiteSpace: 'pre-wrap',
-                                          boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)'
-                                        }}
-                                      >
-                                        {site.latestContentText ? (
-                                          <>
-                                            {hasAlert && (
-                                              <div style={{ color: '#15803d', fontWeight: 900, fontSize: '0.72rem', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
-                                                🟢 UNREAD CHANGE ALERT DETECTED:
-                                              </div>
-                                            )}
-                                            {site.latestContentText}
-                                          </>
-                                        ) : (
-                                          <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                                            No content has been fetched yet. Click the "Scan" button to fetch initial data.
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                    
-                                    {/* Technical details side-card */}
-                                    <div style={{ borderLeft: '1.5px solid #cbd5e1', paddingLeft: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.75rem' }}>
-                                      <h5 style={{ margin: 0, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Scraper Profile</h5>
-                                      
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '0.25rem' }}>
-                                        <span style={{ color: 'var(--text-secondary)' }}>Status:</span>
-                                        <strong style={{ color: isEnabled ? 'var(--success)' : 'var(--danger)' }}>
-                                          {isEnabled ? 'ACTIVE MONITOR' : 'PAUSED'}
-                                        </strong>
-                                      </div>
-                                      
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '0.25rem' }}>
-                                        <span style={{ color: 'var(--text-secondary)' }}>Interval:</span>
-                                        <span>30 Minutes (Cron)</span>
-                                      </div>
-                                      
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '0.25rem' }}>
-                                        <span style={{ color: 'var(--text-secondary)' }}>Date Added:</span>
-                                        <span>{site.createdAt ? new Date(site.createdAt).toLocaleDateString() : 'Unknown'}</span>
-                                      </div>
-                                      
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '0.25rem' }}>
-                                        <span style={{ color: 'var(--text-secondary)' }}>Hash ID:</span>
-                                        <span style={{ fontFamily: 'monospace', fontSize: '0.68rem' }}>
-                                          {site.lastContentHash ? site.lastContentHash.substring(0, 16) + '...' : 'No Hash'}
-                                        </span>
-                                      </div>
-                                      
-                                      {hasAlert && (
-                                        <div style={{ marginTop: '0.5rem' }}>
-                                          <button 
-                                            onClick={async () => {
-                                              await handleClearSiteAlerts(site.id);
-                                            }}
-                                            className="btn btn-secondary" 
-                                            style={{ width: '100%', padding: '0.3rem', fontSize: '0.72rem', backgroundColor: '#e2e8f0' }}
-                                          >
-                                            Mark alerts as read
-                                          </button>
-                                        </div>
-                                      )}
-                                    </div>
-                                    
-                                  </div>
-                                </td>
-                              </tr>
+                              {site.name}
+                            </a>
+                            {site.latestContentText && (
+                              <span style={{
+                                color: '#64748b',
+                                fontSize: '12px',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                fontWeight: 400
+                              }}>
+                                — {site.latestContentText.substring(0, 120)}
+                              </span>
                             )}
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+                          </div>
+
+                          {/* Interval */}
+                          <div style={{ width: '90px', color: '#2563eb', fontSize: '12px', fontWeight: 600, textAlign: 'left', flexShrink: 0 }}>
+                            30 mins
+                          </div>
+
+                          {/* Last Checked */}
+                          <div style={{ 
+                            width: '110px', 
+                            color: hasAlert ? '#ef4444' : '#64748b', 
+                            fontSize: '12px', 
+                            fontWeight: hasAlert ? 700 : 500, 
+                            textAlign: 'left',
+                            flexShrink: 0
+                          }}>
+                            {formatTimeAgo(site.lastCheckedAt)}
+                          </div>
+
+                          {/* Device / Cloud Indicator */}
+                          <div style={{ width: '40px', display: 'flex', justifyContent: 'center', color: '#94a3b8', flexShrink: 0 }}>
+                            <Cloud size={15} />
+                          </div>
+
+                          {/* ON/OFF Switch Button */}
+                          <div 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleSite(site.id, isEnabled);
+                            }}
+                            style={{ width: '60px', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}
+                          >
+                            <button style={{
+                              backgroundColor: isEnabled ? '#10b981' : '#94a3b8',
+                              color: '#ffffff',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '2px 8px',
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              minWidth: '36px',
+                              textAlign: 'center'
+                            }}>
+                              {isEnabled ? 'ON' : 'OFF'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Expand Details Drawer */}
+                        {isExpanded && (
+                          <div style={{
+                            padding: '16px 24px',
+                            backgroundColor: '#f8fafc',
+                            borderTop: '1px solid #e2e8f0',
+                            display: 'flex',
+                            flexDirection: 'row',
+                            gap: '24px'
+                          }}>
+                            {/* Preview box */}
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#64748b' }}>
+                                  🔍 Latest Extracted Content Preview
+                                </span>
+                                {site.scrapedVia && (
+                                  <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', backgroundColor: '#e0f2fe', color: '#0369a1' }}>
+                                    ⚡ Scraped via: {site.scrapedVia}
+                                  </span>
+                                )}
+                              </div>
+                              
+                              <div style={{
+                                fontFamily: 'monospace',
+                                fontSize: '12px',
+                                padding: '12px',
+                                borderRadius: '6px',
+                                border: '1px solid #e2e8f0',
+                                backgroundColor: '#ffffff',
+                                color: '#334155',
+                                maxHeight: '180px',
+                                overflowY: 'auto',
+                                lineHeight: 1.5,
+                                whiteSpace: 'pre-wrap'
+                              }}>
+                                {site.latestContentText ? (
+                                  <>
+                                    {hasAlert && (
+                                      <div style={{ color: '#166534', fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', marginBottom: '4px' }}>
+                                        🟢 UNREAD CHANGE ALERT DETECTED:
+                                      </div>
+                                    )}
+                                    {site.latestContentText}
+                                  </>
+                                ) : (
+                                  <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+                                    No content has been fetched yet. Click "Scan" to fetch initial data.
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Profile details */}
+                            <div style={{
+                              width: '260px',
+                              borderLeft: '1px solid #e2e8f0',
+                              paddingLeft: '20px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '8px',
+                              fontSize: '12px'
+                            }}>
+                              <h5 style={{ margin: 0, fontWeight: 700, textTransform: 'uppercase', color: '#64748b' }}>Scraper Profile</h5>
+                              
+                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '4px' }}>
+                                <span style={{ color: '#64748b' }}>Status:</span>
+                                <strong style={{ color: isEnabled ? '#10b981' : '#ef4444' }}>
+                                  {isEnabled ? 'ACTIVE MONITOR' : 'PAUSED'}
+                                </strong>
+                              </div>
+                              
+                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '4px' }}>
+                                <span style={{ color: '#64748b' }}>Interval:</span>
+                                <span>30 Minutes</span>
+                              </div>
+                              
+                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '4px' }}>
+                                <span style={{ color: '#64748b' }}>Date Added:</span>
+                                <span>{site.createdAt ? new Date(site.createdAt).toLocaleDateString() : 'Unknown'}</span>
+                              </div>
+                              
+                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '4px' }}>
+                                <span style={{ color: '#64748b' }}>Hash ID:</span>
+                                <span style={{ fontFamily: 'monospace', fontSize: '10px' }}>
+                                  {site.lastContentHash ? site.lastContentHash.substring(0, 16) + '...' : 'No Hash'}
+                                </span>
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCheckSingleSite(site.id, site.name);
+                                  }}
+                                  disabled={checkingSiteId === site.id}
+                                  style={{
+                                    flex: 1,
+                                    padding: '5px',
+                                    fontSize: '11px',
+                                    borderRadius: '4px',
+                                    border: '1px solid #cbd5e1',
+                                    backgroundColor: '#ffffff',
+                                    cursor: 'pointer',
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '2px'
+                                  }}
+                                >
+                                  <RefreshCw size={10} className={checkingSiteId === site.id ? 'spin' : ''} />
+                                  Scan
+                                </button>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSimulateChange(site.id, site.name);
+                                  }}
+                                  style={{
+                                    flex: 1,
+                                    padding: '5px',
+                                    fontSize: '11px',
+                                    borderRadius: '4px',
+                                    border: '1px solid #bfdbfe',
+                                    backgroundColor: '#eff6ff',
+                                    color: '#1d4ed8',
+                                    cursor: 'pointer',
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '2px'
+                                  }}
+                                >
+                                  <Sparkles size={10} />
+                                  Simulate
+                                </button>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteSite(site.id, site.name);
+                                  }}
+                                  style={{
+                                    padding: '5px 8px',
+                                    fontSize: '11px',
+                                    borderRadius: '4px',
+                                    border: '1px solid #fca5a5',
+                                    backgroundColor: '#fef2f2',
+                                    color: '#dc2626',
+                                    cursor: 'pointer',
+                                    fontWeight: 600
+                                  }}
+                                >
+                                  <Trash2 size={10} />
+                                </button>
+                              </div>
+                              
+                              {hasAlert && (
+                                <button 
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    await handleClearSiteAlerts(site.id);
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    padding: '6px',
+                                    fontSize: '11px',
+                                    borderRadius: '4px',
+                                    border: 'none',
+                                    backgroundColor: '#cbd5e1',
+                                    color: '#1e293b',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    marginTop: '4px'
+                                  }}
+                                >
+                                  Mark alerts as read
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </>
           )}
 
           {/* VIEW: HISTORICAL CHANGE LOG FEED */}
           {activeFilter === 'history' && (
-            <div className="card" style={{ padding: '1.25rem', border: '2.5px solid #111', boxShadow: '4px 4px 0px #111' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <h3 style={{ margin: 0, fontWeight: 900, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', flex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>
                   📜 Change Log Feed
                 </h3>
                 {notifications.length > 0 && (
                   <button 
                     onClick={handleClearNotifications}
-                    className="btn btn-secondary"
-                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '4px',
+                      border: '1px solid #fca5a5',
+                      backgroundColor: '#fef2f2',
+                      color: '#dc2626',
+                      fontWeight: 600,
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
                   >
                     <Trash size={12} /> Clear Logs
                   </button>
@@ -761,56 +1083,57 @@ function WebNotifications({ user, token }) {
               {notifications.length === 0 ? (
                 <div style={{ 
                   textAlign: 'center', 
-                  padding: '3rem 1.5rem', 
-                  color: 'var(--text-secondary)',
-                  backgroundColor: 'var(--bg-main)',
+                  padding: '48px 20px', 
+                  color: '#64748b',
+                  backgroundColor: '#f8fafc',
                   borderRadius: '6px',
-                  border: '2px dashed var(--border-light)'
+                  border: '1px dashed #cbd5e1'
                 }}>
-                  <Info size={28} style={{ opacity: 0.5, marginBottom: '0.5rem' }} />
-                  <div style={{ fontWeight: 800 }}>No Changes Logged</div>
-                  <p style={{ fontSize: '0.78rem', marginTop: '0.2rem' }}>
+                  <Info size={28} style={{ opacity: 0.5, marginBottom: '8px' }} />
+                  <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>No Changes Logged</div>
+                  <p style={{ fontSize: '12px', margin: '4px 0 0 0' }}>
                     All websites currently match their recorded states. When a change is detected, it will be listed here.
                   </p>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {notifications.map(notif => (
                     <div 
                       key={notif.id}
                       style={{
-                        border: '1.5px solid #111',
+                        border: '1px solid #e2e8f0',
                         borderRadius: '6px',
-                        padding: '1rem',
+                        padding: '16px',
                         backgroundColor: '#ffffff',
-                        boxShadow: '2px 2px 0px #111'
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
                         <div>
-                          <h4 style={{ fontSize: '0.9rem', fontWeight: 900, color: '#111', margin: 0 }}>{notif.title}</h4>
+                          <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', margin: 0 }}>{notif.title}</h4>
                           <a 
                             href={notif.url} 
                             target="_blank" 
                             rel="noreferrer"
-                            style={{ fontSize: '0.72rem', color: 'var(--primary)', textDecoration: 'underline' }}
+                            style={{ fontSize: '11px', color: '#2563eb', textDecoration: 'underline' }}
                           >
                             {notif.url}
                           </a>
                         </div>
-                        <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                        <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>
                           🕒 {new Date(notif.createdAt).toLocaleDateString()} {new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                       <p style={{ 
-                        fontSize: '0.8rem', 
+                        fontSize: '12px', 
                         color: '#334155', 
-                        backgroundColor: 'var(--bg-main)',
-                        padding: '0.5rem',
-                        border: '1px solid var(--border-light)',
+                        backgroundColor: '#f8fafc',
+                        padding: '10px',
+                        border: '1px solid #e2e8f0',
                         borderRadius: '4px',
                         margin: 0,
-                        fontFamily: 'monospace'
+                        fontFamily: 'monospace',
+                        whiteSpace: 'pre-wrap'
                       }}>
                         {notif.description}
                       </p>
@@ -823,6 +1146,116 @@ function WebNotifications({ user, token }) {
 
         </div>
       </div>
+
+      {/* Add Monitor Form Overlay Modal */}
+      {showAddForm && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.4)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 9999
+        }} onClick={() => {
+          setShowAddForm(false);
+          setFormError('');
+          setFormSuccess('');
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '8px',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            width: '100%',
+            maxWidth: '500px',
+            padding: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px'
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a', textTransform: 'capitalize' }}>
+                Add Website Monitor
+              </h3>
+              <button 
+                onClick={() => {
+                  setShowAddForm(false);
+                  setFormError('');
+                  setFormSuccess('');
+                }}
+                style={{ background: 'transparent', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#64748b' }}
+              >
+                &times;
+              </button>
+            </div>
+            
+            <form onSubmit={handleAddWebsite} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>MONITOR NAME</label>
+                <input 
+                  type="text" 
+                  style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px' }}
+                  placeholder="e.g. Sairam NCC Portal"
+                  value={siteName}
+                  onChange={e => setSiteName(e.target.value)}
+                  required
+                />
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>WEBSITE URL</label>
+                <input 
+                  type="text" 
+                  style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px' }}
+                  placeholder="e.g. sairamncc.in"
+                  value={siteUrl}
+                  onChange={e => setSiteUrl(e.target.value)}
+                  required
+                />
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>CSS SELECTOR (OPTIONAL)</label>
+                <input 
+                  type="text" 
+                  style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px' }}
+                  placeholder="e.g. .announcement-card"
+                  value={siteSelector}
+                  onChange={e => setSiteSelector(e.target.value)}
+                />
+              </div>
+              
+              <p style={{ margin: 0, fontSize: '11px', color: '#64748b', lineHeight: 1.4 }}>
+                💡 Leave CSS selector blank to monitor the full page. Use selector (e.g. <code>.announcement-card</code>) to track changes in a specific element.
+              </p>
+              
+              {formError && <div style={{ color: '#ef4444', fontSize: '12px', fontWeight: 500 }}>{formError}</div>}
+              {formSuccess && <div style={{ color: '#10b981', fontSize: '12px', fontWeight: 500 }}>{formSuccess}</div>}
+              
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setShowAddForm(false);
+                    setFormError('');
+                    setFormSuccess('');
+                  }}
+                  style={{ padding: '8px 16px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#ffffff', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  style={{ padding: '8px 16px', borderRadius: '4px', border: 'none', background: '#10b981', color: '#ffffff', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
+                >
+                  Start Monitoring
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

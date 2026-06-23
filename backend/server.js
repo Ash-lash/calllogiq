@@ -1,6 +1,3 @@
-if (process.env.RENDER) {
-  process.env.PUPPETEER_CACHE_DIR = '/opt/render/.cache/puppeteer';
-}
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -2233,62 +2230,9 @@ async function migrateDomainCategories() {
 }
 
 // --- WEB MONITORING CRAWLER HELPERS ---
+
 const crypto = require('crypto');
-const puppeteer = require('puppeteer');
 const cheerio = require('cheerio');
-
-let globalBrowser = null;
-
-async function getBrowserInstance() {
-  if (globalBrowser) {
-    try {
-      await globalBrowser.pages();
-      return globalBrowser;
-    } catch (err) {
-      console.log('Cached browser instance is unresponsive, launching a new one...', err.message);
-      globalBrowser = null;
-    }
-  }
-
-  const launchOptions = {
-    headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  };
-  
-  try {
-    globalBrowser = await puppeteer.launch(launchOptions);
-    return globalBrowser;
-  } catch (err) {
-    if (err.message.includes('Could not find Chrome') || err.message.includes('executable')) {
-      console.log('Chrome binary not found in cache. Attempting to download Chrome programmatically...');
-      try {
-        const installCmd = 'npx puppeteer browsers install chrome';
-        console.log(`Running: ${installCmd}`);
-        
-        execSync(installCmd, {
-          stdio: 'inherit'
-        });
-        
-        console.log('Chrome downloaded successfully. Retrying browser launch...');
-        globalBrowser = await puppeteer.launch(launchOptions);
-        return globalBrowser;
-      } catch (installErr) {
-        console.error('Failed to auto-install Chrome:', installErr);
-        throw err;
-      }
-    } else {
-      throw err;
-    }
-  }
-}
-
-process.on('exit', async () => {
-  if (globalBrowser) {
-    try {
-      await globalBrowser.close();
-    } catch (e) {}
-  }
-});
 
 function extractTextFromHtml(html) {
   let clean = html.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '');
@@ -2305,83 +2249,79 @@ async function checkWebsiteForChanges(site) {
   let scrapedVia = 'Cheerio Fast Fetch';
   let selectorNotFound = false;
   
-  try {
-    console.log(`Checking website "${site.name}" (${site.url}) using Cheerio fast-fetch...`);
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-    
-    const response = await fetch(site.url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      },
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    
-    if (response.ok) {
-      const html = await response.text();
-      const $ = cheerio.load(html);
-      
-      if (site.selector) {
-        const elements = $(site.selector);
-        if (elements.length > 0) {
-          const clone = elements.clone();
-          clone.find('script, style, noscript, iframe, svg').remove();
-          text = clone.map((i, el) => $(el).text() || '').get().join('\n').replace(/\s+/g, ' ').trim();
-        } else {
-          selectorNotFound = true;
-        }
-      } else {
-        const clone = $('body').clone();
-        clone.find('script, style, noscript, iframe, svg').remove();
-        text = clone.text().replace(/\s+/g, ' ').trim();
-      }
-    }
-  } catch (cheerioErr) {
-    console.log(`Cheerio fast-fetch failed for ${site.name}: ${cheerioErr.message}. Falling back to Puppeteer...`);
-  }
+  const isSairamNcc = site.url.includes('sairamncc.in') || site.url.includes('ncc-sairam');
   
-  const needsPuppeteer = !text || selectorNotFound || text.toLowerCase().includes('javascript to run this app') || text.toLowerCase().includes('enable javascript');
-  
-  if (needsPuppeteer) {
-    console.log(`Using Puppeteer fallback scraper for "${site.name}" (reusing browser instance)...`);
-    scrapedVia = 'Puppeteer Headless Chrome';
-    let browser = null;
+  if (isSairamNcc) {
+    console.log(`Checking Sairam NCC website "${site.name}" using Firestore REST API...`);
+    scrapedVia = 'Firestore REST API';
     try {
-      browser = await getBrowserInstance();
-      const page = await browser.newPage();
-      
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-      await page.setViewport({ width: 1280, height: 800 });
-      
-      await page.goto(site.url, { waitUntil: 'networkidle2', timeout: 25000 });
-      
-      selectorNotFound = false;
-      
-      if (site.selector) {
-        const selectedText = await page.evaluate((sel) => {
-          const elements = Array.from(document.querySelectorAll(sel));
-          if (elements.length === 0) return null;
-          return elements.map(el => el.innerText || el.textContent).join('\n');
-        }, site.selector);
-        
-        if (selectedText === null) {
-          selectorNotFound = true;
-          text = `[SELECTOR NOT FOUND] The CSS selector "${site.selector}" could not be found on the page.`;
+      const projectId = 'ncc-sairam-website';
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/announcements`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.documents && data.documents.length > 0) {
+          const list = data.documents.map(doc => {
+            const fields = doc.fields || {};
+            const title = fields.title?.stringValue || '';
+            const content = fields.content?.stringValue || '';
+            const createdAt = fields.createdAt?.timestampValue 
+              ? new Date(fields.createdAt.timestampValue).toLocaleDateString()
+              : '';
+            return `[${createdAt}] ${title}: ${content}`;
+          });
+          text = list.join('\n');
         } else {
-          text = selectedText;
+          text = "No announcements found.";
         }
       } else {
-        text = await page.evaluate(() => document.body.innerText);
+        throw new Error(`Firestore API returned status ${res.status}`);
       }
+    } catch (err) {
+      console.error('Error fetching Sairam NCC Firestore documents:', err.message);
+      text = `[ERROR] Failed to fetch announcements directly from Firestore: ${err.message}`;
+    }
+  } else {
+    // For other websites, use standard Cheerio scraper
+    try {
+      console.log(`Checking website "${site.name}" (${site.url}) using Cheerio fast-fetch...`);
       
-      await page.close();
-    } catch (puppeteerErr) {
-      console.error(`Puppeteer fallback scraper failed for ${site.name}:`, puppeteerErr.message);
-      if (!text) {
-        throw puppeteerErr;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+      
+      const response = await fetch(site.url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        const html = await response.text();
+        const $ = cheerio.load(html);
+        
+        if (site.selector) {
+          const elements = $(site.selector);
+          if (elements.length > 0) {
+            const clone = elements.clone();
+            clone.find('script, style, noscript, iframe, svg').remove();
+            text = clone.map((i, el) => $(el).text() || '').get().join('\n').replace(/\s+/g, ' ').trim();
+          } else {
+            selectorNotFound = true;
+            text = `[SELECTOR NOT FOUND] The CSS selector "${site.selector}" could not be found on the page.`;
+          }
+        } else {
+          const clone = $('body').clone();
+          clone.find('script, style, noscript, iframe, svg').remove();
+          text = clone.text().replace(/\s+/g, ' ').trim();
+        }
+      } else {
+        throw new Error(`Server returned status: ${response.status}`);
       }
+    } catch (err) {
+      console.error(`Cheerio scrape failed for ${site.name}:`, err.message);
+      text = `[ERROR] Failed to scrape website: ${err.message}`;
     }
   }
   

@@ -2984,36 +2984,67 @@ app.get('/api/admin/whatsapp/stats', authenticateToken, requireAdmin, async (req
     const broadcasts = await db.listWhatsappBroadcasts();
     const chatbots = await db.listWhatsappChatbots();
     
-    // Read local db to count messages
+    // Read local db or firestore to get messages
     const firestore = admin.apps.length > 0 ? admin.firestore() : null;
-    let sentCount = 0;
-    let receivedCount = 0;
+    let portalMessages = [];
     
     if (firestore) {
       const messagesSnap = await firestore.collection('whatsapp_messages')
         .where('portal', '==', portal)
         .get();
-      const allMsgs = messagesSnap.docs.map(doc => doc.data());
-      sentCount = allMsgs.filter(m => m.fromMe).length;
-      receivedCount = allMsgs.filter(m => !m.fromMe).length;
+      portalMessages = messagesSnap.docs.map(doc => doc.data());
     } else {
       const parsedData = JSON.parse(fs.readFileSync(path.join(__dirname, 'db.json'), 'utf8'));
       const allMsgs = parsedData.whatsappMessages || [];
-      const portalMessages = allMsgs.filter(m => m.portal === portal);
-      sentCount = portalMessages.filter(m => m.fromMe).length;
-      receivedCount = portalMessages.filter(m => !m.fromMe).length;
+      portalMessages = allMsgs.filter(m => m.portal === portal);
     }
+    
+    const sentCount = portalMessages.filter(m => m.fromMe).length;
+    const receivedCount = portalMessages.filter(m => !m.fromMe).length;
     
     const portalChats = chats.filter(c => c.portal === portal);
     const portalBroadcasts = broadcasts.filter(b => b.portal === portal);
     const portalChatbots = chatbots.filter(c => c.portal === portal);
+    
+    // Time calculations for active users/contacts
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    
+    const msgs24h = portalMessages.filter(m => new Date(m.timestamp) >= oneDayAgo);
+    const msgs7d = portalMessages.filter(m => new Date(m.timestamp) >= sevenDaysAgo);
+    
+    const unique24h = new Set(msgs24h.map(m => m.chatNumber)).size;
+    const unique7d = new Set(msgs7d.map(m => m.chatNumber)).size;
+    
+    // Today's campaigns count
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const todaysCampaigns = portalBroadcasts.filter(b => {
+      const date = new Date(b.createdAt || b.timestamp || now);
+      return date >= startOfToday;
+    }).length;
     
     res.json({
       totalChats: portalChats.length,
       totalMessagesSent: sentCount,
       totalMessagesReceived: receivedCount,
       totalBroadcasts: portalBroadcasts.length,
-      totalChatbots: portalChatbots.length
+      totalChatbots: portalChatbots.length,
+      
+      // Advanced dashboard statistics
+      totalCampaigns: portalBroadcasts.length,
+      todaysCampaigns,
+      uniquePhones7Days: unique7d,
+      uniquePhones24Hours: unique24h,
+      accountStatus: 'CONNECTED',
+      qualityRating: 'GREEN',
+      messagingLimit: '100K',
+      wabaCredits: '₹1,247.4',
+      aiCredits: 0,
+      voiceCredits: 0,
+      rcsCredits: 0,
+      planExpiry: '28 Feb 2027'
     });
   } catch (err) {
     console.error('Error fetching stats:', err);

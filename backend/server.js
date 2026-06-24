@@ -361,6 +361,109 @@ async function sendOTPEmail(email, otp) {
   }
 }
 
+// Send Watchlist Alert Email to admin(s)
+async function sendWatchlistAlertEmail(siteName, siteUrl, changeTitle, description) {
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; padding: 24px; border: 2px solid #0f172a; border-radius: 16px; max-width: 580px; background-color: #ffffff; color: #0f172a; box-shadow: 4px 4px 0px #0f172a;">
+      <div style="display: flex; align-items: center; gap: 8px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 16px;">
+        <span style="font-size: 20px;">⚡</span>
+        <h2 style="margin: 0; font-size: 18px; text-transform: uppercase; letter-spacing: -0.01em; color: #4f46e5;">Web Watchlist Alert</h2>
+      </div>
+      <p style="font-size: 14px; line-height: 1.5; color: #334155; margin: 0 0 12px 0;">
+        A content modification was detected on monitored website: <strong>${siteName}</strong>
+      </p>
+      <div style="background-color: #f8fafc; border: 1.5px solid #0f172a; border-radius: 8px; padding: 12px 16px; margin: 16px 0;">
+        <div style="font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; margin-bottom: 4px;">Target URL:</div>
+        <a href="${siteUrl}" target="_blank" style="font-size: 13px; color: #2563eb; text-decoration: underline; font-weight: bold; word-break: break-all;">${siteUrl}</a>
+      </div>
+      <div style="background-color: #fdf0d5; border: 1.5px solid #0f172a; border-radius: 8px; padding: 12px 16px; margin: 16px 0;">
+        <div style="font-size: 11px; font-weight: bold; text-transform: uppercase; color: #7f5539; margin-bottom: 4px;">Change Event:</div>
+        <div style="font-size: 13px; font-weight: bold; color: #0f172a;">${changeTitle}</div>
+      </div>
+      <div style="background-color: #0f172a; border-radius: 8px; padding: 16px; color: #f8fafc; font-family: monospace; font-size: 12px; line-height: 1.6; white-space: pre-wrap; max-height: 200px; overflow-y: auto;">
+        ${description}
+      </div>
+      <div style="margin-top: 24px; border-top: 1.5px dashed #e2e8f0; padding-top: 16px; text-align: center;">
+        <a href="https://calllogiq-frontend.vercel.app" target="_blank" style="display: inline-block; background-color: #4f46e5; color: #ffffff; padding: 10px 20px; border: 2.5px solid #0f172a; border-radius: 8px; font-size: 13px; font-weight: bold; text-decoration: none; text-transform: uppercase; box-shadow: 2px 2px 0px #0f172a;">
+          Open Dashboard
+        </a>
+      </div>
+    </div>
+  `;
+
+  let recipients = [];
+  if (process.env.ADMIN_ALERT_EMAIL) {
+    recipients = process.env.ADMIN_ALERT_EMAIL.split(',').map(e => e.trim());
+  } else {
+    try {
+      console.log('ADMIN_ALERT_EMAIL not configured in env. Retrieving admin users from database...');
+      const users = await db.listUsers();
+      const admins = users.filter(u => u.role === 'admin' && u.email);
+      recipients = admins.map(u => u.email);
+    } catch (dbErr) {
+      console.error('Failed to retrieve admin users for alert fallback:', dbErr.message);
+    }
+  }
+
+  if (recipients.length === 0) {
+    console.warn('No email recipients found for Watchlist Alert. Skipping email dispatch.');
+    return false;
+  }
+
+  console.log(`Attempting to send alert email for "${siteName}" to: ${recipients.join(', ')}`);
+
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const fromEmail = process.env.RESEND_FROM || "CallLogIQ Alerts <onboarding@resend.dev>";
+      for (const email of recipients) {
+        const response = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            from: fromEmail,
+            to: email,
+            subject: `[CallLogIQ Alert] Change detected on ${siteName}`,
+            html: htmlContent
+          })
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.message || JSON.stringify(result));
+        }
+        console.log(`Alert Email sent to ${email} via Resend API successfully.`);
+      }
+      return true;
+    } catch (err) {
+      console.error('Resend API alert email sending failed, trying SMTP fallback:', err.message);
+    }
+  }
+
+  if (mailTransporter) {
+    try {
+      const mailOptions = {
+        from: process.env.SMTP_FROM || `"CallLogIQ Alerts" <${process.env.SMTP_USER}>`,
+        to: recipients.join(', '),
+        subject: `[CallLogIQ Alert] Change detected on ${siteName}`,
+        text: `Change detected on website: ${siteName}\nURL: ${siteUrl}\n\nDetail:\n${description}`,
+        html: htmlContent
+      };
+      await mailTransporter.sendMail(mailOptions);
+      console.log(`Alert Email sent successfully to recipients via SMTP.`);
+      return true;
+    } catch (err) {
+      console.error('SMTP Alert Email sending failed:', err);
+      return false;
+    }
+  } else {
+    console.log('No SMTP transporter configured. Watchlist alert email log simulation:');
+    console.log(`[ALERT EMAIL] To: ${recipients.join(', ')} | Site: ${siteName} | Change: ${changeTitle}`);
+    return true;
+  }
+}
+
 // Firebase Admin SDK Initialization
 const admin = require('firebase-admin');
 
@@ -2351,15 +2454,23 @@ async function checkWebsiteForChanges(site) {
     console.log(`Detected change on monitored website: ${site.name} (${site.url})`);
     const snippetLimit = text.substring(0, 180) + (text.length > 180 ? '...' : '');
     
+    const changeTitle = `Change detected on ${site.name}`;
+    const changeDesc = site.selector 
+      ? `Selected element change detected. Content: "${snippetLimit}"` 
+      : `Content updated on website. Preview: "${snippetLimit}"`;
+
     await db.createWebNotification({
       websiteId: site.id,
       websiteName: site.name,
       url: site.url,
-      title: `Change detected on ${site.name}`,
-      description: site.selector 
-        ? `Selected element change detected. Content: "${snippetLimit}"` 
-        : `Content updated on website. Preview: "${snippetLimit}"`,
+      title: changeTitle,
+      description: changeDesc,
       createdAt: nowStr
+    });
+    
+    // Trigger SMTP / Resend alert email in background
+    sendWatchlistAlertEmail(site.name, site.url, changeTitle, changeDesc).catch(err => {
+      console.error('Error dispatching watchlist alert email:', err);
     });
     
     return true;
@@ -2743,13 +2854,19 @@ app.post('/api/admin/web-notifications/simulate-change/:siteId', authenticateTok
       latestContentText: mockContent
     });
     
+    const changeTitle = `Change detected on ${site.name}`;
     await db.createWebNotification({
       websiteId: site.id,
       websiteName: site.name,
       url: site.url,
-      title: `Change detected on ${site.name}`,
+      title: changeTitle,
       description: mockContent,
       createdAt: nowStr
+    });
+    
+    // Trigger simulated alert email
+    sendWatchlistAlertEmail(site.name, site.url, `[SIMULATION] ${changeTitle}`, mockContent).catch(err => {
+      console.error('Error dispatching simulated alert email:', err);
     });
     
     res.json({ message: `Simulated change notification created for ${site.name}.` });

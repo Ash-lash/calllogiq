@@ -1,4 +1,5 @@
 require('dotenv').config();
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // Bypass SSL certificate validation for misconfigured government portals
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
@@ -33,6 +34,18 @@ try {
 
 const https = require('https');
 const http = require('http');
+
+// Global Scraper Proxy dispatcher for bypassing geo/datacenter blocks
+let proxyDispatcher = null;
+if (process.env.SCRAPER_PROXY) {
+  try {
+    const { ProxyAgent } = require('undici');
+    proxyDispatcher = new ProxyAgent(process.env.SCRAPER_PROXY);
+    console.log('Scraper proxy dispatcher initialized using:', process.env.SCRAPER_PROXY);
+  } catch (err) {
+    console.error('Failed to initialize ProxyAgent:', err.message);
+  }
+}
 
 // Cloudinary SDK Configuration
 const cloudinary = require('cloudinary').v2;
@@ -2396,12 +2409,17 @@ async function checkWebsiteForChanges(site) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
       
-      const response = await fetch(site.url, {
+      const fetchOpts = {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         },
         signal: controller.signal
-      });
+      };
+      if (proxyDispatcher) {
+        fetchOpts.dispatcher = proxyDispatcher;
+      }
+
+      const response = await fetch(site.url, fetchOpts);
       clearTimeout(timeoutId);
       
       if (response.ok) {
@@ -2427,8 +2445,9 @@ async function checkWebsiteForChanges(site) {
         throw new Error(`Server returned status: ${response.status}`);
       }
     } catch (err) {
-      console.error(`Cheerio scrape failed for ${site.name}:`, err.message);
-      text = `[ERROR] Failed to scrape website: ${err.message}`;
+      console.error(`Cheerio scrape failed for ${site.name}:`, err.message, err.cause);
+      const causeStr = err.cause ? ` (Cause: ${err.cause.message || err.cause})` : '';
+      text = `[ERROR] Failed to scrape website: ${err.message}${causeStr}`;
     }
   }
   
@@ -2598,11 +2617,15 @@ app.get('/api/admin/web-notifications/proxy', authenticateTokenOrQuery, requireA
 
   try {
     console.log(`Proxying request for visual selector: ${targetUrl}`);
-    const response = await fetch(targetUrl, {
+    const fetchOpts = {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
-    });
+    };
+    if (proxyDispatcher) {
+      fetchOpts.dispatcher = proxyDispatcher;
+    }
+    const response = await fetch(targetUrl, fetchOpts);
 
     if (!response.ok) {
       return res.status(response.status).send(`Failed to fetch target URL. Status: ${response.status}`);
@@ -2776,8 +2799,9 @@ app.get('/api/admin/web-notifications/proxy', authenticateTokenOrQuery, requireA
 
     res.send($.html());
   } catch (err) {
-    console.error('Proxy error:', err);
-    res.status(500).send(`Error proxying website: ${err.message}`);
+    console.error('Proxy error:', err, err.cause);
+    const causeStr = err.cause ? ` (Cause: ${err.cause.message || err.cause})` : '';
+    res.status(500).send(`Error proxying website: ${err.message}${causeStr}`);
   }
 });
 

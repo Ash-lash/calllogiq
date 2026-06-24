@@ -2812,12 +2812,42 @@ app.get('/api/admin/whatsapp/webhook', (req, res) => {
   return res.status(403).send('Verification failed');
 });
 
+// Debugging endpoint for webhook events and environment configuration
+app.get('/api/admin/whatsapp/webhook-debug', (req, res) => {
+  res.json({
+    firebaseInitialized: admin.apps.length > 0,
+    env: {
+      WHATSAPP_TOKEN: WHATSAPP_TOKEN ? `${WHATSAPP_TOKEN.substring(0, 10)}... (length: ${WHATSAPP_TOKEN.length})` : 'missing',
+      WHATSAPP_WABA_ID: WHATSAPP_WABA_ID || 'missing',
+      WHATSAPP_GYC_PHONE_NUMBER_ID: WHATSAPP_GYC_PHONE_NUMBER_ID || 'missing',
+      WHATSAPP_VTR_PHONE_NUMBER_ID: WHATSAPP_VTR_PHONE_NUMBER_ID || 'missing',
+      WHATSAPP_VERIFY_TOKEN: WHATSAPP_VERIFY_TOKEN || 'missing',
+      PORT: process.env.PORT || 'missing',
+      NODE_ENV: process.env.NODE_ENV || 'missing'
+    },
+    logs: global.whatsappWebhookLogs || []
+  });
+});
+
 // 2. Webhook Event Handler (POST)
 app.post('/api/admin/whatsapp/webhook', async (req, res) => {
   const body = req.body;
   
   // Acknowledge receipt of the webhook to Meta immediately
   res.sendStatus(200);
+
+  // Store in global logs for debugging
+  if (!global.whatsappWebhookLogs) {
+    global.whatsappWebhookLogs = [];
+  }
+  global.whatsappWebhookLogs.unshift({
+    timestamp: new Date().toISOString(),
+    headers: req.headers,
+    body: body
+  });
+  if (global.whatsappWebhookLogs.length > 50) {
+    global.whatsappWebhookLogs.pop();
+  }
 
   try {
     if (body.object === 'whatsapp_business_account') {

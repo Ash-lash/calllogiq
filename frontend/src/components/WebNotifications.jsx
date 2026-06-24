@@ -1891,7 +1891,7 @@ function WebNotifications({ user, token }) {
                     gap: '4px',
                     marginTop: '2px'
                   }}>
-                    <Check size={10} /> CSS Selector Matched
+                    <Check size={10} /> {tempSelector.includes(',') ? `${tempSelector.split(',').length} Elements Selected` : 'CSS Selector Matched'}
                   </div>
                 )}
               </div>

@@ -2701,13 +2701,36 @@ app.get('/api/admin/web-notifications/proxy', authenticateTokenOrQuery, requireA
               e.preventDefault();
               e.stopPropagation();
               const target = e.target;
-              document.querySelectorAll('.antigravity-selected')
-                .forEach(el => el.classList.remove('antigravity-selected'));
               target.classList.remove('antigravity-hovered');
-              target.classList.add('antigravity-selected');
-              const selector = getCssSelector(target);
-              const text = (target.innerText || target.textContent || '').trim();
-              window.parent.postMessage({ type: 'SELECTOR_SELECTED', selector, text }, '*');
+              
+              // Toggle selection
+              if (target.classList.contains('antigravity-selected')) {
+                target.classList.remove('antigravity-selected');
+              } else {
+                target.classList.add('antigravity-selected');
+              }
+              
+              // Collect selectors and text from all selected elements
+              const selectedEls = document.querySelectorAll('.antigravity-selected');
+              const selectors = [];
+              const texts = [];
+              
+              selectedEls.forEach(el => {
+                selectors.push(getCssSelector(el));
+                const txt = (el.innerText || el.textContent || '').trim();
+                if (txt) {
+                  texts.push(txt);
+                }
+              });
+              
+              const combinedSelector = selectors.join(', ');
+              const combinedText = texts.join('\n\n--- Element ---\n\n');
+              
+              window.parent.postMessage({ 
+                type: 'SELECTOR_SELECTED', 
+                selector: combinedSelector, 
+                text: combinedText 
+              }, '*');
             } else {
               // In BROWSE mode: let JS run naturally, only intercept real page navigations
               const anchor = e.target.closest('a[href]');

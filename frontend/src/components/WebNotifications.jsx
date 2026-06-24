@@ -29,6 +29,7 @@ function WebNotifications({ user, token }) {
   const [selectedSiteIds, setSelectedSiteIds] = useState([]);
   const [dialog, setDialog] = useState(null); // { type: 'alert' | 'confirm', title: '', message: '', onConfirm: () => {} }
   const [copiedId, setCopiedId] = useState(null);
+  const [expandedSelectors, setExpandedSelectors] = useState({});
 
   // Visual Selector States
   const [showVisualSelector, setShowVisualSelector] = useState(false);
@@ -997,54 +998,136 @@ function WebNotifications({ user, token }) {
                     {/* CSS Selector and info bar */}
                     <div style={{
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
+                      flexDirection: 'column',
+                      gap: '8px',
                       marginTop: '12px',
                       backgroundColor: '#f8fafc',
                       border: '1.5px solid #e2e8f0',
                       borderRadius: '8px',
-                      padding: '8px 12px'
+                      padding: '10px 12px'
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Tag size={12} style={{ color: '#4f46e5' }} />
-                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase' }}>Target Area:</span>
-                        <code style={{
-                          fontSize: '11px',
-                          fontFamily: 'monospace',
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '8px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <Tag size={12} style={{ color: '#4f46e5' }} />
+                          <span style={{ fontSize: '11px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase' }}>Target Area:</span>
+                          {site.selector ? (
+                            <>
+                              <span style={{
+                                fontSize: '11px',
+                                fontWeight: 800,
+                                backgroundColor: '#eff6ff',
+                                color: '#1d4ed8',
+                                border: '1.5px solid #0f172a',
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                boxShadow: '1.5px 1.5px 0px #0f172a'
+                              }}>
+                                {(() => {
+                                  const count = site.selector.split(',').length;
+                                  return count > 1 ? `${count} Elements Monitored` : '1 Element Monitored';
+                                })()}
+                              </span>
+                              <button
+                                onClick={() => setExpandedSelectors(prev => ({ ...prev, [site.id]: !prev[site.id] }))}
+                                style={{
+                                  background: 'none',
+                                  border: '1.5px solid #0f172a',
+                                  cursor: 'pointer',
+                                  color: '#0f172a',
+                                  fontSize: '9px',
+                                  fontWeight: 900,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '2px',
+                                  textTransform: 'uppercase',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  backgroundColor: '#ffffff',
+                                  boxShadow: '1.5px 1.5px 0px #0f172a',
+                                  transition: 'all 0.1s ease'
+                                }}
+                                className="action-btn-hover"
+                              >
+                                {expandedSelectors[site.id] ? 'Hide Developer CSS' : 'Show Developer CSS'}
+                              </button>
+                            </>
+                          ) : (
+                            <span style={{
+                              fontSize: '11px',
+                              fontWeight: 800,
+                              backgroundColor: '#f1f5f9',
+                              color: '#475569',
+                              border: '1.5px solid #0f172a',
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              boxShadow: '1.5px 1.5px 0px #0f172a'
+                            }}>
+                              Whole Page Monitored
+                            </span>
+                          )}
+                        </div>
+
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b' }}>
+                          Last Checked: <strong style={{ color: '#0f172a' }}>{formatTimeAgo(site.lastCheckedAt)}</strong>
+                        </div>
+                      </div>
+
+                      {site.selector && expandedSelectors[site.id] && (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '6px',
                           backgroundColor: '#fdf0d5',
-                          border: '1px solid #0f172a',
-                          padding: '1px 6px',
-                          borderRadius: '4px',
-                          fontWeight: 800,
-                          color: '#7f5539'
+                          border: '1.5px solid #0f172a',
+                          padding: '8px 12px',
+                          borderRadius: '6px',
+                          marginTop: '4px',
+                          position: 'relative'
                         }}>
-                          {site.selector || 'Full Document Body'}
-                        </code>
-                        {site.selector && (
-                          <button
-                            onClick={() => copyToClipboard(site.selector, site.id)}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              cursor: 'pointer',
-                              color: '#64748b',
-                              display: 'flex',
-                              alignItems: 'center',
-                              padding: '2px'
-                            }}
-                            title="Copy CSS Selector"
-                          >
-                            <Copy size={11} />
-                          </button>
-                        )}
-                        {copiedId === site.id && (
-                          <span style={{ fontSize: '9px', color: '#10b981', fontWeight: 800, textTransform: 'uppercase' }}>Copied!</span>
-                        )}
-                      </div>
-                      
-                      <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b' }}>
-                        Last Checked: <strong style={{ color: '#0f172a' }}>{formatTimeAgo(site.lastCheckedAt)}</strong>
-                      </div>
+                          <code style={{
+                            fontSize: '10px',
+                            fontFamily: 'monospace',
+                            fontWeight: 700,
+                            color: '#7f5539',
+                            wordBreak: 'break-all',
+                            whiteSpace: 'pre-wrap',
+                            flex: 1
+                          }}>
+                            {site.selector}
+                          </code>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                            <button
+                              onClick={() => copyToClipboard(site.selector, site.id)}
+                              style={{
+                                background: '#ffffff',
+                                border: '1.5px solid #0f172a',
+                                cursor: 'pointer',
+                                color: '#0f172a',
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '4px',
+                                borderRadius: '4px',
+                                boxShadow: '1px 1px 0px #0f172a'
+                              }}
+                              title="Copy CSS Selector"
+                            >
+                              <Copy size={12} />
+                            </button>
+                            {copiedId === site.id && (
+                              <span style={{ fontSize: '9px', color: '#10b981', fontWeight: 800, textTransform: 'uppercase' }}>Copied!</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* expandable latest scraped content section */}

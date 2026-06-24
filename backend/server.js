@@ -2776,18 +2776,7 @@ app.post('/api/admin/web-notifications/clear', authenticateToken, requireAdmin, 
 app.post('/api/admin/web-notifications/sites/:id/clear-alerts', authenticateToken, requireAdmin, async (req, res) => {
   const { id } = req.params;
   try {
-    const firestore = db.getFirestore ? db.getFirestore() : null;
-    if (firestore) {
-      const snapshot = await firestore.collection('web_notifications').where('websiteId', '==', id).get();
-      const batch = firestore.batch();
-      snapshot.forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
-    } else {
-      const data = fs.readFileSync(path.join(__dirname, 'db.json'), 'utf8');
-      const parsed = JSON.parse(data);
-      parsed.webNotifications = (parsed.webNotifications || []).filter(n => n.websiteId !== id);
-      fs.writeFileSync(path.join(__dirname, 'db.json'), JSON.stringify(parsed, null, 2), 'utf8');
-    }
+    await db.clearWebNotificationsForSite(id);
     res.json({ message: 'Alerts cleared for website' });
   } catch (err) {
     console.error('Error clearing alerts for website:', err);

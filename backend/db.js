@@ -939,6 +939,22 @@ const db = {
     }
   },
 
+  clearWebNotificationsForSite: async (websiteId) => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const snapshot = await firestore.collection('web_notifications').where('websiteId', '==', websiteId).get();
+      const batch = firestore.batch();
+      snapshot.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+      return true;
+    } else {
+      const data = readLocalDB();
+      data.webNotifications = (data.webNotifications || []).filter(n => n.websiteId !== websiteId);
+      writeLocalDB(data);
+      return true;
+    }
+  },
+
   // --- WHATSAPP CHATS ---
   listWhatsappChats: async () => {
     const firestore = getFirestore();

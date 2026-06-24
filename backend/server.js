@@ -34,12 +34,12 @@ try {
 
 const https = require('https');
 const http = require('http');
+const { fetch, ProxyAgent } = require('undici'); // Override global fetch to ensure undici version parity
 
 // Global Scraper Proxy dispatcher for bypassing geo/datacenter blocks
 let proxyDispatcher = null;
 if (process.env.SCRAPER_PROXY) {
   try {
-    const { ProxyAgent } = require('undici');
     proxyDispatcher = new ProxyAgent(process.env.SCRAPER_PROXY);
     console.log('Scraper proxy dispatcher initialized using:', process.env.SCRAPER_PROXY);
   } catch (err) {

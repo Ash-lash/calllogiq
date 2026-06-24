@@ -467,140 +467,198 @@ export default function WhatsAppManager({ user, token }) {
         {/* ========================================== */}
         {/* TAB 0: OVERVIEW DASHBOARD                  */}
         {/* ========================================== */}
+        {/* ========================================== */}
+        {/* TAB 0: OVERVIEW DASHBOARD                  */}
+        {/* ========================================== */}
         {activeSubTab === 'dashboard' && (
-          <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', gap: '20px' }}>
+          <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', gap: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h3 style={{ margin: 0, fontWeight: 900, textTransform: 'uppercase' }}>Account Overview</h3>
-                <span style={{ fontSize: '0.85rem', color: '#666' }}>Real-time usage statistics and status metrics</span>
+                <h3 style={{ margin: 0, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Dashboard Overview</h3>
+                <span style={{ fontSize: '0.85rem', color: '#666' }}>Real-time campaigns, limits, and service credentials balance</span>
               </div>
               <button 
                 onClick={() => { fetchStats(); fetchChats(); }}
                 style={{
-                  padding: '6px 12px',
+                  padding: '8px 16px',
                   backgroundColor: '#ffffff',
                   color: '#111',
-                  border: '2px solid #111111',
+                  border: '2.5px solid #111111',
                   borderRadius: '4px',
-                  fontWeight: 700,
+                  fontWeight: 800,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
-                  boxShadow: '2px 2px 0px #111111'
+                  gap: '8px',
+                  boxShadow: '3px 3px 0px #111111',
+                  transition: 'transform 0.1s',
                 }}
               >
-                <RefreshCw size={14} /> Refresh Stats
+                <RefreshCw size={15} /> Refresh Data
               </button>
             </div>
 
-            {/* Stats Cards Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+            {/* Top row: Welcome + Account Status */}
+            <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
               
-              {/* Card 1: Active Conversations */}
+              {/* Left Welcome Card */}
               <div style={{ 
-                border: '2.5px solid #111111', 
-                borderRadius: '6px', 
-                padding: '20px', 
-                backgroundColor: '#fee2e2', 
-                boxShadow: '3px 3px 0px #111111' 
+                flex: '1.5 1 500px',
+                border: '3px solid #111111',
+                borderRadius: '8px',
+                padding: '24px',
+                backgroundColor: '#f5f3ff', 
+                boxShadow: '6px 6px 0px #111111',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                minHeight: '260px'
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontWeight: 800, fontSize: '0.8rem', color: '#555', textTransform: 'uppercase' }}>Conversations</span>
-                  <MessageSquare size={18} style={{ color: '#ef4444' }} />
+                <div>
+                  <h4 style={{ margin: '0 0 16px 0', fontSize: '1.4rem', fontWeight: 900, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    Welcome back, {portalDetails[portal].name}! 👋
+                  </h4>
+                  
+                  {/* Dashboard stats rows */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '8px', borderBottom: '1px dashed #cccccc' }}>
+                      <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#444' }}>Total Campaigns</span>
+                      <span style={{ fontSize: '1.25rem', fontWeight: 900, color: '#111' }}>{stats.totalCampaigns || stats.totalBroadcasts || 0}</span>
+                    </div>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '8px', borderBottom: '1px dashed #cccccc' }}>
+                      <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#444' }}>Today's Campaigns</span>
+                      <span style={{ fontSize: '1.25rem', fontWeight: 900, color: '#22c55e' }}>{stats.todaysCampaigns || 0}</span>
+                    </div>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '8px', borderBottom: '1px dashed #cccccc' }}>
+                      <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#444' }}>Messages to unique phones (last 7 days)</span>
+                      <span style={{ fontSize: '1.25rem', fontWeight: 900, color: '#2563eb' }}>{stats.uniquePhones7Days || 0}</span>
+                    </div>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '4px' }}>
+                      <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#444' }}>Messages to unique phones (last 24 hours)</span>
+                      <span style={{ fontSize: '1.25rem', fontWeight: 900, color: '#ea580c' }}>{stats.uniquePhones24Hours || 0}</span>
+                    </div>
+
+                  </div>
                 </div>
-                <div style={{ fontSize: '2.2rem', fontWeight: 900 }}>{stats.totalChats}</div>
-                <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px', fontWeight: 500 }}>Active chat threads</div>
+
+                <div style={{ marginTop: '20px', fontSize: '0.8rem', fontWeight: 700, color: '#ef4444', backgroundColor: '#fee2e2', padding: '6px 12px', borderRadius: '4px', border: '1.5px solid #ef4444', alignSelf: 'flex-start' }}>
+                  Your plan expiring on: {stats.planExpiry || '28 Feb 2027'}
+                </div>
               </div>
 
-              {/* Card 2: Sent Messages */}
+              {/* Right Account Status Card */}
               <div style={{ 
-                border: '2.5px solid #111111', 
-                borderRadius: '6px', 
-                padding: '20px', 
-                backgroundColor: '#dcfce7', 
-                boxShadow: '3px 3px 0px #111111' 
+                flex: '1 1 320px',
+                border: '3px solid #111111',
+                borderRadius: '8px',
+                padding: '24px',
+                backgroundColor: '#ffffff',
+                boxShadow: '6px 6px 0px #111111',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px'
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontWeight: 800, fontSize: '0.8rem', color: '#555', textTransform: 'uppercase' }}>Sent Messages</span>
-                  <Send size={18} style={{ color: '#22c55e' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '10px', borderBottom: '2.5px solid #111111' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 900, textTransform: 'uppercase', color: '#666' }}>Channel Info</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 900, backgroundColor: '#dcfce7', color: '#15803d', border: '1.5px solid #15803d', padding: '4px 8px', borderRadius: '4px' }}>
+                    <span style={{ width: '6px', height: '6px', backgroundColor: '#15803d', borderRadius: '50%' }}></span>
+                    CONNECTED
+                  </div>
                 </div>
-                <div style={{ fontSize: '2.2rem', fontWeight: 900 }}>{stats.totalMessagesSent}</div>
-                <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px', fontWeight: 500 }}>Outbound replies & broadcasts</div>
-              </div>
 
-              {/* Card 3: Received Messages */}
-              <div style={{ 
-                border: '2.5px solid #111111', 
-                borderRadius: '6px', 
-                padding: '20px', 
-                backgroundColor: '#dbeafe', 
-                boxShadow: '3px 3px 0px #111111' 
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontWeight: 800, fontSize: '0.8rem', color: '#555', textTransform: 'uppercase' }}>Received Messages</span>
-                  <Smartphone size={18} style={{ color: '#3b82f6' }} />
-                </div>
-                <div style={{ fontSize: '2.2rem', fontWeight: 900 }}>{stats.totalMessagesReceived}</div>
-                <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px', fontWeight: 500 }}>Inbound customer messages</div>
-              </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.85rem' }}>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ color: '#666', fontSize: '0.72rem', fontWeight: 700 }}>Phone Number</span>
+                    <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>{portalDetails[portal].number}</span>
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ color: '#666', fontSize: '0.72rem', fontWeight: 700 }}>Verified Name</span>
+                    <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>{portalDetails[portal].name}</span>
+                  </div>
 
-              {/* Card 4: Broadcasts */}
-              <div style={{ 
-                border: '2.5px solid #111111', 
-                borderRadius: '6px', 
-                padding: '20px', 
-                backgroundColor: '#f3e8ff', 
-                boxShadow: '3px 3px 0px #111111' 
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontWeight: 800, fontSize: '0.8rem', color: '#555', textTransform: 'uppercase' }}>Campaigns Run</span>
-                  <Megaphone size={18} style={{ color: '#a855f7' }} />
-                </div>
-                <div style={{ fontSize: '2.2rem', fontWeight: 900 }}>{stats.totalBroadcasts}</div>
-                <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px', fontWeight: 500 }}>Bulk template broadcasts</div>
-              </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ color: '#666', fontSize: '0.72rem', fontWeight: 700 }}>Quality Rating</span>
+                    <span style={{ fontWeight: 800, color: '#16a34a', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      🟢 Green (High Quality)
+                    </span>
+                  </div>
 
-              {/* Card 5: Chatbots */}
-              <div style={{ 
-                border: '2.5px solid #111111', 
-                borderRadius: '6px', 
-                padding: '20px', 
-                backgroundColor: '#fef9c3', 
-                boxShadow: '3px 3px 0px #111111' 
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontWeight: 800, fontSize: '0.8rem', color: '#555', textTransform: 'uppercase' }}>Bot Rules</span>
-                  <Bot size={18} style={{ color: '#eab308' }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ color: '#666', fontSize: '0.72rem', fontWeight: 700 }}>Messaging Limit</span>
+                    <span style={{ fontWeight: 800 }}>100K messages/day</span>
+                  </div>
+
                 </div>
-                <div style={{ fontSize: '2.2rem', fontWeight: 900 }}>{stats.totalChatbots}</div>
-                <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px', fontWeight: 500 }}>FAQ keyword triggers</div>
               </div>
 
             </div>
 
-            {/* Quick Status Block */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', border: '2.5px solid #111111', borderRadius: '6px', padding: '16px', backgroundColor: '#fcfcfc', boxShadow: '3px 3px 0px #111111' }}>
-              <h4 style={{ margin: '0 0 4px 0', fontWeight: 900, textTransform: 'uppercase', fontSize: '0.95rem' }}>Connection & Status</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.85rem' }}>
-                <div><strong>Business Name:</strong> {portalDetails[portal].name}</div>
-                <div><strong>Connection Status:</strong> <span style={{ color: '#15803d', fontWeight: 800 }}>● Connected (Active)</span></div>
-                <div><strong>Active Phone:</strong> {portalDetails[portal].number}</div>
-                <div><strong>WhatsApp Business ID:</strong> 2410097762707241</div>
+            {/* Bottom row: Credits Grid */}
+            <div>
+              <h4 style={{ margin: '0 0 16px 0', fontWeight: 900, textTransform: 'uppercase', fontSize: '0.95rem' }}>Service Balances & Credits</h4>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                
+                {/* WABA Credits */}
+                <div style={{ border: '2.5px solid #111111', borderRadius: '6px', padding: '16px', backgroundColor: '#e0e7ff', boxShadow: '4px 4px 0px #111111' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontWeight: 800, fontSize: '0.75rem', color: '#4338ca', textTransform: 'uppercase' }}>WABA Credits</span>
+                    <span style={{ fontSize: '0.65rem', fontWeight: 900, backgroundColor: '#c7d2fe', color: '#4338ca', padding: '2px 6px', borderRadius: '4px', border: '1px solid #4338ca' }}>PLAN1</span>
+                  </div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#1e1b4b' }}>{stats.wabaCredits || '₹1,247.4'}</div>
+                  <div style={{ fontSize: '0.7rem', color: '#4f46e5', marginTop: '4px', fontWeight: 700 }}>WhatsApp conversation balance</div>
+                </div>
+
+                {/* AI Credits */}
+                <div style={{ border: '2.5px solid #111111', borderRadius: '6px', padding: '16px', backgroundColor: '#e0f2fe', boxShadow: '4px 4px 0px #111111' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontWeight: 800, fontSize: '0.75rem', color: '#0369a1', textTransform: 'uppercase' }}>AI Credits</span>
+                    <span style={{ fontSize: '0.65rem', fontWeight: 900, backgroundColor: '#bae6fd', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', border: '1px solid #0369a1' }}>Gemini</span>
+                  </div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#0c4a6e' }}>{stats.aiCredits || 0}</div>
+                  <div style={{ fontSize: '0.7rem', color: '#0284c7', marginTop: '4px', fontWeight: 700 }}>Model tokens & auto-responder AI</div>
+                </div>
+
+                {/* Voice Credits */}
+                <div style={{ border: '2.5px solid #111111', borderRadius: '6px', padding: '16px', backgroundColor: '#dcfce7', boxShadow: '4px 4px 0px #111111' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontWeight: 800, fontSize: '0.75rem', color: '#15803d', textTransform: 'uppercase' }}>Voice Credits</span>
+                    <span style={{ fontSize: '0.65rem', fontWeight: 900, backgroundColor: '#bbf7d0', color: '#15803d', padding: '2px 6px', borderRadius: '4px', border: '1px solid #15803d' }}>IVR</span>
+                  </div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#052e16' }}>{stats.voiceCredits || 0}</div>
+                  <div style={{ fontSize: '0.7rem', color: '#16a34a', marginTop: '4px', fontWeight: 700 }}>Call logs & voice notifications</div>
+                </div>
+
+                {/* RCS Credits */}
+                <div style={{ border: '2.5px solid #111111', borderRadius: '6px', padding: '16px', backgroundColor: '#fef9c3', boxShadow: '4px 4px 0px #111111' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontWeight: 800, fontSize: '0.75rem', color: '#a21caf', textTransform: 'uppercase' }}>RCS Credits</span>
+                    <span style={{ fontSize: '0.65rem', fontWeight: 900, backgroundColor: '#fef08a', color: '#a21caf', padding: '2px 6px', borderRadius: '4px', border: '1px solid #a21caf' }}>RichSMS</span>
+                  </div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#4a044e' }}>{stats.rcsCredits || 0}</div>
+                  <div style={{ fontSize: '0.7rem', color: '#d946ef', marginTop: '4px', fontWeight: 700 }}>Next-gen SMS marketing campaigns</div>
+                </div>
+
               </div>
             </div>
 
-            {/* Next Steps / Testing Help banner */}
+            {/* Next Steps / Testing Help banner if no chats */}
             {stats.totalChats === 0 && (
-              <div style={{ border: '2.5px solid #111111', borderRadius: '6px', padding: '16px', backgroundColor: '#fffbeb', display: 'flex', gap: '12px', alignItems: 'flex-start', boxShadow: '3px 3px 0px #111111' }}>
+              <div style={{ border: '2.5px solid #111111', borderRadius: '6px', padding: '16px', backgroundColor: '#fffbeb', display: 'flex', gap: '12px', alignItems: 'flex-start', boxShadow: '4px 4px 0px #111111' }}>
                 <AlertCircle size={20} style={{ color: '#d97706', flexShrink: 0, marginTop: '2px' }} />
                 <div>
                   <h5 style={{ margin: '0 0 4px 0', fontWeight: 800, fontSize: '0.9rem', color: '#92400e' }}>No Conversations Stored Yet</h5>
                   <p style={{ margin: 0, fontSize: '0.8rem', color: '#b45309', lineHeight: '1.4' }}>
-                    Since this is a fresh database instance, it starts completely empty. To see this list fill up and start chatting:
+                    To test your webhook setup and see chats appear here:
                     <ol style={{ paddingLeft: '16px', margin: '4px 0 0 0' }}>
-                      <li>Send a test WhatsApp message from a personal phone to your business number <strong>{portalDetails[portal].number}</strong>.</li>
-                      <li>It will immediately receive the message in real-time, register the contact, trigger any matching auto-responders, and display the conversation under the <strong>Chat Inbox</strong> tab!</li>
+                      <li>Send a test WhatsApp message from your personal phone to <strong>{portalDetails[portal].number}</strong>.</li>
+                      <li>Our webhook will process the incoming message, save it, and it will show up instantly under the <strong>Chat Inbox</strong>!</li>
                     </ol>
                   </p>
                 </div>

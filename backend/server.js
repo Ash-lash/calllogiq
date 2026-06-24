@@ -3245,6 +3245,67 @@ app.delete('/api/admin/whatsapp/chatbots/:id', authenticateToken, requireAdmin, 
   }
 });
 
+// Seed default WhatsApp Chatbots
+async function seedWhatsappChatbots() {
+  try {
+    const bots = await db.listWhatsappChatbots();
+    if (bots && bots.length > 0) {
+      console.log('WhatsApp chatbots already configured. Skipping seeding.');
+      return;
+    }
+    
+    console.log('Seeding default WhatsApp chatbots...');
+    await db.createWhatsappChatbot({
+      id: 'bot_gyc_hi_' + Date.now(),
+      portal: 'gyc',
+      triggerWord: 'hi',
+      triggerType: 'contains',
+      replyText: `👋 Hi there!
+
+Thanks for reaching out to GET YOUR COLLEGE🎓
+
+We have received your enquiry. Our admission expert will connect with you shortly to guide you step-by-step.
+
+👉 To get faster guidance, kindly fill your details here:
+🔗 Google Form:
+https://forms.gle/cY9bcEWpBcNJcUmf9
+
+▶️ YouTube:
+https://www.youtube.com/@getyourcollege_gyc
+
+📌 We provide:
+✅ Engineering (TNEA + Management Quota) Admission Guidance
+✅ Medical (MBBS / BDS / AYUSH / Nursing) Admission Guidance
+✅ India & Abroad Admissions Guidance
+✅ Cut-off Based College Selection
+✅ End-to-End Counselling Support
+
+📞 For instant support, WhatsApp us:
+Engineering: 9150391925
+Medical: 9884362838`,
+      active: true
+    });
+
+    await db.createWhatsappChatbot({
+      id: 'bot_vtr_hi_' + Date.now(),
+      portal: 'vtr',
+      triggerWord: 'hi',
+      triggerType: 'contains',
+      replyText: `👋 Hi there!
+
+Thanks for reaching out to VTR EDU SOLUTIONS.
+
+Our representative will connect with you shortly.
+
+📞 Contact: 9884362838`,
+      active: true
+    });
+    console.log('WhatsApp chatbots seeded successfully.');
+  } catch (err) {
+    console.error('Failed to seed WhatsApp chatbots:', err);
+  }
+}
+
 // Start Express server
 app.listen(PORT, async () => {
   console.log(`CallLogIQ backend running on port ${PORT}`);
@@ -3263,6 +3324,13 @@ app.listen(PORT, async () => {
     await db.seedAssets();
   } catch (err) {
     console.error('Failed to run startup assets seeder:', err);
+  }
+
+  // Run startup chatbots seeder
+  try {
+    await seedWhatsappChatbots();
+  } catch (err) {
+    console.error('Failed to run startup chatbots seeder:', err);
   }
 
   // Start background web monitoring crawler loop

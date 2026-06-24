@@ -562,6 +562,10 @@ app.get('/', (req, res) => {
   res.json({ status: 'healthy', service: 'CallLogIQ Backend', timestamp: new Date() });
 });
 app.get('/api/health', (req, res) => {
+  // Trigger background check on cron ping (runs asynchronously)
+  triggerBackgroundWebCheck().catch(err => {
+    console.error('Failed to trigger background web check:', err);
+  });
   res.json({ status: 'healthy', service: 'CallLogIQ Backend API' });
 });
 
@@ -2479,20 +2483,38 @@ async function checkWebsiteForChanges(site) {
   return false;
 }
 
-function startWebNotificationCrawlLoop() {
-  setInterval(async () => {
-    console.log('Running background web monitor check...');
-    try {
-      const sites = await db.listTrackedWebsites();
-      for (const site of sites) {
-        if (site.enabled !== false) {
-          await checkWebsiteForChanges(site);
-        }
+let lastBackgroundCheckTime = 0;
+
+async function triggerBackgroundWebCheck() {
+  const now = Date.now();
+  // Throttle: don't run more than once every 3 minutes
+  if (now - lastBackgroundCheckTime < 3 * 60 * 1000) {
+    return;
+  }
+  lastBackgroundCheckTime = now;
+  console.log('Running background web monitor check...');
+  try {
+    const sites = await db.listTrackedWebsites();
+    for (const site of sites) {
+      if (site.enabled !== false) {
+        await checkWebsiteForChanges(site);
       }
-    } catch (err) {
-      console.error('Error running web monitor loop:', err);
     }
-  }, 30 * 60 * 1000);
+  } catch (err) {
+    console.error('Error in background web monitor check:', err);
+  }
+}
+
+function startWebNotificationCrawlLoop() {
+  // Run initial check on startup after a 10s delay
+  setTimeout(() => {
+    triggerBackgroundWebCheck().catch(err => console.error(err));
+  }, 10000);
+
+  // Set interval to check every 5 minutes
+  setInterval(async () => {
+    await triggerBackgroundWebCheck();
+  }, 5 * 60 * 1000);
 }
 
 // --- WEB MONITORING REST ROUTING (Admin only) ---

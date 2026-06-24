@@ -2724,7 +2724,7 @@ app.get('/api/admin/web-notifications/proxy', authenticateTokenOrQuery, requireA
               });
               
               const combinedSelector = selectors.join(', ');
-              const combinedText = texts.join('\n\n--- Element ---\n\n');
+              const combinedText = texts.join('\\n\\n--- Element ---\\n\\n');
               
               window.parent.postMessage({ 
                 type: 'SELECTOR_SELECTED', 

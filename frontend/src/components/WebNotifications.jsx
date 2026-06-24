@@ -3,7 +3,7 @@ import {
   Globe, Bell, Plus, Trash2, RefreshCw, ExternalLink, 
   AlertCircle, Info, Check, Sparkles, Search, Sliders, ToggleLeft, ToggleRight, Trash,
   ChevronRight, ChevronDown, Settings, Play, Cloud, Laptop, HelpCircle, Tag, CheckSquare, Square,
-  List, BarChart2, Users, BookOpen, MessageSquare, Languages, ChevronLeft, Mail, Moon, Sun
+  List, BarChart2, Users, BookOpen, MessageSquare, Languages, ChevronLeft, Mail, Moon, Sun, Copy, Pause
 } from 'lucide-react';
 import API_BASE from '../api';
 
@@ -16,7 +16,7 @@ function WebNotifications({ user, token }) {
   
   // Search and Filter States
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'unread' | 'history'
+  const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'unread' | 'error' | 'paused'
   
   // Form states
   const [siteName, setSiteName] = useState('');
@@ -28,6 +28,7 @@ function WebNotifications({ user, token }) {
   const [expandedSiteId, setExpandedSiteId] = useState(null);
   const [selectedSiteIds, setSelectedSiteIds] = useState([]);
   const [dialog, setDialog] = useState(null); // { type: 'alert' | 'confirm', title: '', message: '', onConfirm: () => {} }
+  const [copiedId, setCopiedId] = useState(null);
 
   // Visual Selector States
   const [showVisualSelector, setShowVisualSelector] = useState(false);
@@ -45,7 +46,6 @@ function WebNotifications({ user, token }) {
   };
 
   const handleIframeLoad = () => {
-    // After iframe loads, send current selectMode state
     if (iframeRef.current && iframeRef.current.contentWindow) {
       setTimeout(() => {
         try {
@@ -83,7 +83,6 @@ function WebNotifications({ user, token }) {
       window.removeEventListener('message', handleIframeMessage);
     };
   }, []);
-
 
   const showModalAlert = (title, message) => {
     setDialog({ type: 'alert', title, message });
@@ -133,7 +132,6 @@ function WebNotifications({ user, token }) {
       return;
     }
 
-    // Basic URL validation
     let formattedUrl = siteUrl.trim();
     if (!/^https?:\/\//i.test(formattedUrl)) {
       formattedUrl = 'https://' + formattedUrl;
@@ -156,8 +154,6 @@ function WebNotifications({ user, token }) {
         setSiteUrl('');
         setSiteSelector('');
         setShowAddForm(false);
-        
-        // Refresh data silently
         await fetchSitesAndNotifications(false);
       } else {
         setFormError(data.error || 'Failed to add website.');
@@ -199,7 +195,6 @@ function WebNotifications({ user, token }) {
       });
       const data = await res.json();
       if (res.ok) {
-        // Refresh data silently
         await fetchSitesAndNotifications(false);
         showModalAlert('Scan Complete', `Check completed for "${name}": ${data.message}`);
       } else {
@@ -309,7 +304,6 @@ function WebNotifications({ user, token }) {
     }
   };
 
-
   // Helper to format last checked string
   const formatTimeAgo = (isoString) => {
     if (!isoString) return 'Never checked';
@@ -318,9 +312,9 @@ function WebNotifications({ user, token }) {
     
     if (seconds < 60) return 'just now';
     const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes} min${minutes > 1 ? 's' : ''} ago`;
+    if (minutes < 60) return `${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+    if (hours < 24) return `${hours}h ago`;
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
@@ -338,9 +332,39 @@ function WebNotifications({ user, token }) {
     }
   };
 
-  // Badge count helpers
-  const unreadSitesCount = sites.filter(site => notifications.some(n => n.websiteId === site.id)).length;
-  const errorSitesCount = sites.filter(site => site.latestContentText && (site.latestContentText.startsWith('Error:') || site.latestContentText.includes('Failed'))).length;
+  // Copy CSS Selector to Clipboard Helper
+  const copyToClipboard = (text, id) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  // Stats calculation
+  const totalMonitors = sites.length;
+  const activeMonitorsCount = sites.filter(site => site.enabled !== false).length;
+  const sitesWithAlertsCount = sites.filter(site => notifications.some(n => n.websiteId === site.id)).length;
+  const errorSitesCount = sites.filter(site => site.latestContentText && (site.latestContentText.startsWith('Error:') || site.latestContentText.includes('Failed') || site.latestContentText.startsWith('[ERROR]'))).length;
+
+  // Filter sites based on Search and active filter
+  const filteredSites = sites.filter(site => {
+    const matchesSearch = 
+      site.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      site.url.toLowerCase().includes(searchQuery.toLowerCase());
+      
+    if (activeFilter === 'unread') {
+      const hasAlert = notifications.some(n => n.websiteId === site.id);
+      return matchesSearch && hasAlert;
+    }
+    if (activeFilter === 'error') {
+      const isError = site.latestContentText && (site.latestContentText.startsWith('Error:') || site.latestContentText.includes('Failed') || site.latestContentText.startsWith('[ERROR]'));
+      return matchesSearch && isError;
+    }
+    if (activeFilter === 'paused') {
+      return matchesSearch && site.enabled === false;
+    }
+    
+    return matchesSearch;
+  });
 
   const handleSelectRow = (id) => {
     setSelectedSiteIds(prev => 
@@ -356,88 +380,86 @@ function WebNotifications({ user, token }) {
     }
   };
 
-  // Filter sites based on Search and active filter
-  const filteredSites = sites.filter(site => {
-    const matchesSearch = 
-      site.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      site.url.toLowerCase().includes(searchQuery.toLowerCase());
-      
-    if (activeFilter === 'unread') {
-      const hasAlert = notifications.some(n => n.websiteId === site.id);
-      return matchesSearch && hasAlert;
-    }
-    if (activeFilter === 'error') {
-      const isError = site.latestContentText && (site.latestContentText.startsWith('Error:') || site.latestContentText.includes('Failed'));
-      return matchesSearch && isError;
-    }
-    if (activeFilter === 'trash') {
-      return false; // trash is empty by default
-    }
+  // Styled visual diff generator
+  const renderVisualDiff = (notif) => {
+    const desc = notif.description || '';
+    let parsedNew = '';
+    let parsedOld = 'Cached Page Snapshot (Original State)';
     
-    return matchesSearch;
-  });
+    if (desc.includes('[SIMULATED CHANGE]')) {
+      const parts = desc.split('Detail:');
+      parsedNew = parts[1] ? parts[1].trim() : desc;
+      parsedOld = "Previous cached layout snapshot";
+    } else if (desc.includes('Preview: "')) {
+      const match = desc.match(/Preview:\s*"([^"]+)"/);
+      parsedNew = match ? match[1] : desc;
+      parsedOld = "Previous body text checksum block";
+    } else if (desc.includes('Content: "')) {
+      const match = desc.match(/Content:\s*"([^"]+)"/);
+      parsedNew = match ? match[1] : desc;
+      parsedOld = "Previous matching selector string content";
+    } else {
+      parsedNew = desc;
+    }
 
-  const renderFilterItem = (filterName, label, count, activeColor) => {
-    const isActive = activeFilter === filterName;
     return (
-      <button
-        onClick={() => {
-          setActiveFilter(filterName);
-          setSelectedSiteIds([]);
-        }}
-        style={{
-          width: '100%',
-          textAlign: 'left',
-          background: isActive ? '#111111' : 'transparent',
-          color: isActive ? '#ffffff' : '#111111',
-          border: isActive ? '2px solid #111111' : '1.5px solid transparent',
-          borderRadius: '0px',
-          padding: '8px 12px',
-          fontWeight: 800,
-          fontSize: '13px',
-          cursor: 'pointer',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          transform: isActive ? 'translate(-1px, -1px)' : 'none',
-          boxShadow: isActive ? '2px 2px 0px #111111' : 'none',
-          transition: 'all 0.1s',
-          fontFamily: 'var(--font-family-title)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.02em'
-        }}
-        onMouseEnter={e => {
-          if (!isActive) {
-            e.currentTarget.style.borderColor = '#111111';
-            e.currentTarget.style.backgroundColor = '#ffffff';
-            e.currentTarget.style.boxShadow = '2px 2px 0px #111111';
-            e.currentTarget.style.transform = 'translate(-1px, -1px)';
-          }
-        }}
-        onMouseLeave={e => {
-          if (!isActive) {
-            e.currentTarget.style.borderColor = 'transparent';
-            e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.boxShadow = 'none';
-            e.currentTarget.style.transform = 'none';
-          }
-        }}
-      >
-        <span>{label}</span>
-        {count > 0 && (
-          <span style={{
-            backgroundColor: isActive ? '#ffffff' : activeColor || '#111111',
-            color: isActive ? '#111111' : '#ffffff',
-            border: '1.5px solid #111111',
-            borderRadius: '4px',
-            padding: '1px 6px',
-            fontSize: '10px',
-            fontWeight: 900
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+          {/* Old Box */}
+          <div style={{
+            backgroundColor: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: '6px',
+            padding: '8px 10px',
+            fontSize: '11px',
+            fontFamily: 'monospace',
+            color: '#dc2626',
+            textDecoration: 'line-through',
+            position: 'relative',
+            overflow: 'hidden'
           }}>
-            {count}
-          </span>
-        )}
-      </button>
+            <span style={{
+              position: 'absolute',
+              top: '2px',
+              right: '4px',
+              fontSize: '8px',
+              fontWeight: 900,
+              backgroundColor: '#fee2e2',
+              padding: '1px 3px',
+              borderRadius: '3px',
+              textTransform: 'uppercase',
+              color: '#dc2626'
+            }}>OLD</span>
+            {parsedOld}
+          </div>
+          {/* New Box */}
+          <div style={{
+            backgroundColor: '#f0fdf4',
+            border: '1px solid #bbf7d0',
+            borderRadius: '6px',
+            padding: '8px 10px',
+            fontSize: '11px',
+            fontFamily: 'monospace',
+            color: '#166534',
+            position: 'relative',
+            overflow: 'hidden'
+          }}>
+            <span style={{
+              position: 'absolute',
+              top: '2px',
+              right: '4px',
+              fontSize: '8px',
+              fontWeight: 900,
+              backgroundColor: '#dcfce7',
+              padding: '1px 3px',
+              borderRadius: '3px',
+              textTransform: 'uppercase',
+              color: '#166534'
+            }}>NEW</span>
+            {parsedNew}
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -448,36 +470,39 @@ function WebNotifications({ user, token }) {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '5rem 2rem',
-        fontFamily: 'var(--font-family-body)',
+        padding: '6rem 2rem',
+        fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
         gap: '1.5rem',
-        textAlign: 'center'
+        textAlign: 'center',
+        backgroundColor: '#f8fafc',
+        minHeight: '80vh'
       }}>
         <div style={{
-          width: '64px',
-          height: '64px',
-          border: '2.5px solid #111111',
-          boxShadow: '3px 3px 0px #111',
+          width: '72px',
+          height: '72px',
+          borderRadius: '16px',
+          border: '3px solid #0f172a',
+          boxShadow: '4px 4px 0px #0f172a',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: '#f1f5f9',
-          animation: 'spin 4s linear infinite'
+          backgroundColor: '#eff6ff',
+          animation: 'bounceSpin 2.5s infinite ease-in-out'
         }}>
-          <Globe size={32} style={{ color: '#2563eb' }} />
+          <Globe size={36} style={{ color: '#4f46e5' }} />
         </div>
         <div>
-          <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#111111', textTransform: 'uppercase', letterSpacing: '-0.02em', margin: 0 }}>
-            Loading Web Watchlist...
+          <h3 style={{ fontSize: '1.4rem', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '-0.02em', margin: 0 }}>
+            Syncing Crawler Services
           </h3>
-          <p style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 600, marginTop: '0.4rem', margin: 0 }}>
-            Checking crawler server connection & fetching active monitors
+          <p style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 600, marginTop: '0.5rem', margin: 0 }}>
+            Checking proxy networks and fetching active web monitors...
           </p>
         </div>
         <style dangerouslySetInnerHTML={{__html: `
-          @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+          @keyframes bounceSpin {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-15px) rotate(180deg); }
           }
         `}} />
       </div>
@@ -486,661 +511,890 @@ function WebNotifications({ user, token }) {
 
   return (
     <div style={{
-      padding: '1.5rem',
-      maxWidth: '1400px',
+      padding: '2rem',
+      maxWidth: '1440px',
       margin: '0 auto',
-      fontFamily: 'var(--font-family-body)',
-      color: 'var(--text-primary)'
+      fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+      color: '#0f172a',
+      backgroundColor: '#f8fafc',
+      minHeight: '100vh'
     }}>
-      {/* Page Header — matches Asset Manager style */}
+      {/* CSS Animations Injector */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes pulseDot {
+          0% { transform: scale(0.95); opacity: 0.5; }
+          50% { transform: scale(1.15); opacity: 1; }
+          100% { transform: scale(0.95); opacity: 0.5; }
+        }
+        @keyframes float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-3px); }
+        }
+        @keyframes spinSlow {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .spin {
+          animation: spinSlow 1s linear infinite;
+        }
+        .pulse-active {
+          animation: pulseDot 2s infinite ease-in-out;
+        }
+        .hover-card {
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .hover-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 6px 6px 0px #0f172a !important;
+          border-color: #4f46e5 !important;
+        }
+        .hover-btn {
+          transition: all 0.15s ease;
+        }
+        .hover-btn:hover {
+          transform: translate(-1px, -1px);
+          box-shadow: 3px 3px 0px #0f172a !important;
+        }
+        .hover-btn:active {
+          transform: translate(1px, 1px);
+          box-shadow: 1px 1px 0px #0f172a !important;
+        }
+      `}} />
+
+      {/* Top Banner / Header */}
       <header style={{
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        marginBottom: '1.5rem',
-        borderBottom: '2px solid var(--border-color)',
-        paddingBottom: '1rem',
+        alignItems: 'center',
+        marginBottom: '2rem',
+        borderBottom: '2.5px solid #0f172a',
+        paddingBottom: '1.2rem',
         gap: '16px'
       }}>
-        {/* Left: title + subtitle */}
         <div>
-          <h1 style={{
-            fontFamily: 'var(--font-family-title)',
-            fontSize: '2.2rem',
-            fontWeight: 900,
-            textTransform: 'uppercase',
-            letterSpacing: '-0.02em',
-            margin: 0,
-            color: '#111111'
-          }}>
-            Web Watchlist
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', margin: '0.2rem 0 0 0', fontWeight: 600, fontSize: '0.9rem' }}>
-            Monitor websites for content changes and receive alerts
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{
+              backgroundColor: '#4f46e5',
+              color: '#ffffff',
+              padding: '6px',
+              borderRadius: '8px',
+              border: '2px solid #0f172a',
+              boxShadow: '2px 2px 0px #0f172a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <Globe size={24} />
+            </span>
+            <h1 style={{
+              fontSize: '2.2rem',
+              fontWeight: 900,
+              textTransform: 'uppercase',
+              letterSpacing: '-0.03em',
+              margin: 0,
+              color: '#0f172a'
+            }}>
+              Web Watchlist
+            </h1>
+          </div>
+          <p style={{ color: '#475569', margin: '0.4rem 0 0 0', fontWeight: 600, fontSize: '0.95rem' }}>
+            Configure visual target CSS selectors and monitor site changes in real time.
           </p>
         </div>
 
-        {/* Right: search + unread badge */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-          {/* Search */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '8px',
-            background: '#ffffff', padding: '6px 12px',
-            border: '2px solid var(--border-color)',
-            boxShadow: 'var(--shadow-flat-sm)',
-            width: '260px'
-          }}>
-            <Search size={14} style={{ color: '#64748b' }} />
-            <input
-              type="text"
-              style={{ background: 'transparent', border: 'none', outline: 'none', width: '100%', fontSize: '13px', color: '#111111', fontWeight: 600 }}
-              placeholder="Search monitors..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
-          </div>
+        {/* Global Toolbar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button
+            onClick={handleTriggerCheckAll}
+            disabled={checkingAll}
+            className="hover-btn"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 18px',
+              backgroundColor: '#ffffff',
+              border: '2.5px solid #0f172a',
+              borderRadius: '10px',
+              boxShadow: '2.5px 2.5px 0px #0f172a',
+              fontSize: '13px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              textTransform: 'uppercase'
+            }}
+          >
+            <RefreshCw size={14} className={checkingAll ? 'spin' : ''} />
+            {checkingAll ? 'Scanning All...' : 'Scan All Pages'}
+          </button>
 
-          {/* Unread badge shortcut */}
-          {unreadSitesCount > 0 && (
-            <div
-              onClick={() => setActiveFilter('unread')}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '6px 12px',
-                border: '2px solid var(--danger)',
-                backgroundColor: '#fef2f2',
-                color: 'var(--danger)',
-                fontWeight: 900, fontSize: '12px',
-                cursor: 'pointer',
-                boxShadow: '2px 2px 0px var(--danger)',
-                textTransform: 'uppercase'
-              }}
-            >
-              <Bell size={13} />
-              {unreadSitesCount} Unread
-            </div>
-          )}
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="hover-btn"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '10px 18px',
+              backgroundColor: '#10b981',
+              color: '#ffffff',
+              border: '2.5px solid #0f172a',
+              borderRadius: '10px',
+              boxShadow: '2.5px 2.5px 0px #0f172a',
+              fontSize: '13px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              textTransform: 'uppercase'
+            }}
+          >
+            <Plus size={16} /> Add Monitor
+          </button>
         </div>
       </header>
 
-      {/* Main Workspace split */}
-      <div style={{ display: 'flex', flexDirection: 'row', gap: '0', border: '2px solid var(--border-color)', boxShadow: 'var(--shadow-flat)' }}>
-        
-        {/* Filters Sidebar */}
+      {/* Top 4 statistics dashboard row */}
+      <section style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+        gap: '20px',
+        marginBottom: '2rem'
+      }}>
+        {/* Card 1: Total Monitors */}
         <div style={{
-          width: '180px',
-          backgroundColor: 'var(--bg-main)',
-          borderRight: '2px solid #111111',
-          padding: '16px 12px',
+          backgroundColor: '#eff6ff',
+          border: '2.5px solid #0f172a',
+          boxShadow: '4px 4px 0px #0f172a',
+          borderRadius: '12px',
+          padding: '20px',
           display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-          flexShrink: 0
+          alignItems: 'center',
+          justifyContent: 'space-between'
         }}>
-          {/* Add Monitor Button */}
-          <button 
-            onClick={() => setShowAddForm(true)}
-            style={{
-              width: '100%',
-              backgroundColor: 'var(--success)',
-              color: '#ffffff',
-              border: '2px solid #111111',
-              borderRadius: '0px',
-              padding: '8px 12px',
-              fontWeight: 900,
-              fontSize: '12px',
-              fontFamily: 'var(--font-family-title)',
-              textTransform: 'uppercase',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              boxShadow: '2px 2px 0px #111111',
-              transition: 'all 0.1s'
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.transform = 'translate(-1px, -1px)';
-              e.currentTarget.style.boxShadow = '3px 3px 0px #111';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.transform = 'none';
-              e.currentTarget.style.boxShadow = '2px 2px 0px #111';
-            }}
-          >
-            <Plus size={14} /> Add Monitor
-          </button>
-
-          {/* Filter Items */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {renderFilterItem('all', 'All', sites.length, '#111111')}
-            {renderFilterItem('history', 'Feed', notifications.length, '#64748b')}
-            {renderFilterItem('unread', 'Unread', unreadSitesCount, '#111111')}
-            {renderFilterItem('error', 'Error', errorSitesCount, 'var(--danger)')}
-            {renderFilterItem('trash', 'Trash', 0, '#94a3b8')}
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 800, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Web Monitors</div>
+            <div style={{ fontSize: '2.2rem', fontWeight: 900, color: '#0f172a', marginTop: '4px' }}>{totalMonitors}</div>
           </div>
+          <span style={{ backgroundColor: '#dbeafe', color: '#1d4ed8', border: '2px solid #0f172a', padding: '10px', borderRadius: '10px' }}>
+            <Globe size={24} />
+          </span>
         </div>
 
-        {/* Main Workspace content */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, backgroundColor: '#ffffff' }}>
+        {/* Card 2: Active Crawler Instances */}
+        <div style={{
+          backgroundColor: '#ecfdf5',
+          border: '2.5px solid #0f172a',
+          boxShadow: '4px 4px 0px #0f172a',
+          borderRadius: '12px',
+          padding: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 800, color: '#065f46', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Active Scrapers</div>
+            <div style={{ fontSize: '2.2rem', fontWeight: 900, color: '#0f172a', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {activeMonitorsCount}
+              <span style={{ fontSize: '13px', fontWeight: 700, color: '#047857' }}>/ {totalMonitors} enabled</span>
+            </div>
+          </div>
+          <span style={{ backgroundColor: '#d1fae5', color: '#059669', border: '2px solid #0f172a', padding: '10px', borderRadius: '10px' }}>
+            <Play size={24} />
+          </span>
+        </div>
 
-          {/* VIEW: WATCHLIST TABLE */}
-          {activeFilter !== 'history' && (
-            <>
-              {/* Compact Table Toolbar */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '0 12px',
-                height: '36px',
-                backgroundColor: 'var(--bg-main)',
-                borderBottom: '2px solid #111111',
-                flexShrink: 0
-              }}>
-                {/* Left: select all checkbox */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div
-                    onClick={handleSelectAll}
-                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#111111' }}
-                  >
-                    {selectedSiteIds.length > 0 && selectedSiteIds.length === filteredSites.length
-                      ? <CheckSquare size={14} />
-                      : <Square size={14} />
-                    }
-                  </div>
-                  {selectedSiteIds.length > 0 && (
-                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#111111' }}>
-                      {selectedSiteIds.length} selected
-                    </span>
-                  )}
-                </div>
+        {/* Card 3: Change Alerts */}
+        <div style={{
+          backgroundColor: sitesWithAlertsCount > 0 ? '#fff1f2' : '#ffffff',
+          border: '2.5px solid #0f172a',
+          boxShadow: '4px 4px 0px #0f172a',
+          borderRadius: '12px',
+          padding: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          transition: 'all 0.3s'
+        }}>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 800, color: '#9f1239', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sites with Alerts</div>
+            <div style={{ fontSize: '2.2rem', fontWeight: 900, color: '#0f172a', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {sitesWithAlertsCount}
+              {sitesWithAlertsCount > 0 && (
+                <span className="pulse-active" style={{
+                  width: '10px',
+                  height: '10px',
+                  backgroundColor: '#f43f5e',
+                  borderRadius: '50%',
+                  display: 'inline-block'
+                }} />
+              )}
+            </div>
+          </div>
+          <span style={{
+            backgroundColor: sitesWithAlertsCount > 0 ? '#ffe4e6' : '#f1f5f9',
+            color: sitesWithAlertsCount > 0 ? '#e11d48' : '#64748b',
+            border: '2px solid #0f172a',
+            padding: '10px',
+            borderRadius: '10px'
+          }}>
+            <Bell size={24} />
+          </span>
+        </div>
 
-                {/* Right controls */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', color: '#111111', fontWeight: 800 }}>
+        {/* Card 4: Crawler Node Health */}
+        <div style={{
+          backgroundColor: '#faf5ff',
+          border: '2.5px solid #0f172a',
+          boxShadow: '4px 4px 0px #0f172a',
+          borderRadius: '12px',
+          padding: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 800, color: '#6b21a8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Node Engine Status</div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className="pulse-active" style={{
+                width: '8px',
+                height: '8px',
+                backgroundColor: '#10b981',
+                borderRadius: '50%'
+              }} />
+              SYSTEM HEALTHY
+            </div>
+          </div>
+          <span style={{ backgroundColor: '#f3e8ff', color: '#9333ea', border: '2px solid #0f172a', padding: '10px', borderRadius: '10px' }}>
+            <Laptop size={24} />
+          </span>
+        </div>
+      </section>
+
+      {/* Main Workspace Split Grid */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 440px',
+        gap: '24px',
+        alignItems: 'start'
+      }}>
+
+        {/* LEFT COLUMN: Monitored Sites Dashboard */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          
+          {/* Controls, Search and Filter Tabs */}
+          <div style={{
+            backgroundColor: '#ffffff',
+            border: '2.5px solid #0f172a',
+            boxShadow: '4px 4px 0px #0f172a',
+            borderRadius: '12px',
+            padding: '16px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px'
+          }}>
+            {/* Filter tab buttons */}
+            <div style={{ display: 'flex', border: '2px solid #0f172a', borderRadius: '8px', overflow: 'hidden' }}>
+              {[
+                { filter: 'all', label: 'All Pages', count: sites.length, color: '#64748b' },
+                { filter: 'unread', label: 'Alerts', count: sitesWithAlertsCount, color: '#f43f5e' },
+                { filter: 'error', label: 'Errors', count: errorSitesCount, color: '#dc2626' },
+                { filter: 'paused', label: 'Paused', count: sites.filter(s => s.enabled === false).length, color: '#b45309' }
+              ].map(tab => {
+                const isActive = activeFilter === tab.filter;
+                return (
                   <button
-                    onClick={handleTriggerCheckAll}
-                    disabled={checkingAll}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '4px',
-                      padding: '3px 10px',
-                      backgroundColor: '#ffffff',
-                      border: '1.5px solid #111111',
-                      boxShadow: '1.5px 1.5px 0px #111',
-                      fontSize: '11px', fontWeight: 800, cursor: 'pointer',
-                      textTransform: 'uppercase', transition: 'all 0.1s'
+                    key={tab.filter}
+                    onClick={() => {
+                      setActiveFilter(tab.filter);
+                      setSelectedSiteIds([]);
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-0.5px,-0.5px)'; e.currentTarget.style.boxShadow = '2px 2px 0px #111'; }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111'; }}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: isActive ? '#0f172a' : '#ffffff',
+                      color: isActive ? '#ffffff' : '#0f172a',
+                      border: 'none',
+                      borderRight: '2px solid #0f172a',
+                      fontSize: '12px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      textTransform: 'uppercase',
+                      transition: 'all 0.15s'
+                    }}
                   >
-                    <RefreshCw size={10} className={checkingAll ? 'spin' : ''} />
-                    {checkingAll ? 'Scanning…' : 'Scan All'}
+                    {tab.label}
+                    {tab.count > 0 && (
+                      <span style={{
+                        fontSize: '9px',
+                        backgroundColor: isActive ? '#ffffff' : tab.color,
+                        color: isActive ? '#0f172a' : '#ffffff',
+                        padding: '1px 5px',
+                        borderRadius: '4px',
+                        fontWeight: 900
+                      }}>
+                        {tab.count}
+                      </span>
+                    )}
                   </button>
-                  <div style={{ width: '1.5px', height: '14px', backgroundColor: '#111111' }} />
-                  <span style={{ letterSpacing: '0.04em', fontSize: '11px' }}>
-                    1 – {filteredSites.length} of {filteredSites.length}
-                  </span>
-                </div>
-              </div>
+                );
+              })}
+            </div>
 
-              {/* Column Header Row */}
+            {/* Search Input bar */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              backgroundColor: '#f1f5f9',
+              border: '2px solid #0f172a',
+              borderRadius: '8px',
+              padding: '6px 14px',
+              width: '100%',
+              maxWidth: '300px'
+            }}>
+              <Search size={14} style={{ color: '#64748b' }} />
+              <input
+                type="text"
+                placeholder="Search monitored pages..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  width: '100%',
+                  color: '#0f172a'
+                }}
+              />
+            </div>
+          </div>
+
+          {/* List of Sites (Grid Card Layout) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {filteredSites.length === 0 ? (
               <div style={{
-                display: 'grid',
-                gridTemplateColumns: '24px 18px 20px 1fr 70px 110px 28px 52px',
-                alignItems: 'center',
-                padding: '0 12px',
-                height: '28px',
-                gap: '8px',
-                backgroundColor: '#f8fafc',
-                borderBottom: '1.5px solid #111111',
-                flexShrink: 0
+                backgroundColor: '#ffffff',
+                border: '2.5px solid #0f172a',
+                boxShadow: '4px 4px 0px #0f172a',
+                borderRadius: '12px',
+                padding: '60px 20px',
+                textAlign: 'center',
+                color: '#0f172a'
               }}>
-                <div />
-                <div />
-                <div />
-                <div style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.05em' }}>Monitor</div>
-                <div style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.05em' }}>Interval</div>
-                <div style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.05em' }}>Last Check</div>
-                <div />
-                <div />
+                <Info size={40} style={{ margin: '0 auto 12px auto', color: '#4f46e5' }} />
+                <h3 style={{ fontSize: '15px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.02em', margin: 0 }}>
+                  No monitored pages found
+                </h3>
+                <p style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, marginTop: '6px', margin: 0 }}>
+                  {searchQuery ? 'Adjust your search parameters and try again.' : 'Click "Add Monitor" in the top bar to set up your first website tracking.'}
+                </p>
               </div>
+            ) : (
+              filteredSites.map(site => {
+                const siteAlerts = notifications.filter(n => n.websiteId === site.id);
+                const hasAlert = siteAlerts.length > 0;
+                const isEnabled = site.enabled !== false;
+                const isChecking = checkingSiteId === site.id;
+                const isExpanded = expandedSiteId === site.id;
+                
+                // Status Color Mapping
+                let statusColor = '#10b981'; // Active Green
+                let statusText = 'Active & Healthy';
+                if (!isEnabled) {
+                  statusColor = '#94a3b8'; // Gray Paused
+                  statusText = 'Paused';
+                } else if (site.latestContentText && (site.latestContentText.startsWith('Error:') || site.latestContentText.includes('Failed') || site.latestContentText.startsWith('[ERROR]'))) {
+                  statusColor = '#ef4444'; // Red Error
+                  statusText = 'Scrape Failure';
+                } else if (hasAlert) {
+                  statusColor = '#f59e0b'; // Amber Alert
+                  statusText = 'Change Detected';
+                }
 
-              {/* Table Body */}
-              <div style={{ flex: 1, overflowY: 'auto' }}>
-                {filteredSites.length === 0 ? (
-                  <div style={{ padding: '60px 20px', textAlign: 'center', color: '#111111' }}>
-                    <Info size={32} style={{ margin: '0 auto 8px auto', color: '#111111' }} />
-                    <div style={{ fontWeight: 900, fontSize: '14px', color: '#111111', textTransform: 'uppercase' }}>No Monitors Found</div>
-                    <p style={{ fontSize: '12px', margin: '6px 0 0 0', fontWeight: 600, color: '#64748b' }}>
-                      {searchQuery ? 'No websites match your search.' : 'Click "+ Add Monitor" to start tracking a website.'}
-                    </p>
-                  </div>
-                ) : (
-                  filteredSites.map(site => {
-                    const siteAlerts = notifications.filter(n => n.websiteId === site.id);
-                    const hasAlert = siteAlerts.length > 0;
-                    const isEnabled = site.enabled !== false;
-                    const isExpanded = expandedSiteId === site.id;
-                    const isSelected = selectedSiteIds.includes(site.id);
-                    const isChecking = checkingSiteId === site.id;
-
-                    return (
-                      <div
-                        key={site.id}
-                        style={{
-                          borderBottom: '1.5px solid #e2e8f0',
-                          backgroundColor: hasAlert ? '#f0fdf4' : 'transparent',
-                        }}
-                      >
-                        {/* ── COMPACT ROW ── */}
-                        <div
-                          onClick={() => setExpandedSiteId(isExpanded ? null : site.id)}
+                return (
+                  <div
+                    key={site.id}
+                    className="hover-card"
+                    style={{
+                      backgroundColor: '#ffffff',
+                      border: '2.5px solid #0f172a',
+                      boxShadow: '4px 4px 0px #0f172a',
+                      borderRadius: '12px',
+                      padding: '20px',
+                      position: 'relative',
+                      borderLeft: `8px solid ${statusColor}`,
+                      transition: 'all 0.25s ease-in-out'
+                    }}
+                  >
+                    {/* Top Row: Favicon, Name, URL, Status */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                        <img
+                          src={getFaviconUrl(site.url)}
+                          alt=""
                           style={{
-                            display: 'grid',
-                            gridTemplateColumns: '24px 18px 20px 1fr 70px 110px 28px 52px',
-                            alignItems: 'center',
-                            padding: '0 12px',
-                            height: '38px',
-                            gap: '8px',
-                            cursor: 'pointer',
-                            transition: 'background 0.1s',
-                            borderLeft: hasAlert ? '3px solid var(--success)' : '3px solid transparent'
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '6px',
+                            border: '2px solid #0f172a',
+                            flexShrink: 0,
+                            backgroundColor: '#f1f5f9'
                           }}
-                          onMouseEnter={e => e.currentTarget.style.backgroundColor = hasAlert ? '#dcfce7' : '#f1f5f9'}
-                          onMouseLeave={e => e.currentTarget.style.backgroundColor = hasAlert ? '#f0fdf4' : 'transparent'}
-                        >
-                          {/* Checkbox */}
-                          <div
-                            onClick={e => { e.stopPropagation(); handleSelectRow(site.id); }}
-                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#64748b' }}
-                          >
-                            {isSelected ? <CheckSquare size={14} style={{ color: '#111111' }} /> : <Square size={14} />}
-                          </div>
-
-                          {/* Expand caret */}
-                          <div style={{ color: '#94a3b8', display: 'flex', alignItems: 'center' }}>
-                            {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                          </div>
-
-                          {/* Favicon */}
-                          <div style={{ display: 'flex', alignItems: 'center' }}>
-                            <img
-                              src={getFaviconUrl(site.url)}
-                              alt=""
-                              style={{ width: '16px', height: '16px', border: '1px solid #e2e8f0', flexShrink: 0 }}
-                              onError={e => { e.currentTarget.src = 'https://www.google.com/s2/favicons?sz=64&domain=google.com'; }}
-                            />
-                          </div>
-
-                          {/* Name + Content Preview (inline) */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
+                          onError={e => { e.currentTarget.src = 'https://www.google.com/s2/favicons?sz=64&domain=google.com'; }}
+                        />
+                        <div style={{ minWidth: 0 }}>
+                          <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a' }}>
+                            {site.name}
                             <a
                               href={site.url}
                               target="_blank"
                               rel="noreferrer"
-                              onClick={e => e.stopPropagation()}
-                              style={{
-                                fontWeight: 800,
-                                fontSize: '13px',
-                                color: '#2563eb',
-                                textDecoration: 'none',
-                                whiteSpace: 'nowrap',
-                                flexShrink: 0,
-                                maxWidth: '170px',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis'
-                              }}
-                              title={site.url}
+                              style={{ display: 'inline-flex', alignItems: 'center', color: '#4f46e5' }}
+                              title="Visit website"
                             >
-                              {site.name}
+                              <ExternalLink size={12} />
                             </a>
-                            {site.latestContentText && (
-                              <span style={{
-                                fontSize: '12px',
-                                color: '#64748b',
-                                fontWeight: 500,
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                flexShrink: 1
-                              }}>
-                                — {site.latestContentText.replace(/\s+/g, ' ').substring(0, 140)}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Interval badge */}
-                          <div style={{ display: 'flex', alignItems: 'center' }}>
-                            <span style={{
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              color: '#2563eb',
-                              backgroundColor: '#eff6ff',
-                              border: '1px solid #bfdbfe',
-                              padding: '2px 7px',
-                              whiteSpace: 'nowrap'
-                            }}>
-                              30 mins
-                            </span>
-                          </div>
-
-                          {/* Last Checked */}
-                          <div style={{
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            color: hasAlert ? 'var(--danger)' : '#64748b',
-                            whiteSpace: 'nowrap'
-                          }}>
-                            {formatTimeAgo(site.lastCheckedAt)}
-                          </div>
-
-                          {/* Cloud icon */}
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
-                            <Cloud size={14} />
-                          </div>
-
-                          {/* ON/OFF Toggle */}
-                          <div
-                            onClick={e => { e.stopPropagation(); handleToggleSite(site.id, isEnabled); }}
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}
-                          >
-                            <span style={{
-                              display: 'inline-block',
-                              padding: '2px 7px',
-                              fontSize: '10px',
-                              fontWeight: 900,
-                              backgroundColor: isEnabled ? 'var(--success)' : '#f1f5f9',
-                              color: isEnabled ? '#ffffff' : '#94a3b8',
-                              border: '1.5px solid #111111',
-                              boxShadow: '1.5px 1.5px 0px #111',
-                              cursor: 'pointer',
-                              letterSpacing: '0.04em',
-                              transition: 'all 0.1s',
-                              minWidth: '34px',
-                              textAlign: 'center'
-                            }}>
-                              {isEnabled ? 'ON' : 'OFF'}
-                            </span>
-                          </div>
+                          </h4>
+                          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, wordBreak: 'break-all' }}>{site.url}</span>
                         </div>
-
-                        {/* ── EXPANDED DRAWER ── */}
-                        {isExpanded && (
-                          <div style={{
-                            padding: '14px 16px 16px 60px',
-                            backgroundColor: '#f8fafc',
-                            borderTop: '1.5px solid #111111',
-                            display: 'flex',
-                            flexDirection: 'row',
-                            gap: '20px'
-                          }}>
-                            {/* Preview box */}
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', color: '#111111', letterSpacing: '0.04em' }}>
-                                  Latest Content
-                                </span>
-                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                  {site.scrapedVia && (
-                                    <span style={{
-                                      fontSize: '9px', fontWeight: 800,
-                                      padding: '2px 6px',
-                                      border: '1.5px solid #111',
-                                      backgroundColor: '#e0f2fe',
-                                      color: '#0369a1',
-                                      boxShadow: '1px 1px 0px #111'
-                                    }}>
-                                      ⚡ via {site.scrapedVia}
-                                    </span>
-                                  )}
-                                  {site.selector && (
-                                    <span style={{
-                                      fontSize: '9px', fontWeight: 800,
-                                      padding: '2px 6px',
-                                      border: '1.5px solid #111',
-                                      backgroundColor: '#fef9c3',
-                                      color: '#854d0e',
-                                      fontFamily: 'monospace',
-                                      boxShadow: '1px 1px 0px #111'
-                                    }}>
-                                      CSS: {site.selector}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <div style={{
-                                fontFamily: 'monospace',
-                                fontSize: '11px',
-                                padding: '12px',
-                                border: '2px solid #111111',
-                                backgroundColor: '#ffffff',
-                                color: '#111111',
-                                maxHeight: '160px',
-                                overflowY: 'auto',
-                                lineHeight: 1.5,
-                                whiteSpace: 'pre-wrap',
-                                fontWeight: 500
-                              }}>
-                                {site.latestContentText ? (
-                                  <>
-                                    {hasAlert && (
-                                      <div style={{ color: '#166534', fontWeight: 900, fontSize: '10px', textTransform: 'uppercase', marginBottom: '4px' }}>
-                                        🟢 UNREAD CHANGE DETECTED:
-                                      </div>
-                                    )}
-                                    {site.latestContentText}
-                                  </>
-                                ) : (
-                                  <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
-                                    No content fetched yet. Click "Scan" to initialise.
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Right sidebar: profile + actions */}
-                            <div style={{
-                              width: '240px',
-                              borderLeft: '2px solid #111111',
-                              paddingLeft: '16px',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '6px',
-                              fontSize: '11px',
-                              flexShrink: 0
-                            }}>
-                              <h5 style={{ margin: '0 0 4px 0', fontWeight: 900, textTransform: 'uppercase', color: '#111111', fontFamily: 'var(--font-family-title)', fontSize: '11px' }}>
-                                Scraper Profile
-                              </h5>
-
-                              {[
-                                ['Status', isEnabled ? 'ACTIVE' : 'PAUSED', isEnabled ? 'var(--success)' : 'var(--danger)'],
-                                ['Interval', '30 Minutes', null],
-                                ['Added', site.createdAt ? new Date(site.createdAt).toLocaleDateString() : '—', null],
-                                ['Hash', site.lastContentHash ? site.lastContentHash.substring(0, 12) + '…' : 'None', null],
-                              ].map(([label, value, color]) => (
-                                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #d1d5db', paddingBottom: '3px' }}>
-                                  <span style={{ color: '#64748b', fontWeight: 700 }}>{label}:</span>
-                                  <strong style={{ color: color || '#111111', fontWeight: 800, fontFamily: color ? undefined : 'monospace', fontSize: '10px' }}>{value}</strong>
-                                </div>
-                              ))}
-
-                              <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
-                                <button
-                                  onClick={e => { e.stopPropagation(); handleCheckSingleSite(site.id, site.name); }}
-                                  disabled={isChecking}
-                                  style={{
-                                    flex: 1, padding: '5px 4px',
-                                    fontSize: '10px', backgroundColor: '#ffffff',
-                                    border: '1.5px solid #111111',
-                                    boxShadow: '1.5px 1.5px 0px #111',
-                                    cursor: 'pointer', fontWeight: 900,
-                                    textTransform: 'uppercase',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
-                                    transition: 'all 0.1s'
-                                  }}
-                                  onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-0.5px,-0.5px)'; e.currentTarget.style.boxShadow = '2px 2px 0px #111'; }}
-                                  onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111'; }}
-                                >
-                                  <RefreshCw size={9} className={isChecking ? 'spin' : ''} /> Scan
-                                </button>
-                                <button
-                                  onClick={e => { e.stopPropagation(); handleSimulateChange(site.id, site.name); }}
-                                  style={{
-                                    flex: 1, padding: '5px 4px',
-                                    fontSize: '10px', backgroundColor: '#ffffff',
-                                    border: '1.5px solid #111111',
-                                    boxShadow: '1.5px 1.5px 0px #111',
-                                    cursor: 'pointer', fontWeight: 900,
-                                    textTransform: 'uppercase',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
-                                    transition: 'all 0.1s'
-                                  }}
-                                  onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-0.5px,-0.5px)'; e.currentTarget.style.boxShadow = '2px 2px 0px #111'; }}
-                                  onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111'; }}
-                                >
-                                  <Sparkles size={9} /> Test
-                                </button>
-                                <button
-                                  onClick={e => { e.stopPropagation(); handleDeleteSite(site.id, site.name); }}
-                                  style={{
-                                    padding: '5px 8px',
-                                    fontSize: '10px', backgroundColor: '#ffffff',
-                                    color: 'var(--danger)',
-                                    border: '1.5px solid #111111',
-                                    boxShadow: '1.5px 1.5px 0px #111',
-                                    cursor: 'pointer', fontWeight: 900,
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    transition: 'all 0.1s'
-                                  }}
-                                  onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-0.5px,-0.5px)'; e.currentTarget.style.boxShadow = '2px 2px 0px #111'; }}
-                                  onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111'; }}
-                                >
-                                  <Trash2 size={10} />
-                                </button>
-                              </div>
-
-                              {hasAlert && (
-                                <button
-                                  onClick={async e => { e.stopPropagation(); await handleClearSiteAlerts(site.id); }}
-                                  style={{
-                                    width: '100%', padding: '5px',
-                                    fontSize: '10px', backgroundColor: '#ffffff',
-                                    border: '1.5px solid #111111',
-                                    boxShadow: '1.5px 1.5px 0px #111',
-                                    color: '#111111', fontWeight: 900,
-                                    textTransform: 'uppercase',
-                                    cursor: 'pointer', marginTop: '2px',
-                                    transition: 'all 0.1s',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
-                                  }}
-                                  onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-1px,-1px)'; e.currentTarget.style.boxShadow = '2.5px 2.5px 0px #111'; }}
-                                  onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111'; }}
-                                >
-                                  <Check size={9} /> Mark as Read
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        )}
                       </div>
-                    );
-                  })
-                )}
-              </div>
-            </>
-          )}
 
-          {/* VIEW: HISTORICAL CHANGE LOG FEED */}
-          {activeFilter === 'history' && (
-            <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto', flex: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 900, color: '#111111', fontFamily: 'var(--font-family-title)', letterSpacing: '-0.01em', textTransform: 'uppercase' }}>
-                  📜 Change Log Feed
-                </h3>
-                {notifications.length > 0 && (
-                  <button
-                    onClick={handleClearNotifications}
-                    style={{
-                      padding: '4px 10px', backgroundColor: '#ffffff',
-                      border: '1.5px solid #111111', boxShadow: '1.5px 1.5px 0px #111',
-                      color: 'var(--danger)', fontWeight: 900, fontSize: '10px',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                      textTransform: 'uppercase', transition: 'all 0.1s'
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-1px,-1px)'; e.currentTarget.style.boxShadow = '2.5px 2.5px 0px #111'; }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '1.5px 1.5px 0px #111'; }}
-                  >
-                    <Trash size={10} /> Clear Logs
-                  </button>
-                )}
-              </div>
-
-              {notifications.length === 0 ? (
-                <div style={{
-                  textAlign: 'center', padding: '48px 20px', color: '#111111',
-                  backgroundColor: 'var(--bg-main)', border: '2px dashed #111111'
-                }}>
-                  <Info size={28} style={{ marginBottom: '8px' }} />
-                  <div style={{ fontWeight: 900, fontSize: '13px', textTransform: 'uppercase' }}>No Changes Logged</div>
-                  <p style={{ fontSize: '11px', margin: '4px 0 0 0', fontWeight: 600, color: '#64748b' }}>
-                    When a change is detected it will appear here.
-                  </p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {notifications.map(notif => (
-                    <div
-                      key={notif.id}
-                      style={{
-                        border: '2px solid #111111',
-                        padding: '12px 14px',
-                        backgroundColor: '#ffffff',
-                        boxShadow: '2.5px 2.5px 0px #111111'
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
-                        <div>
-                          <h4 style={{ fontSize: '12px', fontWeight: 900, color: '#111111', margin: 0 }}>{notif.title}</h4>
-                          <a
-                            href={notif.url} target="_blank" rel="noreferrer"
-                            style={{ fontSize: '10px', color: '#2563eb', textDecoration: 'underline', fontWeight: 700 }}
-                          >
-                            {notif.url}
-                          </a>
-                        </div>
-                        <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                          {new Date(notif.createdAt).toLocaleDateString()} {new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {/* Toggles & Badges */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                        <span style={{
+                          fontSize: '9px',
+                          fontWeight: 900,
+                          backgroundColor: '#eff6ff',
+                          color: '#2563eb',
+                          border: '1.5px solid #0f172a',
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em'
+                        }}>
+                          30m interval
+                        </span>
+                        <span style={{
+                          fontSize: '9px',
+                          fontWeight: 900,
+                          backgroundColor: `${statusColor}15`,
+                          color: statusColor,
+                          border: `1.5px solid ${statusColor}`,
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em'
+                        }}>
+                          {statusText}
                         </span>
                       </div>
-                      <p style={{
-                        fontSize: '11px', color: '#111111',
-                        backgroundColor: 'var(--bg-main)',
-                        padding: '8px 10px',
-                        border: '1.5px solid #111111',
-                        margin: 0, fontFamily: 'monospace',
-                        whiteSpace: 'pre-wrap', fontWeight: 600
-                      }}>
-                        {notif.description}
-                      </p>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
 
+                    {/* CSS Selector and info bar */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginTop: '12px',
+                      backgroundColor: '#f8fafc',
+                      border: '1.5px solid #e2e8f0',
+                      borderRadius: '8px',
+                      padding: '8px 12px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Tag size={12} style={{ color: '#4f46e5' }} />
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase' }}>Target Area:</span>
+                        <code style={{
+                          fontSize: '11px',
+                          fontFamily: 'monospace',
+                          backgroundColor: '#fdf0d5',
+                          border: '1px solid #0f172a',
+                          padding: '1px 6px',
+                          borderRadius: '4px',
+                          fontWeight: 800,
+                          color: '#7f5539'
+                        }}>
+                          {site.selector || 'Full Document Body'}
+                        </code>
+                        {site.selector && (
+                          <button
+                            onClick={() => copyToClipboard(site.selector, site.id)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              color: '#64748b',
+                              display: 'flex',
+                              alignItems: 'center',
+                              padding: '2px'
+                            }}
+                            title="Copy CSS Selector"
+                          >
+                            <Copy size={11} />
+                          </button>
+                        )}
+                        {copiedId === site.id && (
+                          <span style={{ fontSize: '9px', color: '#10b981', fontWeight: 800, textTransform: 'uppercase' }}>Copied!</span>
+                        )}
+                      </div>
+                      
+                      <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b' }}>
+                        Last Checked: <strong style={{ color: '#0f172a' }}>{formatTimeAgo(site.lastCheckedAt)}</strong>
+                      </div>
+                    </div>
+
+                    {/* expandable latest scraped content section */}
+                    <div style={{ marginTop: '12px' }}>
+                      <button
+                        onClick={() => setExpandedSiteId(isExpanded ? null : site.id)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#4f46e5',
+                          fontWeight: 800,
+                          fontSize: '11px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: 0,
+                          textTransform: 'uppercase'
+                        }}
+                      >
+                        {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        {isExpanded ? 'Hide Page Snapshot' : 'Inspect Scraped Snapshot'}
+                      </button>
+
+                      {isExpanded && (
+                        <div style={{
+                          marginTop: '8px',
+                          border: '2px solid #0f172a',
+                          borderRadius: '8px',
+                          backgroundColor: '#0f172a',
+                          color: '#f8fafc',
+                          padding: '12px',
+                          fontFamily: 'monospace',
+                          fontSize: '11px',
+                          maxHeight: '160px',
+                          overflowY: 'auto',
+                          lineHeight: 1.5,
+                          whiteSpace: 'pre-wrap',
+                          position: 'relative'
+                        }}>
+                          {hasAlert && (
+                            <div style={{
+                              color: '#f59e0b',
+                              fontWeight: 900,
+                              fontSize: '9px',
+                              textTransform: 'uppercase',
+                              borderBottom: '1px solid #334155',
+                              paddingBottom: '4px',
+                              marginBottom: '6px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}>
+                              <AlertCircle size={10} /> Unread Change Detected! Mark as read to clear.
+                            </div>
+                          )}
+                          {site.latestContentText || (
+                            <span style={{ color: '#64748b', fontStyle: 'italic' }}>
+                              No page snapshot cached. Click "Scan" to fetch initial content.
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Card Action footer bar */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginTop: '16px',
+                      paddingTop: '12px',
+                      borderTop: '1.5px dashed #e2e8f0'
+                    }}>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => handleCheckSingleSite(site.id, site.name)}
+                          disabled={isChecking}
+                          className="hover-btn"
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '11px',
+                            backgroundColor: '#ffffff',
+                            color: '#0f172a',
+                            border: '2px solid #0f172a',
+                            borderRadius: '8px',
+                            boxShadow: '1.5px 1.5px 0px #0f172a',
+                            cursor: 'pointer',
+                            fontWeight: 800,
+                            textTransform: 'uppercase',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <RefreshCw size={11} className={isChecking ? 'spin' : ''} />
+                          {isChecking ? 'Checking...' : 'Scan Now'}
+                        </button>
+
+                        <button
+                          onClick={() => handleSimulateChange(site.id, site.name)}
+                          className="hover-btn"
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '11px',
+                            backgroundColor: '#ffffff',
+                            color: '#0f172a',
+                            border: '2px solid #0f172a',
+                            borderRadius: '8px',
+                            boxShadow: '1.5px 1.5px 0px #0f172a',
+                            cursor: 'pointer',
+                            fontWeight: 800,
+                            textTransform: 'uppercase',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <Sparkles size={11} /> Test Change
+                        </button>
+
+                        {hasAlert && (
+                          <button
+                            onClick={() => handleClearSiteAlerts(site.id)}
+                            className="hover-btn"
+                            style={{
+                              padding: '6px 12px',
+                              fontSize: '11px',
+                              backgroundColor: '#ecfdf5',
+                              color: '#047857',
+                              border: '2px solid #0f172a',
+                              borderRadius: '8px',
+                              boxShadow: '1.5px 1.5px 0px #0f172a',
+                              cursor: 'pointer',
+                              fontWeight: 900,
+                              textTransform: 'uppercase',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            <Check size={12} /> Mark Read
+                          </button>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        {/* ON/OFF Switch */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Active:</span>
+                          <button
+                            onClick={() => handleToggleSite(site.id, isEnabled)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              padding: 0,
+                              display: 'flex',
+                              alignItems: 'center',
+                              color: isEnabled ? '#10b981' : '#cbd5e1'
+                            }}
+                          >
+                            {isEnabled ? <ToggleRight size={28} /> : <ToggleLeft size={28} style={{ color: '#94a3b8' }} />}
+                          </button>
+                        </div>
+
+                        {/* Delete Trash */}
+                        <button
+                          onClick={() => handleDeleteSite(site.id, site.name)}
+                          style={{
+                            padding: '6px',
+                            backgroundColor: 'transparent',
+                            color: '#ef4444',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center'
+                          }}
+                          title="Delete Monitor"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
+
+        {/* RIGHT COLUMN: Live Activity Feed (Changes Log) */}
+        <aside style={{
+          backgroundColor: '#ffffff',
+          border: '2.5px solid #0f172a',
+          boxShadow: '4px 4px 0px #0f172a',
+          borderRadius: '12px',
+          display: 'flex',
+          flexDirection: 'column',
+          height: 'calc(100vh - 250px)',
+          minHeight: '520px',
+          position: 'sticky',
+          top: '24px'
+        }}>
+          {/* Feed Header */}
+          <div style={{
+            padding: '16px',
+            borderBottom: '2.5px solid #0f172a',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            backgroundColor: '#faf5ff'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className="pulse-active" style={{
+                width: '8px',
+                height: '8px',
+                backgroundColor: '#a855f7',
+                borderRadius: '50%',
+                display: 'inline-block'
+              }} />
+              <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Live Change Feed
+              </h3>
+            </div>
+            {notifications.length > 0 && (
+              <button
+                onClick={handleClearNotifications}
+                className="hover-btn"
+                style={{
+                  padding: '4px 10px',
+                  backgroundColor: '#ffffff',
+                  color: '#ef4444',
+                  border: '1.5px solid #0f172a',
+                  borderRadius: '6px',
+                  fontSize: '9px',
+                  fontWeight: 950,
+                  cursor: 'pointer',
+                  textTransform: 'uppercase',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '3px'
+                }}
+              >
+                <Trash size={10} /> Clear logs
+              </button>
+            )}
+          </div>
+
+          {/* Scrollable feed items container */}
+          <div style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            {notifications.length === 0 ? (
+              <div style={{
+                margin: 'auto 0',
+                textAlign: 'center',
+                padding: '24px 12px'
+              }}>
+                <Info size={28} style={{ margin: '0 auto 8px auto', color: '#64748b' }} />
+                <div style={{ fontWeight: 900, fontSize: '12px', textTransform: 'uppercase', color: '#0f172a' }}>
+                  No updates captured
+                </div>
+                <p style={{ fontSize: '10px', margin: '4px 0 0 0', fontWeight: 600, color: '#64748b' }}>
+                  System will list all real-time HTML checksum modifications and crawler alerts here.
+                </p>
+              </div>
+            ) : (
+              notifications.map(notif => {
+                const site = sites.find(s => s.id === notif.websiteId);
+                return (
+                  <div
+                    key={notif.id}
+                    style={{
+                      border: '2px solid #0f172a',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      backgroundColor: '#ffffff',
+                      boxShadow: '2px 2px 0px #0f172a'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifycontent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                        <img
+                          src={getFaviconUrl(notif.url)}
+                          alt=""
+                          style={{
+                            width: '14px',
+                            height: '14px',
+                            borderRadius: '3px',
+                            border: '1px solid #0f172a',
+                            flexShrink: 0
+                          }}
+                          onError={e => { e.currentTarget.src = 'https://www.google.com/s2/favicons?sz=64&domain=google.com'; }}
+                        />
+                        <strong style={{
+                          fontSize: '11px',
+                          fontWeight: 800,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          color: '#0f172a'
+                        }}>
+                          {notif.websiteName || 'Unknown Site'}
+                        </strong>
+                      </div>
+                      <span style={{ fontSize: '9px', color: '#64748b', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        {formatTimeAgo(notif.createdAt)}
+                      </span>
+                    </div>
+
+                    {/* Change Notification description */}
+                    <div style={{
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      color: '#0f172a',
+                      textTransform: 'uppercase',
+                      borderBottom: '1.5px solid #0f172a',
+                      paddingBottom: '4px',
+                      margin: '2px 0 6px 0'
+                    }}>
+                      ⚡ {notif.title || 'Diff detected'}
+                    </div>
+
+                    {/* Diff highlighting boxes */}
+                    {renderVisualDiff(notif)}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </aside>
+
       </div>
 
-      {/* Add Monitor Form Overlay Modal */}
+      {/* Add Monitor Form Modal */}
       {showAddForm && (
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(17, 17, 17, 0.35)',
+          backgroundColor: 'rgba(15, 23, 42, 0.45)',
           backdropFilter: 'blur(8px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
           zIndex: 9999
         }} onClick={() => {
           setShowAddForm(false);
@@ -1149,17 +1403,26 @@ function WebNotifications({ user, token }) {
         }}>
           <div style={{
             backgroundColor: '#ffffff',
-            border: '3px solid #111111',
-            boxShadow: '8px 8px 0px #111111',
+            border: '3px solid #0f172a',
+            boxShadow: '8px 8px 0px #0f172a',
+            borderRadius: '16px',
             width: '100%',
-            maxWidth: '500px',
+            maxWidth: '520px',
             padding: '24px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '16px'
+            gap: '16px',
+            animation: 'modalSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
           }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #111111', paddingBottom: '12px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, color: '#111111', fontFamily: 'var(--font-family-title)', letterSpacing: '-0.02em', textTransform: 'uppercase' }}>
+            {/* Header */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              borderBottom: '2.5px solid #0f172a',
+              paddingBottom: '12px'
+            }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.02em' }}>
                 Add Website Monitor
               </h3>
               <button 
@@ -1168,7 +1431,7 @@ function WebNotifications({ user, token }) {
                   setFormError('');
                   setFormSuccess('');
                 }}
-                style={{ background: 'transparent', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#111111', fontWeight: 900 }}
+                style={{ background: 'transparent', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#0f172a', fontWeight: 900 }}
               >
                 &times;
               </button>
@@ -1176,11 +1439,18 @@ function WebNotifications({ user, token }) {
             
             <form onSubmit={handleAddWebsite} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 800, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>MONITOR NAME</label>
+                <label style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Monitor Name</label>
                 <input 
                   type="text" 
-                  style={{ padding: '8px 12px', border: '2px solid #111111', outline: 'none', fontSize: '13px', fontWeight: 700 }}
-                  placeholder="e.g. Sairam NCC Portal"
+                  style={{
+                    padding: '10px 14px',
+                    border: '2.5px solid #0f172a',
+                    borderRadius: '8px',
+                    outline: 'none',
+                    fontSize: '13px',
+                    fontWeight: 700
+                  }}
+                  placeholder="e.g. TN Medical Admission Alerts"
                   value={siteName}
                   onChange={e => setSiteName(e.target.value)}
                   required
@@ -1188,11 +1458,18 @@ function WebNotifications({ user, token }) {
               </div>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 800, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>WEBSITE URL</label>
+                <label style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Website URL</label>
                 <input 
                   type="text" 
-                  style={{ padding: '8px 12px', border: '2px solid #111111', outline: 'none', fontSize: '13px', fontWeight: 700 }}
-                  placeholder="e.g. sairamncc.in"
+                  style={{
+                    padding: '10px 14px',
+                    border: '2.5px solid #0f172a',
+                    borderRadius: '8px',
+                    outline: 'none',
+                    fontSize: '13px',
+                    fontWeight: 700
+                  }}
+                  placeholder="e.g. tnmedicalselection.net"
                   value={siteUrl}
                   onChange={e => setSiteUrl(e.target.value)}
                   required
@@ -1200,12 +1477,20 @@ function WebNotifications({ user, token }) {
               </div>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 800, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>CSS SELECTOR (OPTIONAL)</label>
+                <label style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>CSS Selector (Optional)</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input 
                     type="text" 
-                    style={{ flex: 1, padding: '8px 12px', border: '2px solid #111111', outline: 'none', fontSize: '13px', fontWeight: 700 }}
-                    placeholder="e.g. .announcement-card"
+                    style={{
+                      flex: 1,
+                      padding: '10px 14px',
+                      border: '2.5px solid #0f172a',
+                      borderRadius: '8px',
+                      outline: 'none',
+                      fontSize: '13px',
+                      fontWeight: 700
+                    }}
+                    placeholder="e.g. .announcements"
                     value={siteSelector}
                     onChange={e => setSiteSelector(e.target.value)}
                   />
@@ -1213,45 +1498,57 @@ function WebNotifications({ user, token }) {
                     type="button"
                     onClick={handleOpenVisualSelector}
                     disabled={!siteUrl}
+                    className="hover-btn"
                     style={{
-                      padding: '8px 12px',
+                      padding: '10px 16px',
                       backgroundColor: siteUrl ? '#ffffff' : '#f1f5f9',
-                      color: siteUrl ? '#111111' : '#94a3b8',
-                      border: '2px solid #111111',
-                      boxShadow: siteUrl ? '2px 2px 0px #111' : 'none',
+                      color: siteUrl ? '#0f172a' : '#94a3b8',
+                      border: '2.5px solid #0f172a',
+                      borderRadius: '8px',
+                      boxShadow: siteUrl ? '2px 2px 0px #0f172a' : 'none',
                       cursor: siteUrl ? 'pointer' : 'not-allowed',
                       fontWeight: 800,
                       fontSize: '12px',
                       textTransform: 'uppercase',
-                      transition: 'all 0.1s',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '4px'
-                    }}
-                    onMouseEnter={e => {
-                      if (siteUrl) {
-                        e.currentTarget.style.transform = 'translate(-1px, -1px)';
-                        e.currentTarget.style.boxShadow = '3px 3px 0px #111';
-                      }
-                    }}
-                    onMouseLeave={e => {
-                      if (siteUrl) {
-                        e.currentTarget.style.transform = 'none';
-                        e.currentTarget.style.boxShadow = '2px 2px 0px #111';
-                      }
                     }}
                   >
                     <Sliders size={12} /> Select Visually
                   </button>
                 </div>
               </div>
+
+              {/* Suggestions quick tags */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                <span style={{ fontSize: '10px', fontWeight: 800, color: '#64748b' }}>Common targets:</span>
+                {['#content', 'article', '.announcement-card', 'table', '.news-updates'].map(tag => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setSiteSelector(tag)}
+                    style={{
+                      fontSize: '10px',
+                      padding: '3px 8px',
+                      border: '1.5px solid #0f172a',
+                      borderRadius: '4px',
+                      backgroundColor: '#f1f5f9',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
               
-              <p style={{ margin: 0, fontSize: '11px', color: '#111111', lineHeight: 1.4, fontWeight: 600 }}>
-                💡 Leave CSS selector blank to monitor the full page. Use selector (e.g. <code>.announcement-card</code>) to track changes in a specific element.
+              <p style={{ margin: 0, fontSize: '11px', color: '#64748b', lineHeight: 1.4, fontWeight: 600 }}>
+                💡 Leave CSS selector blank to track the full page. Enter specific tags to target elements and reduce false positive change flags.
               </p>
               
-              {formError && <div style={{ color: 'var(--danger)', fontSize: '12px', fontWeight: 800 }}>{formError}</div>}
-              {formSuccess && <div style={{ color: 'var(--success)', fontSize: '12px', fontWeight: 800 }}>{formSuccess}</div>}
+              {formError && <div style={{ color: '#ef4444', fontSize: '12px', fontWeight: 800 }}>{formError}</div>}
+              {formSuccess && <div style={{ color: '#10b981', fontSize: '12px', fontWeight: 800 }}>{formSuccess}</div>}
               
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '10px' }}>
                 <button 
@@ -1261,49 +1558,35 @@ function WebNotifications({ user, token }) {
                     setFormError('');
                     setFormSuccess('');
                   }}
+                  className="hover-btn"
                   style={{ 
-                    padding: '8px 16px', 
-                    border: '2px solid #111111', 
+                    padding: '10px 18px', 
+                    border: '2.5px solid #0f172a', 
+                    borderRadius: '8px',
                     background: '#ffffff', 
-                    boxShadow: '2px 2px 0px #111', 
+                    boxShadow: '2px 2px 0px #0f172a', 
                     cursor: 'pointer', 
                     fontSize: '12px', 
                     fontWeight: 800,
-                    textTransform: 'uppercase',
-                    transition: 'all 0.1s'
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.transform = 'translate(-1px, -1px)';
-                    e.currentTarget.style.boxShadow = '3px 3px 0px #111';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.transform = 'none';
-                    e.currentTarget.style.boxShadow = '2px 2px 0px #111';
+                    textTransform: 'uppercase'
                   }}
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit" 
+                  className="hover-btn"
                   style={{ 
-                    padding: '8px 16px', 
-                    border: '2px solid #111111', 
-                    background: 'var(--success)', 
+                    padding: '10px 18px', 
+                    border: '2.5px solid #0f172a', 
+                    borderRadius: '8px',
+                    background: '#10b981', 
                     color: '#ffffff',
-                    boxShadow: '2px 2px 0px #111', 
+                    boxShadow: '2px 2px 0px #0f172a', 
                     cursor: 'pointer', 
                     fontSize: '12px', 
                     fontWeight: 800,
-                    textTransform: 'uppercase',
-                    transition: 'all 0.1s'
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.transform = 'translate(-1px, -1px)';
-                    e.currentTarget.style.boxShadow = '3px 3px 0px #111';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.transform = 'none';
-                    e.currentTarget.style.boxShadow = '2px 2px 0px #111';
+                    textTransform: 'uppercase'
                   }}
                 >
                   Start Monitoring
@@ -1314,32 +1597,35 @@ function WebNotifications({ user, token }) {
         </div>
       )}
 
-      {/* Custom iOS/Neobrutalist Alert & Confirm Modal Dialog */}
+      {/* Custom iOS/Neobrutalist Alert & Confirm Dialog Modal */}
       {dialog && (
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(17, 17, 17, 0.4)',
+          backgroundColor: 'rgba(15, 23, 42, 0.45)',
           backdropFilter: 'blur(6px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
           zIndex: 10000
         }}>
           <div style={{
             backgroundColor: '#ffffff',
-            border: '3px solid #111111',
-            boxShadow: '6px 6px 0px #111111',
+            border: '3px solid #0f172a',
+            boxShadow: '6px 6px 0px #0f172a',
+            borderRadius: '16px',
             width: '100%',
-            maxWidth: '380px',
-            padding: '20px',
+            maxWidth: '400px',
+            padding: '24px',
             display: 'flex',
             flexDirection: 'column',
             gap: '16px',
             textAlign: 'center'
           }}>
-            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 900, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#0f172a' }}>
               {dialog.title}
             </h4>
-            <p style={{ margin: 0, fontSize: '13px', color: '#111111', fontWeight: 600, lineHeight: 1.4 }}>
+            <p style={{ margin: 0, fontSize: '13px', color: '#475569', fontWeight: 600, lineHeight: 1.4 }}>
               {dialog.message}
             </p>
             
@@ -1348,25 +1634,18 @@ function WebNotifications({ user, token }) {
                 <>
                   <button 
                     onClick={() => setDialog(null)}
+                    className="hover-btn"
                     style={{ 
                       flex: 1,
-                      padding: '8px 16px', 
-                      border: '2px solid #111111', 
+                      padding: '10px 16px', 
+                      border: '2.5px solid #0f172a', 
+                      borderRadius: '8px',
                       background: '#ffffff', 
-                      boxShadow: '2px 2px 0px #111', 
+                      boxShadow: '2px 2px 0px #0f172a', 
                       cursor: 'pointer', 
                       fontSize: '12px', 
                       fontWeight: 800,
-                      textTransform: 'uppercase',
-                      transition: 'all 0.1s'
-                    }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.transform = 'translate(-1px, -1px)';
-                      e.currentTarget.style.boxShadow = '3px 3px 0px #111';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.transform = 'none';
-                      e.currentTarget.style.boxShadow = '2px 2px 0px #111';
+                      textTransform: 'uppercase'
                     }}
                   >
                     Cancel
@@ -1376,26 +1655,19 @@ function WebNotifications({ user, token }) {
                       dialog.onConfirm();
                       setDialog(null);
                     }}
+                    className="hover-btn"
                     style={{ 
                       flex: 1,
-                      padding: '8px 16px', 
-                      border: '2px solid #111111', 
-                      background: '#111111', 
+                      padding: '10px 16px', 
+                      border: '2.5px solid #0f172a', 
+                      borderRadius: '8px',
+                      background: '#ef4444', 
                       color: '#ffffff',
-                      boxShadow: '2px 2px 0px #111', 
+                      boxShadow: '2px 2px 0px #0f172a', 
                       cursor: 'pointer', 
                       fontSize: '12px', 
                       fontWeight: 800,
-                      textTransform: 'uppercase',
-                      transition: 'all 0.1s'
-                    }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.transform = 'translate(-1px, -1px)';
-                      e.currentTarget.style.boxShadow = '3px 3px 0px #111';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.transform = 'none';
-                      e.currentTarget.style.boxShadow = '2px 2px 0px #111';
+                      textTransform: 'uppercase'
                     }}
                   >
                     Confirm
@@ -1404,26 +1676,19 @@ function WebNotifications({ user, token }) {
               ) : (
                 <button 
                   onClick={() => setDialog(null)}
+                  className="hover-btn"
                   style={{ 
                     width: '100%',
-                    padding: '8px 16px', 
-                    border: '2px solid #111111', 
-                    background: '#111111', 
+                    padding: '10px 16px', 
+                    border: '2.5px solid #0f172a', 
+                    borderRadius: '8px',
+                    background: '#0f172a', 
                     color: '#ffffff',
-                    boxShadow: '2px 2px 0px #111', 
+                    boxShadow: '2px 2px 0px #0f172a', 
                     cursor: 'pointer', 
                     fontSize: '12px', 
                     fontWeight: 800,
-                    textTransform: 'uppercase',
-                    transition: 'all 0.1s'
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.transform = 'translate(-1px, -1px)';
-                    e.currentTarget.style.boxShadow = '3px 3px 0px #111';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.transform = 'none';
-                    e.currentTarget.style.boxShadow = '2px 2px 0px #111';
+                    textTransform: 'uppercase'
                   }}
                 >
                   OK
@@ -1439,12 +1704,11 @@ function WebNotifications({ user, token }) {
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(17, 17, 17, 0.55)',
+          backgroundColor: 'rgba(15, 23, 42, 0.6)',
           backdropFilter: 'blur(4px)',
           display: 'flex',
           flexDirection: 'column',
-          zIndex: 10000,
-          fontFamily: 'var(--font-family-body)'
+          zIndex: 10000
         }}>
           {/* Top control bar */}
           <div style={{
@@ -1452,219 +1716,253 @@ function WebNotifications({ user, token }) {
             alignItems: 'center',
             justifyContent: 'space-between',
             backgroundColor: '#ffffff',
-            borderBottom: '2.5px solid #111111',
-            padding: '10px 20px',
+            borderBottom: '3px solid #0f172a',
+            padding: '12px 24px',
             gap: '16px',
             flexShrink: 0
           }}>
-            {/* Left: title + URL badge */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Globe size={16} style={{ color: '#111111' }} />
-                <span style={{ fontSize: '13px', fontWeight: 900, fontFamily: 'var(--font-family-title)', textTransform: 'uppercase', letterSpacing: '-0.01em', color: '#111111', whiteSpace: 'nowrap' }}>
-                  Select Elements
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Globe size={18} style={{ color: '#4f46e5' }} />
+                <span style={{ fontSize: '14px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.01em', color: '#0f172a', whiteSpace: 'nowrap' }}>
+                  Target Node Selector
                 </span>
               </div>
-              <div style={{ height: '16px', width: '2px', backgroundColor: '#111111', flexShrink: 0 }} />
+              <div style={{ height: '18px', width: '2px', backgroundColor: '#e2e8f0', flexShrink: 0 }} />
               <span style={{
-                fontSize: '11px', fontWeight: 700, color: '#2563eb',
-                backgroundColor: '#eff6ff', padding: '3px 10px',
-                border: '1.5px solid #2563eb', boxShadow: '1px 1px 0px #2563eb',
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '320px'
+                fontSize: '12px',
+                fontWeight: 700,
+                color: '#4f46e5',
+                backgroundColor: '#eff6ff',
+                padding: '4px 12px',
+                borderRadius: '6px',
+                border: '1.5px solid #0f172a',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: '380px'
               }}>
                 {siteUrl}
               </span>
             </div>
 
-            {/* Center: mode toggle */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 800, color: '#111111', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Mode:</span>
-              <div style={{ display: 'flex', border: '2px solid #111111', boxShadow: '2px 2px 0px #111' }}>
+            {/* Mode switch */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 900, color: '#64748b', textTransform: 'uppercase' }}>Crawler Mode:</span>
+              <div style={{ display: 'flex', border: '2.5px solid #0f172a', borderRadius: '8px', overflow: 'hidden', boxShadow: '2px 2px 0px #0f172a' }}>
                 <button
                   type="button"
                   onClick={() => setSelectMode(true)}
                   style={{
-                    padding: '5px 14px',
-                    backgroundColor: selectMode ? '#111111' : '#ffffff',
-                    color: selectMode ? '#ffffff' : '#111111',
+                    padding: '6px 14px',
+                    backgroundColor: selectMode ? '#0f172a' : '#ffffff',
+                    color: selectMode ? '#ffffff' : '#0f172a',
                     border: 'none',
-                    fontWeight: 800, fontSize: '11px', textTransform: 'uppercase',
-                    cursor: 'pointer', fontFamily: 'var(--font-family-body)', transition: 'all 0.1s'
+                    fontWeight: 800,
+                    fontSize: '11px',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                    transition: 'all 0.1s'
                   }}
                 >
-                  ✦ Select
+                  🎯 Select Element
                 </button>
                 <button
                   type="button"
                   onClick={() => setSelectMode(false)}
                   style={{
-                    padding: '5px 14px',
-                    backgroundColor: !selectMode ? '#111111' : '#ffffff',
-                    color: !selectMode ? '#ffffff' : '#111111',
-                    borderLeft: '2px solid #111111',
-                    fontWeight: 800, fontSize: '11px', textTransform: 'uppercase',
-                    cursor: 'pointer', fontFamily: 'var(--font-family-body)', transition: 'all 0.1s'
+                    padding: '6px 14px',
+                    backgroundColor: !selectMode ? '#0f172a' : '#ffffff',
+                    color: !selectMode ? '#ffffff' : '#0f172a',
+                    border: 'none',
+                    borderLeft: '2px solid #0f172a',
+                    fontWeight: 800,
+                    fontSize: '11px',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                    transition: 'all 0.1s'
                   }}
                 >
-                  Browse
+                  🧭 Browse Link
                 </button>
               </div>
-              <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600, maxWidth: '200px' }}>
-                {selectMode ? '↖ Hover & click to select element' : '↖ Click to navigate, then switch back to Select'}
-              </span>
             </div>
 
-            {/* Right: Close */}
             <button
               type="button"
               onClick={() => setShowVisualSelector(false)}
+              className="hover-btn"
               style={{
-                padding: '5px 14px', border: '2px solid #111111', background: '#ffffff',
-                color: '#111111', fontWeight: 900, fontSize: '12px', textTransform: 'uppercase',
-                cursor: 'pointer', boxShadow: '2px 2px 0px #111', transition: 'all 0.1s',
-                display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0
+                padding: '8px 16px',
+                border: '2.5px solid #0f172a',
+                borderRadius: '8px',
+                background: '#ffffff',
+                color: '#ef4444',
+                fontWeight: 900,
+                fontSize: '12px',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+                boxShadow: '2px 2px 0px #0f172a',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
               }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-1px,-1px)'; e.currentTarget.style.boxShadow = '3px 3px 0px #111'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '2px 2px 0px #111'; }}
             >
-              ✕ Close
+              ✕ Exit
             </button>
           </div>
 
-          {/* Main body: iframe (left) + sidebar (right) */}
-          <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-
-            {/* iframe area */}
-            <div style={{ flex: 1, position: 'relative', backgroundColor: '#f1f5f9', minWidth: 0 }}>
-              <iframe
-                ref={iframeRef}
-                src={`${API_BASE}/api/admin/web-notifications/proxy?url=${encodeURIComponent(siteUrl)}&token=${encodeURIComponent(token)}`}
-                onLoad={handleIframeLoad}
-                style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-                title="Visual Selector Website Proxy"
-              />
+          {/* Main workspace for Visual Selector */}
+          <div style={{ display: 'flex', flex: 1, overflow: 'hidden', backgroundColor: '#f1f5f9' }}>
+            {/* iframe proxy area */}
+            <div style={{ flex: 1, position: 'relative', minWidth: 0, padding: '16px' }}>
+              <div style={{
+                width: '100%',
+                height: '100%',
+                backgroundColor: '#ffffff',
+                border: '3px solid #0f172a',
+                borderRadius: '12px',
+                boxShadow: '4px 4px 0px #0f172a',
+                overflow: 'hidden'
+              }}>
+                <iframe
+                  ref={iframeRef}
+                  src={`${API_BASE}/api/admin/web-notifications/proxy?url=${encodeURIComponent(siteUrl)}&token=${encodeURIComponent(token)}`}
+                  onLoad={handleIframeLoad}
+                  style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+                  title="Visual Selector Website Proxy"
+                />
+              </div>
             </div>
 
-            {/* Right sidebar */}
+            {/* Selector Sidebar */}
             <div style={{
-              width: '280px',
+              width: '320px',
               backgroundColor: '#ffffff',
-              borderLeft: '2.5px solid #111111',
+              borderLeft: '3px solid #0f172a',
               display: 'flex',
               flexDirection: 'column',
               gap: '0',
               flexShrink: 0
             }}>
-              {/* Sidebar header */}
               <div style={{
-                padding: '14px 16px',
-                borderBottom: '2px solid #111111',
-                backgroundColor: 'var(--bg-main)'
+                padding: '16px',
+                borderBottom: '2.5px solid #0f172a',
+                backgroundColor: '#faf5ff'
               }}>
-                <div style={{ fontSize: '12px', fontWeight: 900, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.04em', fontFamily: 'var(--font-family-title)' }}>
-                  Selector Result
+                <div style={{ fontSize: '12px', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Target Node Output
                 </div>
-                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>
-                  Click an element in the preview to capture it
-                </div>
+                <p style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, margin: '4px 0 0 0' }}>
+                  Hover and click elements on the page model to calculate paths.
+                </p>
               </div>
 
-              {/* CSS Selector field */}
-              <div style={{ padding: '14px 16px', borderBottom: '2px solid #111111', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '10px', fontWeight: 900, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  CSS Selector
+              {/* Selector input display */}
+              <div style={{ padding: '16px', borderBottom: '2px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Calculated CSS path
                 </label>
                 <input
                   type="text"
                   value={tempSelector}
                   onChange={e => setTempSelector(e.target.value)}
                   style={{
-                    padding: '7px 10px',
-                    border: '2px solid #111111',
+                    padding: '8px 12px',
+                    border: '2.5px solid #0f172a',
+                    borderRadius: '8px',
                     outline: 'none',
-                    fontSize: '11px',
-                    fontWeight: 700,
+                    fontSize: '12px',
+                    fontWeight: 800,
                     fontFamily: 'monospace',
                     backgroundColor: tempSelector ? '#f0fdf4' : '#ffffff',
-                    boxShadow: tempSelector ? '2px 2px 0px #16a34a' : 'none',
-                    transition: 'all 0.1s'
+                    color: tempSelector ? '#166534' : '#0f172a',
+                    transition: 'all 0.15s'
                   }}
-                  placeholder="Click element to auto-fill..."
+                  placeholder="Click elements to extract paths..."
                 />
                 {tempSelector && (
                   <div style={{
-                    fontSize: '10px', color: '#16a34a', fontWeight: 800,
-                    display: 'flex', alignItems: 'center', gap: '4px'
+                    fontSize: '10px',
+                    color: '#10b981',
+                    fontWeight: 900,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    marginTop: '2px'
                   }}>
-                    <Check size={10} /> Selector captured
+                    <Check size={10} /> CSS Selector Matched
                   </div>
                 )}
               </div>
 
-              {/* Text preview */}
-              <div style={{ padding: '14px 16px', borderBottom: '2px solid #111111', display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minHeight: 0 }}>
-                <label style={{ fontSize: '10px', fontWeight: 900, color: '#111111', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Content Preview
+              {/* Element Text preview box */}
+              <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minHeight: 0 }}>
+                <label style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Live Node Content Preview
                 </label>
                 <div style={{
-                  border: '2px solid #111111',
-                  backgroundColor: 'var(--bg-main)',
-                  padding: '10px',
+                  border: '2px solid #0f172a',
+                  borderRadius: '8px',
+                  backgroundColor: '#f8fafc',
+                  padding: '12px',
                   fontSize: '11px',
                   fontFamily: 'monospace',
                   overflowY: 'auto',
                   whiteSpace: 'pre-wrap',
-                  color: tempSelectorText ? '#111111' : '#94a3b8',
-                  fontWeight: 500,
+                  color: tempSelectorText ? '#0f172a' : '#64748b',
+                  fontWeight: 650,
                   lineHeight: 1.5,
-                  flex: 1,
-                  maxHeight: '220px'
+                  flex: 1
                 }}>
-                  {tempSelectorText || 'No element selected yet.\n\nSwitch to Select mode, then click any element on the website preview.'}
+                  {tempSelectorText || 'Click target sections in select mode to preview the underlying text crawler payload.'}
                 </div>
               </div>
 
-              {/* Action buttons */}
-              <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {/* Action Buttons */}
+              <div style={{ padding: '16px', borderTop: '2.5px solid #0f172a', display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: '#f8fafc' }}>
                 <button
                   type="button"
                   onClick={handleConfirmVisualSelector}
                   disabled={!tempSelector}
+                  className="hover-btn"
                   style={{
                     width: '100%',
-                    padding: '10px',
-                    border: '2px solid #111111',
-                    background: tempSelector ? 'var(--success)' : '#f1f5f9',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: '2.5px solid #0f172a',
+                    background: tempSelector ? '#10b981' : '#cbd5e1',
                     color: tempSelector ? '#ffffff' : '#94a3b8',
-                    boxShadow: tempSelector ? '3px 3px 0px #111' : 'none',
+                    boxShadow: tempSelector ? '2.5px 2.5px 0px #0f172a' : 'none',
                     cursor: tempSelector ? 'pointer' : 'not-allowed',
-                    fontSize: '12px', fontWeight: 900,
+                    fontSize: '12px',
+                    fontWeight: 900,
                     textTransform: 'uppercase',
-                    transition: 'all 0.1s',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
                   }}
-                  onMouseEnter={e => { if (tempSelector) { e.currentTarget.style.transform = 'translate(-1px,-1px)'; e.currentTarget.style.boxShadow = '4px 4px 0px #111'; } }}
-                  onMouseLeave={e => { if (tempSelector) { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '3px 3px 0px #111'; } }}
                 >
-                  <Check size={13} /> Use This Selector
+                  <Check size={14} /> Lock Selector
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowVisualSelector(false)}
+                  className="hover-btn"
                   style={{
                     width: '100%',
-                    padding: '8px',
-                    border: '2px solid #111111',
+                    padding: '10px',
+                    borderRadius: '8px',
+                    border: '2.5px solid #0f172a',
                     background: '#ffffff',
-                    color: '#111111',
-                    boxShadow: '2px 2px 0px #111',
+                    color: '#0f172a',
+                    boxShadow: '2px 2px 0px #0f172a',
                     cursor: 'pointer',
-                    fontSize: '11px', fontWeight: 800,
-                    textTransform: 'uppercase',
-                    transition: 'all 0.1s'
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    textTransform: 'uppercase'
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-1px,-1px)'; e.currentTarget.style.boxShadow = '3px 3px 0px #111'; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '2px 2px 0px #111'; }}
                 >
                   Cancel
                 </button>
@@ -1674,10 +1972,15 @@ function WebNotifications({ user, token }) {
         </div>
       )}
 
-
+      {/* CSS Modal Slide In Animation Definition */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes modalSlideIn {
+          from { transform: translateY(20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}} />
 
     </div>
-
   );
 }
 

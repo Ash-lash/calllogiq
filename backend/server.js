@@ -2829,6 +2829,22 @@ app.get('/api/admin/whatsapp/webhook-debug', (req, res) => {
   });
 });
 
+// Endpoint to check who the currently active token belongs to
+app.get('/api/admin/whatsapp/token-check', async (req, res) => {
+  if (!WHATSAPP_TOKEN) {
+    return res.json({ error: 'WHATSAPP_TOKEN is missing' });
+  }
+  try {
+    const response = await fetch('https://graph.facebook.com/v19.0/me?fields=id,name', {
+      headers: { 'Authorization': `Bearer ${WHATSAPP_TOKEN}` }
+    });
+    const resJson = await response.json();
+    res.json(resJson);
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+
 // 2. Webhook Event Handler (POST)
 app.post('/api/admin/whatsapp/webhook', async (req, res) => {
   const body = req.body;

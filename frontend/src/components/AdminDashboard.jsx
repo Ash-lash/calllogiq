@@ -2643,6 +2643,31 @@ const AdminDashboard = ({ user, token }) => {
               </div>
             )}
 
+            {flushLoading && (
+              <div style={{
+                width: '100%',
+                height: '8px',
+                backgroundColor: 'var(--border-light)',
+                borderRadius: '4px',
+                marginBottom: '1rem',
+                overflow: 'hidden',
+                position: 'relative',
+                border: '1px solid var(--border-color)',
+                boxShadow: '1px 1px 0px var(--border-color)'
+              }}>
+                <div style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  height: '100%',
+                  width: '35%',
+                  borderRadius: '4px',
+                  background: 'linear-gradient(90deg, var(--danger) 0%, #ff6b6b 100%)',
+                  animation: 'uploadProgressAnim 1.4s infinite ease-in-out'
+                }} />
+              </div>
+            )}
+
             <button
               onClick={handleFlushDatabase}
               disabled={flushLoading}

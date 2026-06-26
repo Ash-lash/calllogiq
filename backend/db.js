@@ -535,15 +535,19 @@ const db = {
       
       // Cascade delete logs
       const logsSnapshot = await firestore.collection('logs').where('userId', '==', id).get();
-      const batch = firestore.batch();
-      logsSnapshot.forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
+      if (!logsSnapshot.empty) {
+        const batch = firestore.batch();
+        logsSnapshot.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
       
       // Cascade delete personal tasks
       const tasksSnapshot = await firestore.collection('tasks').where('assignedTo', '==', id).get();
-      const tasksBatch = firestore.batch();
-      tasksSnapshot.forEach(doc => tasksBatch.delete(doc.ref));
-      await tasksBatch.commit();
+      if (!tasksSnapshot.empty) {
+        const tasksBatch = firestore.batch();
+        tasksSnapshot.forEach(doc => tasksBatch.delete(doc.ref));
+        await tasksBatch.commit();
+      }
     } else {
       const data = readLocalDB();
       data.users = data.users.filter(u => u.id !== id);
@@ -846,11 +850,13 @@ const db = {
       ];
       for (const colName of collections) {
         const snapshot = await firestore.collection(colName).get();
-        const batch = firestore.batch();
-        snapshot.forEach(doc => {
-          batch.delete(doc.ref);
-        });
-        await batch.commit();
+        if (!snapshot.empty) {
+          const batch = firestore.batch();
+          snapshot.forEach(doc => {
+            batch.delete(doc.ref);
+          });
+          await batch.commit();
+        }
       }
     } else {
       const emptyData = {
@@ -981,9 +987,11 @@ const db = {
     const firestore = getFirestore();
     if (firestore) {
       const snapshot = await firestore.collection('web_notifications').get();
-      const batch = firestore.batch();
-      snapshot.forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
+      if (!snapshot.empty) {
+        const batch = firestore.batch();
+        snapshot.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
       return true;
     } else {
       const data = readLocalDB();
@@ -997,9 +1005,11 @@ const db = {
     const firestore = getFirestore();
     if (firestore) {
       const snapshot = await firestore.collection('web_notifications').where('websiteId', '==', websiteId).get();
-      const batch = firestore.batch();
-      snapshot.forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
+      if (!snapshot.empty) {
+        const batch = firestore.batch();
+        snapshot.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
       return true;
     } else {
       const data = readLocalDB();
@@ -1257,17 +1267,22 @@ const db = {
         .get();
       
       const batch = firestore.batch();
+      let count = 0;
       snapshot.docs.forEach(doc => {
         batch.delete(doc.ref);
+        count++;
       });
       
       dates.forEach(date => {
         const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
         const ref = firestore.collection('holidays').doc(id);
         batch.set(ref, { id, date });
+        count++;
       });
       
-      await batch.commit();
+      if (count > 0) {
+        await batch.commit();
+      }
       return true;
     } else {
       const data = readLocalDB();

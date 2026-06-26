@@ -63,6 +63,44 @@ function writeLocalDB(data) {
   }
 }
 
+function matchDomain(userDomain, taskAssignedTo) {
+  if (!userDomain || !taskAssignedTo) return false;
+  
+  const ud = userDomain.trim().toLowerCase();
+  const ta = taskAssignedTo.trim().toLowerCase();
+  
+  if (ud === ta) return true;
+  
+  const normalize = (str) => {
+    return str
+      .replace(/\s+team$/i, '')
+      .replace(/developement/g, 'development')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+  
+  const normUd = normalize(ud);
+  const normTa = normalize(ta);
+  
+  if (normUd === normTa) return true;
+  
+  const legacyMap = {
+    'sales': 'academic counselling',
+    'accounts': 'accounts & development'
+  };
+  
+  if (legacyMap[normUd] === normTa || legacyMap[normTa] === normUd) return true;
+  if (normUd.startsWith(normTa) || normTa.startsWith(normUd)) return true;
+  
+  return false;
+}
+
+function checkIsDomainTask(assignedTo) {
+  if (!assignedTo) return false;
+  const domains = ['academic counselling team', 'accounts & development team', 'business development team'];
+  return domains.some(dom => matchDomain(dom, assignedTo));
+}
+
 // Check if Firebase is initialized
 function getFirestore() {
   if (admin.apps.length > 0) {
@@ -363,7 +401,7 @@ const db = {
       const tasksList = [];
       snapshot.forEach(doc => {
         const t = doc.data();
-        if (t.assignedTo === userId || t.assignedTo.toLowerCase() === domain.toLowerCase()) {
+        if (t.assignedTo === userId || (t.assignedTo && domain && matchDomain(domain, t.assignedTo))) {
           tasksList.push({ id: doc.id, ...t });
         }
       });
@@ -372,7 +410,7 @@ const db = {
       const data = readLocalDB();
       return data.tasks.filter(t => {
         if (t.assignedTo === userId) return true;
-        if (t.assignedTo.toLowerCase() === domain.toLowerCase()) return true;
+        if (t.assignedTo && domain && matchDomain(domain, t.assignedTo)) return true;
         return false;
       });
     }
@@ -404,7 +442,7 @@ const db = {
       if (!task.employeeStages) task.employeeStages = {};
       task.employeeStages[userId] = status;
       
-      const isDomainTask = ['academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase());
+      const isDomainTask = checkIsDomainTask(task.assignedTo);
       if (isDomainTask) {
         if (!task.completions) task.completions = [];
         if (status === 'completed') {
@@ -439,7 +477,7 @@ const db = {
       if (!task.employeeStages) task.employeeStages = {};
       task.employeeStages[userId] = status;
       
-      const isDomainTask = ['academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase());
+      const isDomainTask = checkIsDomainTask(task.assignedTo);
       if (isDomainTask) {
         if (!task.completions) task.completions = [];
         if (status === 'completed') {
@@ -1231,7 +1269,9 @@ const db = {
       writeLocalDB(data);
       return true;
     }
-  }
+  },
+  
+  checkIsDomainTask
 };
 
 module.exports = db;

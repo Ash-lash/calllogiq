@@ -157,11 +157,9 @@ function Auth({ onLoginSuccess }) {
 
   // Domain Config Options
   const domains = [
-    { id: 'Sales', label: 'Sales', icon: Briefcase, color: '#4f46e5', desc: 'Outbound sales & lead conversion' },
-    { id: 'Accounts', label: 'Accounts', icon: Calculator, color: '#7c3aed', desc: 'Billing, payouts & bookkeeping' },
-    { id: 'Support', label: 'Support', icon: Headphones, color: '#059669', desc: 'Customer queries & resolution' },
-    { id: 'HR', label: 'HR', icon: Users, color: '#ea580c', desc: 'Recruitment & team welfare' },
-    { id: 'Operations', label: 'Operations', icon: Cpu, color: '#dc2626', desc: 'Infrastructure & logistics' }
+    { id: 'Academic Counselling Team', label: 'Academic Counselling', icon: Briefcase, color: '#4f46e5', desc: 'Student guidance, admissions & course consulting' },
+    { id: 'Accounts & Development Team', label: 'Accounts & Development', icon: Calculator, color: '#7c3aed', desc: 'Billing, payouts, bookkeeping & tech support' },
+    { id: 'Business Development Team', label: 'Business Development', icon: Users, color: '#059669', desc: 'Corporate partnerships & strategic growth' }
   ];
 
   return (

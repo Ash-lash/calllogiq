@@ -111,7 +111,46 @@ const EmployeeSelectDropdown = ({ options, value, onChange, placeholder, onHover
   );
 };
 
+function matchDomain(userDomain, taskAssignedTo) {
+  if (!userDomain || !taskAssignedTo) return false;
+  
+  const ud = userDomain.trim().toLowerCase();
+  const ta = taskAssignedTo.trim().toLowerCase();
+  
+  if (ud === ta) return true;
+  
+  const normalize = (str) => {
+    return str
+      .replace(/\s+team$/i, '')
+      .replace(/developement/g, 'development')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+  
+  const normUd = normalize(ud);
+  const normTa = normalize(ta);
+  
+  if (normUd === normTa) return true;
+  
+  const legacyMap = {
+    'sales': 'academic counselling',
+    'accounts': 'accounts & development'
+  };
+  
+  if (legacyMap[normUd] === normTa || legacyMap[normTa] === normUd) return true;
+  if (normUd.startsWith(normTa) || normTa.startsWith(normUd)) return true;
+  
+  return false;
+}
 
+const checkIsDomainTask = (assignedTo, usersList) => {
+  if (!assignedTo) return false;
+  const domains = ['academic counselling team', 'accounts & development team', 'business development team'];
+  const matchedDomain = domains.some(dom => matchDomain(dom, assignedTo));
+  if (matchedDomain) return true;
+  if (!usersList) return false;
+  return !usersList.some(u => u.id === assignedTo);
+};
 
 const AdminDashboard = ({ user, token }) => {
   const [users, setUsers] = useState([]);
@@ -1638,7 +1677,7 @@ const AdminDashboard = ({ user, token }) => {
         
         // Helper to decide if a task should be shown for a specific employee on Admin side
         const shouldShowTaskForEmployeeOnAdminSide = (task, employee) => {
-          const isDomainTask = ['academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase()) || !users.some(u => u.id === task.assignedTo);
+          const isDomainTask = checkIsDomainTask(task.assignedTo, users);
           const stage = task.employeeStages?.[employee.id] || (isDomainTask ? (task.completions?.includes(employee.id) ? 'completed' : 'pending') : (task.status || 'pending'));
           
           if (stage !== 'completed') {
@@ -1659,10 +1698,10 @@ const AdminDashboard = ({ user, token }) => {
 
         // Helper to decide if a task is active overall (at least one user has it in seen/doing, or completed within 24h)
         const shouldShowTaskOnAdminSide = (task) => {
-          const isDomainTask = ['academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase()) || !users.some(u => u.id === task.assignedTo);
+          const isDomainTask = checkIsDomainTask(task.assignedTo, users);
           
           if (isDomainTask) {
-            const domainEmployees = activeEmployees.filter(u => u.domain && u.domain.toLowerCase() === task.assignedTo.toLowerCase());
+            const domainEmployees = activeEmployees.filter(u => u.domain && matchDomain(u.domain, task.assignedTo));
             if (domainEmployees.length === 0) return false;
             
             const allCompleted = domainEmployees.every(emp => {
@@ -1713,9 +1752,9 @@ const AdminDashboard = ({ user, token }) => {
         activeEmployees.forEach(emp => {
           // Find all tasks assigned to this user or to their domain
           const empTasks = tasks.filter(task => {
-            const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations', 'academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase()) || !users.some(u => u.id === task.assignedTo);
+            const isDomainTask = checkIsDomainTask(task.assignedTo, users);
             const isAssigned = isDomainTask 
-              ? (emp.domain && emp.domain.toLowerCase() === task.assignedTo.toLowerCase())
+              ? (emp.domain && matchDomain(emp.domain, task.assignedTo))
               : (task.assignedTo === emp.id);
             
             return isAssigned && shouldShowTaskForEmployeeOnAdminSide(task, emp);
@@ -1802,7 +1841,7 @@ const AdminDashboard = ({ user, token }) => {
                             assigneeName = targetUser.name;
                           }
 
-                          const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations', 'academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase()) || !users.some(u => u.id === task.assignedTo);
+                          const isDomainTask = checkIsDomainTask(task.assignedTo, users);
 
                           return (
                             <div 
@@ -1881,7 +1920,7 @@ const AdminDashboard = ({ user, token }) => {
                             {(() => {
                               let assignedUsers = [];
                               if (isDomainTask) {
-                                assignedUsers = users.filter(u => u.domain && u.domain.toLowerCase() === task.assignedTo.toLowerCase() && u.role !== 'admin');
+                                assignedUsers = users.filter(u => u.domain && matchDomain(u.domain, task.assignedTo) && u.role !== 'admin');
                               } else {
                                 const targetUser = users.find(u => u.id === task.assignedTo);
                                 if (targetUser) assignedUsers = [targetUser];
@@ -2052,7 +2091,7 @@ const AdminDashboard = ({ user, token }) => {
                               </div>
                             ) : (
                               empTasks.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(task => {
-                            const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations', 'academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase()) || !users.some(u => u.id === task.assignedTo);
+                            const isDomainTask = checkIsDomainTask(task.assignedTo, users);
                             const stage = task.employeeStages?.[employee.id] || (isDomainTask ? 'pending' : (task.status || 'pending'));
                             
                             let badgeBg = '#f3f4f6';
@@ -2124,7 +2163,7 @@ const AdminDashboard = ({ user, token }) => {
                     const month = date.toLocaleString('default', { month: 'long' });
                     const day = date.getDate().toString().padStart(2, '0');
                     
-                    const isDomainTask = ['accounts', 'sales', 'support', 'hr', 'operations', 'academic counselling team', 'accounts & developement team', 'business development team'].includes(task.assignedTo.toLowerCase()) || !users.some(u => u.id === task.assignedTo);
+                    const isDomainTask = checkIsDomainTask(task.assignedTo, users);
                     
                     let assigneeLabel = task.assignedTo;
                     if (!isDomainTask) {
@@ -3277,12 +3316,12 @@ const AdminDashboard = ({ user, token }) => {
 
       {/* Task Status Details Modal */}
       {selectedTaskDetails && (() => {
-        const isDomainTask = ['academic counselling team', 'accounts & developement team', 'business development team'].includes(selectedTaskDetails.assignedTo.toLowerCase()) || !users.some(u => u.id === selectedTaskDetails.assignedTo);
+        const isDomainTask = checkIsDomainTask(selectedTaskDetails.assignedTo, users);
         const activeEmployees = users.filter(u => u.role !== 'admin');
         
         let assignedUsers = [];
         if (isDomainTask) {
-          assignedUsers = activeEmployees.filter(u => u.domain && u.domain.toLowerCase() === selectedTaskDetails.assignedTo.toLowerCase());
+          assignedUsers = activeEmployees.filter(u => u.domain && matchDomain(u.domain, selectedTaskDetails.assignedTo));
         } else {
           const targetUser = users.find(u => u.id === selectedTaskDetails.assignedTo);
           if (targetUser) assignedUsers = [targetUser];

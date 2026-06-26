@@ -587,7 +587,7 @@ app.get('/api/health', (req, res) => {
 // 1. Initiate Register
 // 1. Google Sign-In Verification
 app.post('/api/auth/google', async (req, res) => {
-  const { idToken } = req.body;
+  const { idToken, domain } = req.body;
   if (!idToken) {
     return res.status(400).json({ error: 'Google ID token is required' });
   }
@@ -621,6 +621,33 @@ app.post('/api/auth/google', async (req, res) => {
         branch: 'Pending', // Branch is also pending for new users
         role: isEmailAdmin ? 'admin' : 'user'
       });
+    }
+
+    // Check if user requires domain selection (i.e. domain is 'Pending')
+    const isPending = user.domain === 'Pending' || user.domain === 'pending';
+    if (isPending) {
+      if (domain) {
+        const validDomains = ['Academic Counselling Team', 'Accounts & Development Team', 'Business Development Team'];
+        if (validDomains.includes(domain)) {
+          user = await db.updateUser(user.id, { domain });
+          console.log(`Updated pending user ${email} domain to ${domain}`);
+        } else {
+          return res.status(400).json({ error: 'Invalid department domain selected' });
+        }
+      } else {
+        // Return response indicating domain selection is needed
+        return res.json({
+          needsDomain: true,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            domain: user.domain,
+            branch: user.branch || 'Pending',
+            role: user.role
+          }
+        });
+      }
     }
 
     // Generate JWT token
@@ -1503,7 +1530,7 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
   
   // Format task checklist response
   const formattedTasks = tasks.map(t => {
-    const isDomainTask = ['academic counselling team', 'accounts & developement team', 'business development team'].includes(t.assignedTo.toLowerCase());
+    const isDomainTask = db.checkIsDomainTask(t.assignedTo);
     const status = t.employeeStages?.[req.user.userId] || (isDomainTask ? (t.completions?.includes(req.user.userId) ? 'completed' : 'pending') : (t.status || 'pending'));
     const isCompleted = status === 'completed';
     const taskDateStr = t.createdAt.split('T')[0];

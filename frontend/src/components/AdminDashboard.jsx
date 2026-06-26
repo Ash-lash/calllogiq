@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
-  LineChart, Line
+  LineChart, Line, CartesianGrid
 } from 'recharts';
 import API_BASE from '../api';
 

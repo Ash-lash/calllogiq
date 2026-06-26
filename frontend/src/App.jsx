@@ -235,7 +235,23 @@ function App() {
           ) : activeTab === 'webnotifications' && isUserAdmin ? (
             <WebNotifications user={user} token={token} />
           ) : activeTab === 'whatsapp' && isUserAdmin ? (
-            <WhatsAppManager user={user} token={token} />
+            <div className="card" style={{ padding: '3rem 2rem', textAlign: 'center', maxWidth: '600px', margin: '4rem auto', borderRadius: '8px', border: '3px solid #111111', boxShadow: '8px 8px 0px #111111', backgroundColor: '#ffffff' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--warning-light)', color: 'var(--warning)', border: '2px solid #111111', borderRadius: '50%', width: '70px', height: '70px', marginBottom: '1.5rem', boxShadow: '3px 3px 0px #111111' }}>
+                <MessageSquare size={36} />
+              </div>
+              <h2 style={{ fontSize: '2.5rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.02em', color: '#111111', marginBottom: '0.75rem' }}>
+                WhatsApp Manager
+              </h2>
+              <span className="badge badge-warning" style={{ border: '2px solid #111111', fontSize: '0.8rem', padding: '0.3rem 1rem', boxShadow: '2px 2px 0px #111111', display: 'inline-block', marginBottom: '1.5rem' }}>
+                🚧 Under Development
+              </span>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.6', marginBottom: '2rem' }}>
+                Configure automated WhatsApp chatbots, coordinate team marketing campaigns, and manage broadcasting lists. This feature is currently undergoing system upgrades and will be launched soon!
+              </p>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: '#111111', color: '#ffffff', padding: '0.75rem 1.5rem', borderRadius: '4px', fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase', border: '2px solid #111111', boxShadow: '4px 4px 0px #2563eb' }}>
+                <span>🚀 Coming Soon</span>
+              </div>
+            </div>
           ) : activeTab === 'assets' ? (
             <AssetManager user={user} token={token} />
           ) : activeTab === 'profile' ? (

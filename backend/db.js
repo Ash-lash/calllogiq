@@ -838,7 +838,12 @@ const db = {
   flushDatabase: async () => {
     const firestore = getFirestore();
     if (firestore) {
-      const collections = ['users', 'logs', 'tasks', 'otps', 'assets', 'asset_verifications', 'asset_notifications', 'field_visits', 'tracked_websites', 'web_notifications'];
+      const collections = [
+        'users', 'logs', 'tasks', 'otps', 'assets', 
+        'asset_verifications', 'asset_notifications', 'field_visits', 
+        'tracked_websites', 'web_notifications', 'whatsapp_chats', 
+        'whatsapp_messages', 'whatsapp_broadcasts', 'whatsapp_chatbots', 'holidays'
+      ];
       for (const colName of collections) {
         const snapshot = await firestore.collection(colName).get();
         const batch = firestore.batch();
@@ -858,7 +863,12 @@ const db = {
         assetNotifications: [],
         fieldVisits: [],
         trackedWebsites: [],
-        webNotifications: []
+        webNotifications: [],
+        whatsappChats: [],
+        whatsappMessages: [],
+        whatsappBroadcasts: [],
+        whatsappChatbots: [],
+        holidays: []
       };
       writeLocalDB(emptyData);
     }

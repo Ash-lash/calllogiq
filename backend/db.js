@@ -112,6 +112,33 @@ function getFirestore() {
   return null;
 }
 
+// Helper to delete a collection in batches of 500 to avoid Firestore limits
+async function deleteFirestoreCollection(firestore, colName) {
+  const collectionRef = firestore.collection(colName);
+  let snapshot = await collectionRef.limit(500).get();
+  while (!snapshot.empty) {
+    const batch = firestore.batch();
+    snapshot.docs.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+    await batch.commit();
+    snapshot = await collectionRef.limit(500).get();
+  }
+}
+
+// Helper to delete query results in batches of 500 to avoid Firestore limits
+async function deleteFirestoreQuery(firestore, query) {
+  let snapshot = await query.limit(500).get();
+  while (!snapshot.empty) {
+    const batch = firestore.batch();
+    snapshot.docs.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+    await batch.commit();
+    snapshot = await query.limit(500).get();
+  }
+}
+
 const db = {
   // --- USERS ---
   findUserByEmail: async (email) => {
@@ -534,20 +561,12 @@ const db = {
       await firestore.collection('users').doc(id).delete();
       
       // Cascade delete logs
-      const logsSnapshot = await firestore.collection('logs').where('userId', '==', id).get();
-      if (!logsSnapshot.empty) {
-        const batch = firestore.batch();
-        logsSnapshot.forEach(doc => batch.delete(doc.ref));
-        await batch.commit();
-      }
+      const logsQuery = firestore.collection('logs').where('userId', '==', id);
+      await deleteFirestoreQuery(firestore, logsQuery);
       
       // Cascade delete personal tasks
-      const tasksSnapshot = await firestore.collection('tasks').where('assignedTo', '==', id).get();
-      if (!tasksSnapshot.empty) {
-        const tasksBatch = firestore.batch();
-        tasksSnapshot.forEach(doc => tasksBatch.delete(doc.ref));
-        await tasksBatch.commit();
-      }
+      const tasksQuery = firestore.collection('tasks').where('assignedTo', '==', id);
+      await deleteFirestoreQuery(firestore, tasksQuery);
     } else {
       const data = readLocalDB();
       data.users = data.users.filter(u => u.id !== id);
@@ -849,14 +868,7 @@ const db = {
         'whatsapp_messages', 'whatsapp_broadcasts', 'whatsapp_chatbots', 'holidays'
       ];
       for (const colName of collections) {
-        const snapshot = await firestore.collection(colName).get();
-        if (!snapshot.empty) {
-          const batch = firestore.batch();
-          snapshot.forEach(doc => {
-            batch.delete(doc.ref);
-          });
-          await batch.commit();
-        }
+        await deleteFirestoreCollection(firestore, colName);
       }
     } else {
       const emptyData = {
@@ -986,12 +998,7 @@ const db = {
   clearWebNotifications: async () => {
     const firestore = getFirestore();
     if (firestore) {
-      const snapshot = await firestore.collection('web_notifications').get();
-      if (!snapshot.empty) {
-        const batch = firestore.batch();
-        snapshot.forEach(doc => batch.delete(doc.ref));
-        await batch.commit();
-      }
+      await deleteFirestoreCollection(firestore, 'web_notifications');
       return true;
     } else {
       const data = readLocalDB();
@@ -1004,12 +1011,8 @@ const db = {
   clearWebNotificationsForSite: async (websiteId) => {
     const firestore = getFirestore();
     if (firestore) {
-      const snapshot = await firestore.collection('web_notifications').where('websiteId', '==', websiteId).get();
-      if (!snapshot.empty) {
-        const batch = firestore.batch();
-        snapshot.forEach(doc => batch.delete(doc.ref));
-        await batch.commit();
-      }
+      const query = firestore.collection('web_notifications').where('websiteId', '==', websiteId);
+      await deleteFirestoreQuery(firestore, query);
       return true;
     } else {
       const data = readLocalDB();

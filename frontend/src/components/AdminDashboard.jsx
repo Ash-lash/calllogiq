@@ -692,7 +692,8 @@ const AdminDashboard = ({ user, token }) => {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to flush database');
+        const errMsg = data.details ? `${data.error} (${data.details})` : (data.error || 'Failed to flush database');
+        throw new Error(errMsg);
       }
 
       setFlushSuccess('Database flushed successfully! Redirecting you to re-login...');

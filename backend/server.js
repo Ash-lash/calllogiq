@@ -1960,7 +1960,11 @@ app.post('/api/admin/flush-database', authenticateToken, requireAdmin, async (re
     return res.json({ message: 'Database flushed successfully.' });
   } catch (err) {
     console.error('Error flushing database:', err);
-    return res.status(500).json({ error: 'Failed to flush database.' });
+    return res.status(500).json({ 
+      error: 'Failed to flush database.', 
+      details: err.message,
+      stack: err.stack
+    });
   }
 });
 

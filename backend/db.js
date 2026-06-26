@@ -20,7 +20,8 @@ if (!fs.existsSync(DB_FILE)) {
     whatsappChats: [],
     whatsappMessages: [],
     whatsappBroadcasts: [],
-    whatsappChatbots: []
+    whatsappChatbots: [],
+    holidays: []
   }, null, 2), 'utf8');
 }
 
@@ -38,6 +39,7 @@ function readLocalDB() {
     if (!parsed.whatsappMessages) parsed.whatsappMessages = [];
     if (!parsed.whatsappBroadcasts) parsed.whatsappBroadcasts = [];
     if (!parsed.whatsappChatbots) parsed.whatsappChatbots = [];
+    if (!parsed.holidays) parsed.holidays = [];
     return parsed;
   } catch (err) {
     console.error('Error reading database file:', err);
@@ -45,7 +47,8 @@ function readLocalDB() {
       users: [], logs: [], tasks: [], otps: [], assets: [], 
       assetVerifications: [], assetNotifications: [], fieldVisits: [], 
       trackedWebsites: [], webNotifications: [],
-      whatsappChats: [], whatsappMessages: [], whatsappBroadcasts: [], whatsappChatbots: []
+      whatsappChats: [], whatsappMessages: [], whatsappBroadcasts: [], whatsappChatbots: [],
+      holidays: []
     };
   }
 }
@@ -1172,6 +1175,59 @@ const db = {
     } else {
       const data = readLocalDB();
       data.whatsappChatbots = data.whatsappChatbots.filter(b => b.id !== id);
+      writeLocalDB(data);
+      return true;
+    }
+  },
+
+  // --- HOLIDAYS ---
+  getHolidays: async () => {
+    const firestore = getFirestore();
+    if (firestore) {
+      const snapshot = await firestore.collection('holidays').get();
+      const list = [];
+      snapshot.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+      return list;
+    } else {
+      const data = readLocalDB();
+      return data.holidays || [];
+    }
+  },
+
+  saveHolidaysForMonth: async (monthStr, dates) => {
+    // monthStr is e.g. "2026-06"
+    // dates is e.g. ["2026-06-25", "2026-06-26"]
+    const firestore = getFirestore();
+    if (firestore) {
+      // Get existing holidays for this month
+      const snapshot = await firestore.collection('holidays')
+        .where('date', '>=', `${monthStr}-01`)
+        .where('date', '<=', `${monthStr}-31`)
+        .get();
+      
+      const batch = firestore.batch();
+      snapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      
+      dates.forEach(date => {
+        const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+        const ref = firestore.collection('holidays').doc(id);
+        batch.set(ref, { id, date });
+      });
+      
+      await batch.commit();
+      return true;
+    } else {
+      const data = readLocalDB();
+      if (!data.holidays) data.holidays = [];
+      // Remove existing holidays for this month
+      data.holidays = data.holidays.filter(h => !h.date.startsWith(monthStr));
+      // Add new ones
+      dates.forEach(date => {
+        const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+        data.holidays.push({ id, date });
+      });
       writeLocalDB(data);
       return true;
     }

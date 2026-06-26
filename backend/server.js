@@ -1308,6 +1308,32 @@ app.get('/api/calls/aggregate-excel/:userId', authenticateToken, requireAdmin, a
   }
 });
 
+// Get all configured holidays (Admin only)
+app.get('/api/admin/holidays', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const list = await db.getHolidays();
+    return res.json(list);
+  } catch (err) {
+    console.error('Error fetching holidays:', err);
+    return res.status(500).json({ error: 'Failed to fetch holidays' });
+  }
+});
+
+// Save holidays for a specific month (Admin only)
+app.post('/api/admin/holidays', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { month, dates } = req.body;
+    if (!month || !Array.isArray(dates)) {
+      return res.status(400).json({ error: 'Missing month or dates array' });
+    }
+    await db.saveHolidaysForMonth(month, dates);
+    return res.json({ message: 'Holidays saved successfully' });
+  } catch (err) {
+    console.error('Error saving holidays:', err);
+    return res.status(500).json({ error: 'Failed to save holidays' });
+  }
+});
+
 // Get Attendance Report for a specific user (Admin only)
 app.get('/api/admin/attendance/:userId', authenticateToken, requireAdmin, async (req, res) => {
   const { userId } = req.params;
@@ -1318,6 +1344,14 @@ app.get('/api/admin/attendance/:userId', authenticateToken, requireAdmin, async 
 
   // Get all logs for this user
   const userLogs = await db.getLogsByUserId(userId);
+  
+  // Get all configured holidays
+  let holidaysList = [];
+  try {
+    holidaysList = await db.getHolidays();
+  } catch (err) {
+    console.error('Error reading holidays in attendance calculation:', err);
+  }
   
   // Calculate days from registrationDate to today
   const regDateStr = targetUser.registrationDate || targetUser.createdAt.split('T')[0];
@@ -1331,6 +1365,7 @@ app.get('/api/admin/attendance/:userId', authenticateToken, requireAdmin, async 
   let holidays = 0;
   let presentDays = 0;
   let absentDays = 0;
+  let overtimeDays = 0;
   
   const attendanceList = [];
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -1340,20 +1375,60 @@ app.get('/api/admin/attendance/:userId', authenticateToken, requireAdmin, async 
     const dateStr = `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
     const isSunday = d.getDay() === 0;
     
+    // Format YYYY-MM-DD
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const ymdStr = `${year}-${month}-${day}`;
+    
+    const isConfiguredHoliday = holidaysList.some(h => h.date === ymdStr);
+    const isHoliday = isSunday || isConfiguredHoliday;
+    
     // Find if there is an uploaded log for this date
     const log = userLogs.find(l => l.callDate.toLowerCase() === dateStr.toLowerCase());
     
-    if (isSunday) {
+    if (isHoliday) {
       holidays++;
-      attendanceList.push({
-        date: dateStr,
-        status: 'Holiday',
-        arrival: '-',
-        departure: '-',
-        duration: '-',
-        talkTime: '-',
-        calls: 0
-      });
+      if (log) {
+        overtimeDays++;
+        
+        // Calculate workday span duration
+        let durationStr = log.summary.workday_span_str || '-';
+        let netWorkHoursStr = '-';
+        if (log.summary.workday_span_secs) {
+          // Subtract 45 minutes lunch break
+          const netSecs = Math.max(0, log.summary.workday_span_secs - 2700);
+          const nh = Math.floor(netSecs / 3600);
+          const nm = Math.floor((netSecs % 3600) / 60);
+          const ns = netSecs % 60;
+          netWorkHoursStr = `${nh.toString().padStart(2, '0')}:${nm.toString().padStart(2, '0')}:${ns.toString().padStart(2, '0')}`;
+        }
+
+        attendanceList.push({
+          date: dateStr,
+          status: 'Overtime',
+          arrival: log.summary.workday_start || '-',
+          departure: log.summary.workday_end || '-',
+          duration: durationStr,
+          netWorkHours: netWorkHoursStr,
+          talkTime: log.summary.talk_time_str || '-',
+          calls: log.summary.grand_total || 0,
+          logId: log.id || '',
+          pdfUrl: log.pdfUrl || '',
+          hasPdf: log.hasPdf || !!log.pdfUrl
+        });
+      } else {
+        attendanceList.push({
+          date: dateStr,
+          status: 'Holiday',
+          arrival: '-',
+          departure: '-',
+          duration: '-',
+          netWorkHours: '-',
+          talkTime: '-',
+          calls: 0
+        });
+      }
     } else {
       workingDays++;
       if (log) {
@@ -1405,7 +1480,8 @@ app.get('/api/admin/attendance/:userId', authenticateToken, requireAdmin, async 
       workingDays,
       holidays,
       presentDays,
-      absentDays
+      absentDays,
+      overtimeDays
     },
     history: attendanceList.reverse() // Newest first
   });

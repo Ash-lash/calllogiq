@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, Calendar, FileSpreadsheet, PlusCircle, CheckCircle, Clock, 
   PhoneCall, AlertTriangle, Download, ArrowRight, ClipboardList, Settings, RotateCcw,
-  ChevronUp, ChevronDown, ChevronsUpDown, FileText, Folder, FolderOpen, RefreshCw, Trash2, MapPin
+  ChevronUp, ChevronDown, ChevronsUpDown, FileText, Folder, FolderOpen, RefreshCw, Trash2, MapPin, Zap
 } from 'lucide-react';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
@@ -125,6 +125,122 @@ const AdminDashboard = ({ user, token }) => {
   const [attendanceData, setAttendanceData] = useState(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   
+  // Holiday Modal State
+  const [showHolidayModal, setShowHolidayModal] = useState(false);
+  const [holidayDates, setHolidayDates] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [selectedHolidaysForMonth, setSelectedHolidaysForMonth] = useState([]);
+  const [holidaySaving, setHolidaySaving] = useState(false);
+  const [holidaySuccess, setHolidaySuccess] = useState('');
+  const [holidayError, setHolidayError] = useState('');
+
+  // Update selected holidays when modal opens or month changes
+  useEffect(() => {
+    if (selectedMonth && holidayDates.length > 0) {
+      const existing = holidayDates
+        .filter(h => h.date && h.date.startsWith(selectedMonth))
+        .map(h => h.date);
+      setSelectedHolidaysForMonth(existing);
+    } else {
+      setSelectedHolidaysForMonth([]);
+    }
+  }, [selectedMonth, holidayDates, showHolidayModal]);
+
+  const fetchHolidays = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/holidays`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setHolidayDates(data);
+      }
+    } catch (err) {
+      console.error('Error fetching holidays:', err);
+    }
+  };
+
+  const handleSaveHolidays = async () => {
+    setHolidaySaving(true);
+    setHolidayError('');
+    setHolidaySuccess('');
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/holidays`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          month: selectedMonth,
+          dates: selectedHolidaysForMonth
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setHolidaySuccess('Holidays saved successfully!');
+        await fetchHolidays();
+        if (selectedAttendanceUserId) {
+          fetchAttendance(selectedAttendanceUserId);
+        }
+        setTimeout(() => {
+          setHolidaySuccess('');
+        }, 3000);
+      } else {
+        setHolidayError(data.error || 'Failed to save holidays.');
+      }
+    } catch (err) {
+      setHolidayError('Error saving holidays: ' + err.message);
+    } finally {
+      setHolidaySaving(false);
+    }
+  };
+
+  const getMonthOptions = () => {
+    const options = [];
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+    for (let i = 0; i <= 15; i++) {
+      const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const val = `${year}-${month}`;
+      const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      options.push({ value: val, label });
+    }
+    return options;
+  };
+
+  const getCalendarDays = (year, monthIndex) => {
+    const firstDayIndex = new Date(year, monthIndex, 1).getDay();
+    const numDays = new Date(year, monthIndex + 1, 0).getDate();
+    const days = [];
+    for (let i = 0; i < firstDayIndex; i++) {
+      days.push({ day: null, dateStr: null, isSunday: false });
+    }
+    for (let d = 1; d <= numDays; d++) {
+      const dateStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const dayOfWeek = new Date(year, monthIndex, d).getDay();
+      days.push({
+        day: d,
+        dateStr,
+        isSunday: dayOfWeek === 0
+      });
+    }
+    return days;
+  };
+
+  const toggleHoliday = (dateStr) => {
+    if (selectedHolidaysForMonth.includes(dateStr)) {
+      setSelectedHolidaysForMonth(selectedHolidaysForMonth.filter(d => d !== dateStr));
+    } else {
+      setSelectedHolidaysForMonth([...selectedHolidaysForMonth, dateStr]);
+    }
+  };
+
   // Active Admin Sub-View: 'leaderboard' | 'aggregate' | 'assign' | 'attendance' | 'fieldvisits' | 'deepanalytics'
   const [adminTab, setAdminTab] = useState('leaderboard');
   
@@ -204,6 +320,7 @@ const AdminDashboard = ({ user, token }) => {
     fetchLogs();
     fetchTasks();
     fetchFieldVisits();
+    fetchHolidays();
   }, [token]);
 
   // Clear hover profile banner when switching tabs
@@ -1049,7 +1166,7 @@ const AdminDashboard = ({ user, token }) => {
       {adminTab === 'attendance' && (
         <div>
           {/* Employee Selector */}
-          <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
             <label className="form-label" style={{ margin: 0 }}>Select Employee:</label>
             <EmployeeSelectDropdown 
               options={users.filter(u => u.role !== 'admin').sort((a, b) => a.name.localeCompare(b.name)).map(u => ({ value: u.id, label: `${u.name} (${u.email})`, user: u }))}
@@ -1065,6 +1182,27 @@ const AdminDashboard = ({ user, token }) => {
                 }
               }}
             />
+            <button 
+              onClick={() => setShowHolidayModal(true)}
+              className="btn btn-secondary" 
+              style={{ 
+                marginLeft: 'auto', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem',
+                height: '42px',
+                padding: '0 1.25rem',
+                fontWeight: 600,
+                border: '2px solid #111111',
+                boxShadow: '3px 3px 0px 0px #111111',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                background: '#ffffff'
+              }}
+            >
+              <Calendar size={16} />
+              Manage Holidays
+            </button>
           </div>
 
           {attendanceLoading ? (
@@ -1094,8 +1232,16 @@ const AdminDashboard = ({ user, token }) => {
                 <div className="kpi-card">
                   <div className="kpi-icon warning"><Clock size={20} /></div>
                   <div>
-                    <div className="kpi-label">Holidays (Sundays)</div>
+                    <div className="kpi-label">Holidays</div>
                     <div className="kpi-value">{attendanceData.summary.holidays}</div>
+                  </div>
+                </div>
+
+                <div className="kpi-card">
+                  <div className="kpi-icon info" style={{ color: 'var(--accent)', background: 'var(--accent-light)' }}><Zap size={20} /></div>
+                  <div>
+                    <div className="kpi-label">Overtime (OT)</div>
+                    <div className="kpi-value">{attendanceData.summary.overtimeDays || 0}</div>
                   </div>
                 </div>
 
@@ -1140,19 +1286,20 @@ const AdminDashboard = ({ user, token }) => {
                         let badgeClass = 'badge-success';
                         if (row.status === 'Absent') badgeClass = 'badge-danger';
                         if (row.status === 'Holiday') badgeClass = 'badge-warning';
+                        if (row.status === 'Overtime') badgeClass = 'badge-primary';
 
                         return (
                           <tr key={idx}>
                             <td style={{ fontWeight: 600 }}>{row.date}</td>
                             <td><span className={`badge ${badgeClass}`}>{row.status}</span></td>
-                            <td style={{ fontWeight: row.status === 'Present' ? 600 : 400 }}>{row.arrival}</td>
-                            <td style={{ fontWeight: row.status === 'Present' ? 600 : 400 }}>{row.departure}</td>
+                            <td style={{ fontWeight: (row.status === 'Present' || row.status === 'Overtime') ? 600 : 400 }}>{row.arrival}</td>
+                            <td style={{ fontWeight: (row.status === 'Present' || row.status === 'Overtime') ? 600 : 400 }}>{row.departure}</td>
                             <td>{row.duration}</td>
                             <td style={{ color: 'var(--primary)', fontWeight: 600 }}>{row.netWorkHours || '-'}</td>
                             <td>{row.talkTime}</td>
                             <td>{row.calls}</td>
                             <td>
-                              {row.status === 'Present' && row.logId && (
+                              {(row.status === 'Present' || row.status === 'Overtime') && row.logId && (
                                 <button
                                   onClick={() => handleFileAction(row.logId, 'pdf')}
                                   disabled={downloadingStates[`${row.logId}_pdf`] || !(row.hasPdf || row.pdfUrl)}
@@ -1166,7 +1313,7 @@ const AdminDashboard = ({ user, token }) => {
                               )}
                             </td>
                             <td>
-                              {row.status === 'Present' && row.logId && (
+                              {(row.status === 'Present' || row.status === 'Overtime') && row.logId && (
                                 <button
                                   onClick={() => handleFileAction(row.logId, 'excel')}
                                   disabled={downloadingStates[`${row.logId}_excel`]}
@@ -3301,6 +3448,235 @@ const AdminDashboard = ({ user, token }) => {
           </div>
         );
       })()}
+
+      {/* Manage Holidays Modal Overlay */}
+      {showHolidayModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.4)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000,
+          padding: '1rem'
+        }}>
+          <div className="card" style={{
+            width: '100%',
+            maxWidth: '550px',
+            boxShadow: '8px 8px 0px 0px #111111',
+            border: '3px solid #111111',
+            borderRadius: '4px',
+            background: '#ffffff',
+            animation: 'fadeIn 0.2s ease-out',
+            padding: '2rem'
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '2px solid #111111', paddingBottom: '0.75rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900, fontFamily: 'var(--font-family-title)', textTransform: 'uppercase' }}>
+                Manage Holidays
+              </h3>
+              <button 
+                onClick={() => setShowHolidayModal(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: '1.8rem',
+                  cursor: 'pointer',
+                  fontWeight: 900,
+                  color: 'var(--text-primary)',
+                  lineHeight: 1
+                }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Form elements */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {holidaySuccess && <div className="alert alert-success" style={{ marginBottom: '0.5rem' }}>{holidaySuccess}</div>}
+              {holidayError && <div className="alert alert-danger" style={{ marginBottom: '0.5rem' }}>{holidayError}</div>}
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <label className="form-label" style={{ margin: 0, fontWeight: 700 }}>Select Month:</label>
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="form-input"
+                  style={{
+                    width: 'auto',
+                    border: '2px solid #111111',
+                    fontWeight: 600,
+                    borderRadius: '4px',
+                    padding: '0.4rem 0.75rem'
+                  }}
+                >
+                  {getMonthOptions().map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Calendar Display */}
+              <div style={{ marginTop: '0.5rem' }}>
+                {/* Calendar Grid Header */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(7, 1fr)',
+                  gap: '6px',
+                  textAlign: 'center',
+                  fontWeight: 800,
+                  fontSize: '0.75rem',
+                  marginBottom: '8px',
+                  textTransform: 'uppercase'
+                }}>
+                  <div style={{ color: 'var(--danger)' }}>Sun</div>
+                  <div>Mon</div>
+                  <div>Tue</div>
+                  <div>Wed</div>
+                  <div>Thu</div>
+                  <div>Fri</div>
+                  <div>Sat</div>
+                </div>
+
+                {/* Calendar Grid Days */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(7, 1fr)',
+                  gap: '6px'
+                }}>
+                  {(() => {
+                    const [y, m] = selectedMonth.split('-').map(Number);
+                    const days = getCalendarDays(y, m - 1);
+                    return days.map((dObj, idx) => {
+                      if (dObj.day === null) {
+                        return <div key={`empty-${idx}`} style={{ aspectRatio: '1' }} />;
+                      }
+
+                      const isCustomHoliday = selectedHolidaysForMonth.includes(dObj.dateStr);
+                      const isSun = dObj.isSunday;
+
+                      // Styling
+                      let bg = '#ffffff';
+                      let border = '2px solid #e2e8f0';
+                      let color = 'var(--text-primary)';
+                      let fontWeight = '500';
+
+                      if (isSun) {
+                        bg = 'rgba(239, 68, 68, 0.05)';
+                        border = '2px dashed var(--danger)';
+                        color = 'var(--danger)';
+                        fontWeight = '700';
+                      }
+
+                      if (isCustomHoliday) {
+                        bg = 'var(--warning-light)';
+                        border = '2px solid var(--warning)';
+                        color = 'var(--warning)';
+                        fontWeight = '800';
+                      }
+
+                      return (
+                        <button
+                          key={dObj.dateStr}
+                          type="button"
+                          onClick={() => toggleHoliday(dObj.dateStr)}
+                          style={{
+                            aspectRatio: '1',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: bg,
+                            border: border,
+                            color: color,
+                            fontWeight: fontWeight,
+                            fontSize: '0.9rem',
+                            cursor: 'pointer',
+                            borderRadius: '4px',
+                            transition: 'all 0.1s ease',
+                            boxShadow: isCustomHoliday ? '2px 2px 0px 0px #111111' : 'none'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = 'translateY(-1px)';
+                            if (!isCustomHoliday) {
+                              e.currentTarget.style.borderColor = '#111111';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'none';
+                            if (!isCustomHoliday) {
+                              e.currentTarget.style.borderColor = isSun ? 'var(--danger)' : '#e2e8f0';
+                            }
+                          }}
+                        >
+                          {dObj.day}
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+
+              {/* Legend */}
+              <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', fontWeight: 600, marginTop: '0.5rem', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'rgba(239, 68, 68, 0.05)', border: '1.5px dashed var(--danger)' }} />
+                  <span>Sunday (Default Holiday)</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'var(--warning-light)', border: '1.5px solid var(--warning)' }} />
+                  <span>Custom Holiday</span>
+                </div>
+              </div>
+
+              {/* Buttons */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem', borderTop: '2px solid #111111', paddingTop: '1rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowHolidayModal(false)}
+                  className="btn btn-secondary"
+                  style={{
+                    border: '2px solid #111111',
+                    padding: '0.5rem 1.25rem',
+                    fontWeight: 600,
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    background: '#ffffff'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveHolidays}
+                  disabled={holidaySaving}
+                  className="btn btn-primary"
+                  style={{
+                    border: '2px solid #111111',
+                    boxShadow: '3px 3px 0px 0px #111111',
+                    padding: '0.5rem 1.5rem',
+                    fontWeight: 700,
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    background: 'var(--primary)',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}
+                >
+                  {holidaySaving ? 'Saving...' : 'Save Holidays'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

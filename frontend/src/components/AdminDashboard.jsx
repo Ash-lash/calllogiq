@@ -1005,8 +1005,31 @@ const AdminDashboard = ({ user, token }) => {
     return Object.values(aggregated);
   };
 
-  const aggregatedList = getAggregatedData();
-  const leaderboard = getEmployeeLeaderboard();
+  const aggregatedList = React.useMemo(() => {
+    return getAggregatedData();
+  }, [logs, aggPeriod]);
+
+  const leaderboard = React.useMemo(() => {
+    return getEmployeeLeaderboard();
+  }, [users, logs, sortKey, sortDir]);
+
+  const sortedVisits = React.useMemo(() => {
+    return [...fieldVisits].sort((a, b) => new Date(b.visitDateTime || b.createdAt) - new Date(a.visitDateTime || a.createdAt));
+  }, [fieldVisits]);
+
+  const filteredVisits = React.useMemo(() => {
+    return sortedVisits.filter(visit => {
+      const q = fvSearchQuery.toLowerCase();
+      const matchQuery = !fvSearchQuery || 
+        (visit.userName || '').toLowerCase().includes(q) || 
+        (visit.location || '').toLowerCase().includes(q);
+      const matchUser = fvSelectedUser === 'all' || visit.userName === fvSelectedUser;
+      const matchGps = fvSelectedGps === 'all' || 
+        (fvSelectedGps === 'verified' && visit.gpsEnabled) ||
+        (fvSelectedGps === 'unverified' && !visit.gpsEnabled);
+      return matchQuery && matchUser && matchGps;
+    });
+  }, [sortedVisits, fvSearchQuery, fvSelectedUser, fvSelectedGps]);
 
   return (
     <div>
@@ -2769,32 +2792,11 @@ const AdminDashboard = ({ user, token }) => {
 
       {/* SUB-VIEW: Field Visits (Admin only) */}
       {adminTab === 'fieldvisits' && (() => {
-        const sortedVisits = [...fieldVisits].sort((a, b) => new Date(b.visitDateTime || b.createdAt) - new Date(a.visitDateTime || a.createdAt));
-        
-        // Compute Field Visits KPIs
+        // Utilizing top-level memoized sortedVisits and filteredVisits
         const totalVisits = fieldVisits.length;
         const activeReps = new Set(fieldVisits.map(v => v.userName)).size;
         const verifiedVisits = fieldVisits.filter(v => v.gpsEnabled).length;
         const gpsRate = totalVisits > 0 ? Math.round((verifiedVisits / totalVisits) * 100) : 0;
-
-        // Apply filtering
-        const filteredVisits = sortedVisits.filter(visit => {
-          // Search query filter
-          const q = fvSearchQuery.toLowerCase();
-          const matchQuery = !fvSearchQuery || 
-            (visit.userName || '').toLowerCase().includes(q) || 
-            (visit.location || '').toLowerCase().includes(q);
-            
-          // User filter
-          const matchUser = fvSelectedUser === 'all' || visit.userName === fvSelectedUser;
-          
-          // GPS filter
-          const matchGps = fvSelectedGps === 'all' || 
-            (fvSelectedGps === 'verified' && visit.gpsEnabled) ||
-            (fvSelectedGps === 'unverified' && !visit.gpsEnabled);
-            
-          return matchQuery && matchUser && matchGps;
-        });
 
         const monthOrder = {
           'January': 1, 'February': 2, 'March': 3, 'April': 4, 'May': 5, 'June': 6,

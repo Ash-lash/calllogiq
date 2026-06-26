@@ -123,6 +123,9 @@ function matchDomain(userDomain, taskAssignedTo) {
     return str
       .replace(/\s+team$/i, '')
       .replace(/developement/g, 'development')
+      .replace(/couselling/g, 'counselling')
+      .replace(/counseling/g, 'counselling')
+      .replace(/couseling/g, 'counselling')
       .replace(/\s+/g, ' ')
       .trim();
   };
@@ -3412,13 +3415,7 @@ const AdminDashboard = ({ user, token }) => {
 
                 <div style={{ borderTop: '2px solid #111111', paddingTop: '1rem' }}>
                   <div style={{ fontSize: '0.8rem', fontWeight: 900, textTransform: 'uppercase', color: '#111111', marginBottom: '0.75rem' }}>
-                    Employee Progress Status (Total Loaded: {activeEmployees.length}, Matches: {assignedUsers.length})
-                  </div>
-
-                  {/* Temporary diagnostic panel */}
-                  <div style={{ fontSize: '0.7rem', color: '#111111', backgroundColor: '#f1f5f9', border: '2px solid #111111', padding: '0.5rem', marginBottom: '0.75rem', maxHeight: '100px', overflowY: 'auto', fontFamily: 'monospace' }}>
-                    <strong>State Data (Name : Domain : Role):</strong><br />
-                    {activeEmployees.map(u => `${u.name} [${u.domain || 'NONE'}] (${u.role})`).join(' | ')}
+                    Employee Progress Status
                   </div>
 
                   {assignedUsers.length === 0 ? (

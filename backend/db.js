@@ -75,6 +75,9 @@ function matchDomain(userDomain, taskAssignedTo) {
     return str
       .replace(/\s+team$/i, '')
       .replace(/developement/g, 'development')
+      .replace(/couselling/g, 'counselling')
+      .replace(/counseling/g, 'counselling')
+      .replace(/couseling/g, 'counselling')
       .replace(/\s+/g, ' ')
       .trim();
   };

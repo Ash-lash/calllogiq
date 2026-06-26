@@ -112,30 +112,30 @@ function getFirestore() {
   return null;
 }
 
-// Helper to delete a collection in batches of 500 to avoid Firestore limits
+// Helper to delete a collection in batches of 100 to avoid Firestore limits
 async function deleteFirestoreCollection(firestore, colName) {
   const collectionRef = firestore.collection(colName);
-  let snapshot = await collectionRef.limit(500).get();
+  let snapshot = await collectionRef.limit(100).get();
   while (!snapshot.empty) {
     const batch = firestore.batch();
     snapshot.docs.forEach(doc => {
       batch.delete(doc.ref);
     });
     await batch.commit();
-    snapshot = await collectionRef.limit(500).get();
+    snapshot = await collectionRef.limit(100).get();
   }
 }
 
-// Helper to delete query results in batches of 500 to avoid Firestore limits
+// Helper to delete query results in batches of 100 to avoid Firestore limits
 async function deleteFirestoreQuery(firestore, query) {
-  let snapshot = await query.limit(500).get();
+  let snapshot = await query.limit(100).get();
   while (!snapshot.empty) {
     const batch = firestore.batch();
     snapshot.docs.forEach(doc => {
       batch.delete(doc.ref);
     });
     await batch.commit();
-    snapshot = await query.limit(500).get();
+    snapshot = await query.limit(100).get();
   }
 }
 

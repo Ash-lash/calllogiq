@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, Calendar, FileSpreadsheet, PlusCircle, CheckCircle, Clock, 
   PhoneCall, AlertTriangle, Download, ArrowRight, ClipboardList, Settings, RotateCcw,
-  ChevronUp, ChevronDown, ChevronsUpDown, FileText, Folder, FolderOpen, RefreshCw, Trash2, MapPin, Zap
+  ChevronUp, ChevronDown, ChevronsUpDown, FileText, Folder, FolderOpen, RefreshCw, Trash2, MapPin, Zap,
+  Eye, Search
 } from 'lucide-react';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
@@ -291,6 +292,10 @@ const AdminDashboard = ({ user, token }) => {
   const [fieldVisits, setFieldVisits] = useState([]);
   const [fieldVisitsLoading, setFieldVisitsLoading] = useState(false);
   const [activePreviewImage, setActivePreviewImage] = useState(null);
+  const [fvSearchQuery, setFvSearchQuery] = useState('');
+  const [fvSelectedUser, setFvSelectedUser] = useState('all');
+  const [fvSelectedGps, setFvSelectedGps] = useState('all');
+  const [fvViewMode, setFvViewMode] = useState('grid'); // 'grid' | 'timeline'
 
   // Profile Preview States
   const [selectedProfilePreview, setSelectedProfilePreview] = useState(null);
@@ -1445,118 +1450,243 @@ const AdminDashboard = ({ user, token }) => {
       )}
 
       {/* SUB-VIEW 2: Aggregate Call Reports (Charts & Exports) */}
-      {adminTab === 'aggregate' && (
-        <div>
-          {/* Controls */}
-          <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Aggregate Period:</span>
-              <div style={{ display: 'flex', border: '1px solid var(--border-light)', borderRadius: '8px', overflow: 'hidden' }}>
-                {['daily', 'weekly', 'monthly', 'quarterly', 'yearly'].map(p => (
-                  <button
-                    key={p}
-                    onClick={() => setAggPeriod(p)}
-                    style={{
-                      background: aggPeriod === p ? 'var(--primary-light)' : 'transparent',
-                      color: aggPeriod === p ? 'var(--primary)' : 'var(--text-secondary)',
-                      border: 'none',
-                      padding: '0.4rem 0.8rem',
-                      cursor: 'pointer',
-                      fontWeight: aggPeriod === p ? 600 : 500,
-                      fontSize: '0.8rem',
-                      textTransform: 'capitalize'
-                    }}
+      {adminTab === 'aggregate' && (() => {
+        const totalDialed = aggregatedList.reduce((sum, item) => sum + item.dialed, 0);
+        const totalIncoming = aggregatedList.reduce((sum, item) => sum + item.incoming, 0);
+        const totalMissed = aggregatedList.reduce((sum, item) => sum + item.missed, 0);
+        const totalCalls = aggregatedList.reduce((sum, item) => sum + item.total, 0);
+        const totalTalkSecs = aggregatedList.reduce((sum, item) => sum + item.talkTime, 0);
+        const totalIdleSecs = aggregatedList.reduce((sum, item) => sum + item.idleTime, 0);
+        const totalLogs = logs.length;
+
+        const handleCSVExport = () => {
+          const csvRows = [
+            ["Period", "Compiled Logs", "Dialed Calls", "Incoming Calls", "Missed Calls", "Total Calls", "Talk Time (Seconds)", "Idle Time (Seconds)"]
+          ];
+          aggregatedList.forEach(r => {
+            csvRows.push([
+              r.period,
+              r.logCount,
+              r.dialed,
+              r.incoming,
+              r.missed,
+              r.total,
+              r.talkTime,
+              r.idleTime
+            ]);
+          });
+          const csvString = csvRows.map(row => row.map(val => `"${val}"`).join(",")).join("\n");
+          const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.setAttribute("href", url);
+          link.setAttribute("download", `aggregated_calls_${aggPeriod}.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        };
+
+        return (
+          <div>
+            {/* KPI statistics cards */}
+            <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
+              <div className="kpi-card" style={{ transition: 'transform 0.2s, box-shadow 0.2s' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-2px, -2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-flat-hover)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'translate(0px, 0px)'; e.currentTarget.style.boxShadow = 'var(--shadow-flat)'; }}>
+                <div className="kpi-icon primary" style={{ border: '2px solid #111111' }}><PhoneCall size={20} /></div>
+                <div>
+                  <div className="kpi-label" style={{ fontWeight: 800 }}>Total Compiled Calls</div>
+                  <div className="kpi-value" style={{ fontSize: '1.8rem', fontWeight: 900 }}>{totalCalls.toLocaleString()}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem', fontWeight: 700 }}>
+                    {totalDialed.toLocaleString()} Dialed · {totalIncoming.toLocaleString()} Incoming
+                  </div>
+                </div>
+              </div>
+
+              <div className="kpi-card" style={{ transition: 'transform 0.2s, box-shadow 0.2s' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-2px, -2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-flat-hover)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'translate(0px, 0px)'; e.currentTarget.style.boxShadow = 'var(--shadow-flat)'; }}>
+                <div className="kpi-icon success" style={{ border: '2px solid #111111' }}><Clock size={20} /></div>
+                <div>
+                  <div className="kpi-label" style={{ fontWeight: 800 }}>Cumulative Talk Time</div>
+                  <div className="kpi-value" style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--success)' }}>{formatSeconds(totalTalkSecs)}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem', fontWeight: 700 }}>
+                    Active conversations on phone
+                  </div>
+                </div>
+              </div>
+
+              <div className="kpi-card" style={{ transition: 'transform 0.2s, box-shadow 0.2s' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-2px, -2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-flat-hover)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'translate(0px, 0px)'; e.currentTarget.style.boxShadow = 'var(--shadow-flat)'; }}>
+                <div className="kpi-icon warning" style={{ border: '2px solid #111111' }}><AlertTriangle size={20} /></div>
+                <div>
+                  <div className="kpi-label" style={{ fontWeight: 800 }}>Total Idle Duration</div>
+                  <div className="kpi-value" style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--warning)' }}>{formatSeconds(totalIdleSecs)}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem', fontWeight: 700 }}>
+                    Idle time between phone logs
+                  </div>
+                </div>
+              </div>
+
+              <div className="kpi-card" style={{ transition: 'transform 0.2s, box-shadow 0.2s' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-2px, -2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-flat-hover)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'translate(0px, 0px)'; e.currentTarget.style.boxShadow = 'var(--shadow-flat)'; }}>
+                <div className="kpi-icon primary" style={{ border: '2px solid #111111', background: '#e2e8f0' }}><FileSpreadsheet size={20} /></div>
+                <div>
+                  <div className="kpi-label" style={{ fontWeight: 800 }}>Total Uploaded Sheets</div>
+                  <div className="kpi-value" style={{ fontSize: '1.8rem', fontWeight: 900 }}>{totalLogs}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem', fontWeight: 700 }}>
+                    Excel spreadsheets parsed
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Controls */}
+            <div className="card" style={{ marginBottom: '1.5rem', padding: '1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 800, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>⏱️ Select Period:</span>
+                  <div style={{ display: 'flex', border: '2px solid #111111', borderRadius: '4px', overflow: 'hidden', boxShadow: '2px 2px 0px #111111', background: '#ffffff' }}>
+                    {['daily', 'weekly', 'monthly', 'quarterly', 'yearly'].map(p => (
+                      <button
+                        key={p}
+                        onClick={() => setAggPeriod(p)}
+                        style={{
+                          background: aggPeriod === p ? '#111111' : '#ffffff',
+                          color: aggPeriod === p ? '#ffffff' : '#111111',
+                          border: 'none',
+                          borderRight: p !== 'yearly' ? '2px solid #111111' : 'none',
+                          padding: '0.45rem 0.9rem',
+                          cursor: 'pointer',
+                          fontWeight: 800,
+                          fontSize: '0.75rem',
+                          textTransform: 'uppercase',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="badge badge-primary" style={{ border: '2px solid #111111', boxShadow: '2px 2px 0px #111111' }}>
+                  📊 Mode: {aggPeriod.toUpperCase()} compilation
+                </div>
+              </div>
+            </div>
+
+            {/* Aggregated Chart */}
+            <div className="card" style={{ marginBottom: '2rem' }}>
+              <div className="card-title-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Zap size={18} style={{ color: 'var(--warning)' }} />
+                  <h3 style={{ textTransform: 'uppercase', fontWeight: 900, margin: 0 }}>Aggregate Calls Trend</h3>
+                </div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                  {aggregatedList.length} periods active
+                </div>
+              </div>
+              {aggregatedList.length > 0 ? (
+                <div style={{ width: '100%', height: 320, padding: '1rem 0' }}>
+                  <ResponsiveContainer>
+                    <BarChart data={aggregatedList}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                      <XAxis dataKey="period" stroke="#111111" tick={{ fontSize: 10, fontWeight: 700 }} tickLine={false} />
+                      <YAxis stroke="#111111" tick={{ fontSize: 10, fontWeight: 700 }} tickLine={false} />
+                      <Tooltip 
+                        contentStyle={{ 
+                          background: '#ffffff', 
+                          border: '3px solid #111111', 
+                          borderRadius: '4px', 
+                          color: '#111111', 
+                          fontWeight: '800',
+                          boxShadow: '4px 4px 0px #111111',
+                          fontFamily: 'var(--font-family-body)'
+                        }} 
+                      />
+                      <Legend 
+                        verticalAlign="top" 
+                        height={40} 
+                        iconType="rect"
+                        wrapperStyle={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }} 
+                      />
+                      <Bar dataKey="dialed" name="Dialed Calls" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="incoming" name="Incoming Calls" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="missed" name="Missed Calls" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)', border: '2px dashed #111111', borderRadius: '4px', margin: '1rem' }}>
+                  No aggregated data available. Upload call log files to compute trends.
+                </div>
+              )}
+            </div>
+
+            {/* Reports Table & Downloads */}
+            <div className="card">
+              <div className="card-title-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ textTransform: 'uppercase', fontWeight: 900, margin: 0 }}>Aggregated Reports Directory</h3>
+                {aggregatedList.length > 0 && (
+                  <button 
+                    onClick={handleCSVExport}
+                    className="btn btn-secondary"
+                    style={{ width: 'auto', padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', height: '36px' }}
                   >
-                    {p}
+                    <Download size={14} />
+                    Export CSV
                   </button>
-                ))}
+                )}
               </div>
-            </div>
-            
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              Showing combined statistics of {logs.length} logged files.
-            </div>
-          </div>
-
-          {/* Aggregated Chart */}
-          <div className="card" style={{ marginBottom: '2rem' }}>
-            <div className="card-title-bar">
-              <h3>Aggregate Calls Trend</h3>
-            </div>
-            {aggregatedList.length > 0 ? (
-              <div style={{ width: '100%', height: 320 }}>
-                <ResponsiveContainer>
-                  <BarChart data={aggregatedList}>
-                    <XAxis dataKey="period" stroke="var(--text-secondary)" fontSize={10} tickLine={false} />
-                    <YAxis stroke="var(--text-secondary)" fontSize={10} tickLine={false} />
-                    <Tooltip contentStyle={{ background: '#ffffff', border: '2px solid #111111', borderRadius: '4px', color: '#111111', fontWeight: '700' }} />
-                    <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                    <Bar dataKey="dialed" name="Dialed Calls" fill="var(--primary)" stackId="a" />
-                    <Bar dataKey="incoming" name="Incoming Calls" fill="var(--success)" stackId="a" />
-                    <Bar dataKey="missed" name="Missed Calls" fill="var(--danger)" stackId="a" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
-                No aggregated data available. Upload call log files to compute trends.
-              </div>
-            )}
-          </div>
-
-          {/* Reports Table & Downloads */}
-          <div className="card">
-            <div className="card-title-bar">
-              <h3>Aggregated Reports Directory</h3>
-            </div>
-            
-            <div className="table-wrapper">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Period</th>
-                    <th>Compiled</th>
-                    <th>Dialed</th>
-                    <th>Incoming</th>
-                    <th>Missed</th>
-                    <th>Total</th>
-                    <th>Talk Time</th>
-                    <th>Idle Gaps</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {aggregatedList.map((row, idx) => (
-                    <tr key={idx}>
-                      <td style={{ fontWeight: 600 }}>{row.period}</td>
-                      <td>{row.logCount} logs</td>
-                      <td>{row.dialed}</td>
-                      <td>{row.incoming}</td>
-                      <td>{row.missed}</td>
-                      <td>{row.total}</td>
-                      <td style={{ color: 'var(--success)', fontWeight: 600 }}>{formatSeconds(row.talkTime)}</td>
-                      <td style={{ color: 'var(--warning)', fontWeight: 600 }}>{formatSeconds(row.idleTime)}</td>
-                    </tr>
-                  ))}
-                  {aggregatedList.length === 0 && (
+              
+              <div className="table-wrapper">
+                <table className="table">
+                  <thead>
                     <tr>
-                      <td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
-                        No aggregated reports compiled yet.
-                      </td>
+                      <th>Period</th>
+                      <th>Compiled</th>
+                      <th>Dialed</th>
+                      <th>Incoming</th>
+                      <th>Missed</th>
+                      <th>Total Calls</th>
+                      <th>Talk Time</th>
+                      <th>Idle Duration</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            
-            {/* Aggregated stats table only — individual reports moved to its own tab */}
-            {aggregatedList.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                No aggregated reports compiled yet.
+                  </thead>
+                  <tbody>
+                    {aggregatedList.map((row, idx) => (
+                      <tr key={idx} style={{ transition: 'background-color 0.15s' }}>
+                        <td style={{ fontWeight: 800, color: '#111111' }}>📁 {row.period}</td>
+                        <td>
+                          <span className="badge" style={{ border: '1px solid #111111', fontSize: '0.65rem', padding: '0.1rem 0.35rem' }}>
+                            {row.logCount} logs
+                          </span>
+                        </td>
+                        <td><span style={{ fontWeight: 700, color: '#2563eb' }}>{row.dialed}</span></td>
+                        <td><span style={{ fontWeight: 700, color: '#10b981' }}>{row.incoming}</span></td>
+                        <td><span style={{ fontWeight: 700, color: '#ef4444' }}>{row.missed}</span></td>
+                        <td style={{ fontWeight: 800 }}>{row.total}</td>
+                        <td>
+                          <span className="badge badge-success" style={{ border: '1px solid #111111', fontSize: '0.7rem' }}>
+                            📞 {formatSeconds(row.talkTime)}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="badge badge-warning" style={{ border: '1px solid #111111', fontSize: '0.7rem' }}>
+                            ⏳ {formatSeconds(row.idleTime)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    {aggregatedList.length === 0 && (
+                      <tr>
+                        <td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+                          No aggregated reports compiled yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
-            )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* SUB-VIEW: Reports Directory (per-employee grouped) */}
       {adminTab === 'reports' && (() => {
@@ -2641,158 +2771,431 @@ const AdminDashboard = ({ user, token }) => {
       {adminTab === 'fieldvisits' && (() => {
         const sortedVisits = [...fieldVisits].sort((a, b) => new Date(b.visitDateTime || b.createdAt) - new Date(a.visitDateTime || a.createdAt));
         
+        // Compute Field Visits KPIs
+        const totalVisits = fieldVisits.length;
+        const activeReps = new Set(fieldVisits.map(v => v.userName)).size;
+        const verifiedVisits = fieldVisits.filter(v => v.gpsEnabled).length;
+        const gpsRate = totalVisits > 0 ? Math.round((verifiedVisits / totalVisits) * 100) : 0;
+
+        // Apply filtering
+        const filteredVisits = sortedVisits.filter(visit => {
+          // Search query filter
+          const q = fvSearchQuery.toLowerCase();
+          const matchQuery = !fvSearchQuery || 
+            (visit.userName || '').toLowerCase().includes(q) || 
+            (visit.location || '').toLowerCase().includes(q);
+            
+          // User filter
+          const matchUser = fvSelectedUser === 'all' || visit.userName === fvSelectedUser;
+          
+          // GPS filter
+          const matchGps = fvSelectedGps === 'all' || 
+            (fvSelectedGps === 'verified' && visit.gpsEnabled) ||
+            (fvSelectedGps === 'unverified' && !visit.gpsEnabled);
+            
+          return matchQuery && matchUser && matchGps;
+        });
+
         const monthOrder = {
           'January': 1, 'February': 2, 'March': 3, 'April': 4, 'May': 5, 'June': 6,
           'July': 7, 'August': 8, 'September': 9, 'October': 10, 'November': 11, 'December': 12
         };
 
-        // Group by Year -> Individual -> Month -> Day
-        const grouped = {};
-        sortedVisits.forEach(visit => {
-          const date = new Date(visit.visitDateTime || visit.createdAt);
-          if (isNaN(date.getTime())) return;
-          const year = date.getFullYear().toString();
-          const userName = visit.userName || 'Unknown Employee';
-          const month = date.toLocaleDateString('en-US', { month: 'long' });
-          const dayStr = date.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric' });
+        const renderFieldVisitCard = (visit, photo, pIdx) => {
+          const visitTime = new Date(visit.visitDateTime || visit.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const visitDate = new Date(visit.visitDateTime || visit.createdAt).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
           
-          if (!grouped[year]) {
-            grouped[year] = {};
-          }
-          if (!grouped[year][userName]) {
-            grouped[year][userName] = {};
-          }
-          if (!grouped[year][userName][month]) {
-            grouped[year][userName][month] = {};
-          }
-          if (!grouped[year][userName][month][dayStr]) {
-            grouped[year][userName][month][dayStr] = [];
-          }
-          grouped[year][userName][month][dayStr].push(visit);
-        });
+          return (
+            <div 
+              key={`${visit.id}-${pIdx}`}
+              className="card"
+              style={{
+                padding: '0.75rem',
+                background: '#ffffff',
+                border: '2px solid #111111',
+                borderRadius: '6px',
+                boxShadow: '3px 3px 0px #111111',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem',
+                width: '100%',
+                maxWidth: '280px',
+                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                cursor: 'pointer'
+              }}
+              onClick={() => setActivePreviewImage(photo)}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translate(-3px, -3px)';
+                e.currentTarget.style.boxShadow = '6px 6px 0px #111111';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translate(0px, 0px)';
+                e.currentTarget.style.boxShadow = '3px 3px 0px #111111';
+              }}
+            >
+              {/* Photo container with zoom-on-hover and premium eye/view overlay on hover */}
+              <div className="field-visit-photo-container" style={{
+                width: '100%',
+                height: '180px',
+                overflow: 'hidden',
+                border: '2px solid #111111',
+                borderRadius: '4px',
+                position: 'relative',
+                background: '#f3f4f6'
+              }}>
+                <img 
+                  src={photo} 
+                  alt={`Field visit by ${visit.userName}`}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    transition: 'transform 0.3s ease'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                />
+                
+                {/* GPS badge overlay */}
+                <div style={{
+                  position: 'absolute',
+                  top: '0.5rem',
+                  right: '0.5rem',
+                  zIndex: 5
+                }}>
+                  <span className={`badge ${visit.gpsEnabled ? 'badge-success' : 'badge-warning'}`} style={{ border: '1.5px solid #111111', fontSize: '0.6rem', padding: '0.15rem 0.4rem', boxShadow: '1.5px 1.5px 0px #111111' }}>
+                    {visit.gpsEnabled ? '📍 Verified' : '⚠️ No GPS'}
+                  </span>
+                </div>
+
+                {/* Hover overlay indicator */}
+                <div style={{
+                  position: 'absolute',
+                  top: 0, left: 0, right: 0, bottom: 0,
+                  background: 'rgba(17, 17, 17, 0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: 0,
+                  transition: 'opacity 0.2s ease',
+                  zIndex: 4
+                }}
+                className="hover-overlay"
+                onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                onMouseLeave={e => e.currentTarget.style.opacity = 0}
+                >
+                  <div style={{ background: '#ffffff', border: '2px solid #111111', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '2px 2px 0px #111111' }}>
+                    <Eye size={18} style={{ color: '#111111' }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Visit Info */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                <div 
+                  onClick={(e) => {
+                    e.stopPropagation(); // prevent preview modal opening
+                    showProfilePopupByNameOrId(visit.userName);
+                  }}
+                  style={{ 
+                    fontWeight: 900, 
+                    fontSize: '0.85rem', 
+                    color: '#111111', 
+                    textDecoration: 'underline',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    textTransform: 'uppercase',
+                    width: 'fit-content'
+                  }}
+                  title="Click to view profile"
+                >
+                  👤 {visit.userName}
+                </div>
+
+                <div style={{ 
+                  fontSize: '0.78rem', 
+                  fontWeight: 700, 
+                  color: '#2d3748',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.25rem',
+                  lineHeight: 1.25,
+                  minHeight: '34px'
+                }}>
+                  <span style={{ fontSize: '0.85rem', flexShrink: 0 }}>📍</span>
+                  <span>{visit.location || 'Unknown Location'}</span>
+                </div>
+
+                <div style={{ 
+                  fontSize: '0.75rem', 
+                  fontWeight: 600, 
+                  color: '#718096',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  marginTop: '0.1rem',
+                  borderTop: '1px dashed #e2e8f0',
+                  paddingTop: '0.35rem'
+                }}>
+                  <span>🕒</span>
+                  <span>{visitDate} · {visitTime}</span>
+                </div>
+              </div>
+            </div>
+          );
+        };
 
         return (
-          <div className="card" style={{ padding: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '2px solid #111111', paddingBottom: '0.75rem' }}>
-              <div>
-                <h2 style={{ fontSize: '1.5rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.02em', margin: 0 }}>
-                  BD Team Field Visits Dashboard
-                </h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
-                  Track locations, dates, and verification photos uploaded by the Business Development field team.
-                </p>
+          <div>
+            {/* Field Visit statistics cards */}
+            <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
+              <div className="kpi-card" style={{ transition: 'transform 0.2s, box-shadow 0.2s' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-2px, -2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-flat-hover)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'translate(0px, 0px)'; e.currentTarget.style.boxShadow = 'var(--shadow-flat)'; }}>
+                <div className="kpi-icon primary" style={{ border: '2px solid #111111' }}><MapPin size={20} /></div>
+                <div>
+                  <div className="kpi-label" style={{ fontWeight: 800 }}>Total Field Visits</div>
+                  <div className="kpi-value" style={{ fontSize: '1.8rem', fontWeight: 900 }}>{totalVisits}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem', fontWeight: 700 }}>
+                    Report photos logged in field
+                  </div>
+                </div>
               </div>
-              <button 
-                onClick={fetchFieldVisits}
-                disabled={fieldVisitsLoading}
-                className="btn btn-secondary"
-                style={{ width: 'auto', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-              >
-                <RefreshCw size={14} className={fieldVisitsLoading ? 'spin' : ''} />
-                Refresh Visits
-              </button>
+
+              <div className="kpi-card" style={{ transition: 'transform 0.2s, box-shadow 0.2s' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-2px, -2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-flat-hover)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'translate(0px, 0px)'; e.currentTarget.style.boxShadow = 'var(--shadow-flat)'; }}>
+                <div className="kpi-icon success" style={{ border: '2px solid #111111' }}><Users size={20} /></div>
+                <div>
+                  <div className="kpi-label" style={{ fontWeight: 800 }}>Active Field Reps</div>
+                  <div className="kpi-value" style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--success)' }}>{activeReps}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem', fontWeight: 700 }}>
+                    Business Development members active
+                  </div>
+                </div>
+              </div>
+
+              <div className="kpi-card" style={{ transition: 'transform 0.2s, box-shadow 0.2s' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-2px, -2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-flat-hover)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'translate(0px, 0px)'; e.currentTarget.style.boxShadow = 'var(--shadow-flat)'; }}>
+                <div className="kpi-icon warning" style={{ border: '2px solid #111111' }}><CheckCircle size={20} /></div>
+                <div>
+                  <div className="kpi-label" style={{ fontWeight: 800 }}>GPS Verified Visits</div>
+                  <div className="kpi-value" style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--warning)' }}>{verifiedVisits}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem', fontWeight: 700 }}>
+                    Visits with location verification
+                  </div>
+                </div>
+              </div>
+
+              <div className="kpi-card" style={{ transition: 'transform 0.2s, box-shadow 0.2s' }} onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-2px, -2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-flat-hover)'; }} onMouseLeave={e => { e.currentTarget.style.transform = 'translate(0px, 0px)'; e.currentTarget.style.boxShadow = 'var(--shadow-flat)'; }}>
+                <div className="kpi-icon primary" style={{ border: '2px solid #111111', background: '#e2e8f0' }}><Zap size={20} /></div>
+                <div>
+                  <div className="kpi-label" style={{ fontWeight: 800 }}>Verification Rate</div>
+                  <div className="kpi-value" style={{ fontSize: '1.8rem', fontWeight: 900 }}>{gpsRate}%</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem', fontWeight: 700 }}>
+                    Rate of geotagged logs
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {fieldVisitsLoading ? (
-              <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
-                <RefreshCw className="spin" size={36} style={{ color: '#111' }} />
-                <p style={{ marginTop: '1rem', fontWeight: 600 }}>Loading field visits logs...</p>
+            {/* Filter controls & Search */}
+            <div className="card" style={{ marginBottom: '1.5rem', padding: '1.25rem' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center', flex: 1 }}>
+                  {/* Search Input */}
+                  <div style={{ position: 'relative', minWidth: '240px' }}>
+                    <input 
+                      type="text" 
+                      placeholder="Search location or field rep..." 
+                      value={fvSearchQuery}
+                      onChange={e => setFvSearchQuery(e.target.value)}
+                      className="form-input"
+                      style={{ paddingLeft: '2.25rem', height: '40px', fontSize: '0.85rem', border: '2px solid #111111', borderRadius: '4px', boxShadow: '2px 2px 0px #111111' }}
+                    />
+                    <Search size={14} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', opacity: 0.7 }} />
+                  </div>
+
+                  {/* Select User Filter */}
+                  <select 
+                    value={fvSelectedUser}
+                    onChange={e => setFvSelectedUser(e.target.value)}
+                    className="form-select"
+                    style={{ height: '40px', padding: '0 1.5rem 0 1rem', fontSize: '0.85rem', width: 'auto', minWidth: '160px', border: '2px solid #111111', borderRadius: '4px', boxShadow: '2px 2px 0px #111111', cursor: 'pointer' }}
+                  >
+                    <option value="all">👤 All Field Reps</option>
+                    {Array.from(new Set(fieldVisits.map(v => v.userName))).sort().map(user => (
+                      <option key={user} value={user}>{user}</option>
+                    ))}
+                  </select>
+
+                  {/* GPS status Filter */}
+                  <select 
+                    value={fvSelectedGps}
+                    onChange={e => setFvSelectedGps(e.target.value)}
+                    className="form-select"
+                    style={{ height: '40px', padding: '0 1.5rem 0 1rem', fontSize: '0.85rem', width: 'auto', minWidth: '170px', border: '2px solid #111111', borderRadius: '4px', boxShadow: '2px 2px 0px #111111', cursor: 'pointer' }}
+                  >
+                    <option value="all">📍 GPS: All Statuses</option>
+                    <option value="verified">Verified Coordinates</option>
+                    <option value="unverified">Missing GPS Info</option>
+                  </select>
+
+                  <button 
+                    onClick={fetchFieldVisits}
+                    disabled={fieldVisitsLoading}
+                    className="btn btn-secondary"
+                    style={{ width: 'auto', padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', height: '40px', border: '2px solid #111111', boxShadow: '2px 2px 0px #111111', background: '#ffffff', cursor: 'pointer' }}
+                  >
+                    <RefreshCw size={14} className={fieldVisitsLoading ? 'spin' : ''} />
+                    Refresh
+                  </button>
+                </div>
+
+                {/* View Mode Toggle */}
+                <div style={{ display: 'flex', border: '2px solid #111111', borderRadius: '4px', overflow: 'hidden', boxShadow: '2px 2px 0px #111111', background: '#ffffff' }}>
+                  <button
+                    onClick={() => setFvViewMode('grid')}
+                    style={{
+                      background: fvViewMode === 'grid' ? '#111111' : '#ffffff',
+                      color: fvViewMode === 'grid' ? '#ffffff' : '#111111',
+                      border: 'none',
+                      borderRight: '2px solid #111111',
+                      padding: '0.5rem 0.85rem',
+                      cursor: 'pointer',
+                      fontWeight: 800,
+                      fontSize: '0.75rem',
+                      textTransform: 'uppercase',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    📸 Catalog Grid
+                  </button>
+                  <button
+                    onClick={() => setFvViewMode('timeline')}
+                    style={{
+                      background: fvViewMode === 'timeline' ? '#111111' : '#ffffff',
+                      color: fvViewMode === 'timeline' ? '#ffffff' : '#111111',
+                      border: 'none',
+                      padding: '0.5rem 0.85rem',
+                      cursor: 'pointer',
+                      fontWeight: 800,
+                      fontSize: '0.75rem',
+                      textTransform: 'uppercase',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    📅 Timeline
+                  </button>
+                </div>
               </div>
-            ) : Object.keys(grouped).length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                {Object.keys(grouped)
-                  .sort((a, b) => b - a)
-                  .map(year => (
-                    <div key={year} style={{ border: '2px solid #111111', borderRadius: '6px', padding: '1.5rem', backgroundColor: '#fafafa', boxShadow: '4px 4px 0px #111111' }}>
-                      <h3 style={{ fontSize: '1.4rem', fontWeight: 900, textTransform: 'uppercase', color: '#111111', borderBottom: '2px solid #111111', paddingBottom: '0.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        📅 Year: {year}
-                      </h3>
-                      
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                        {Object.keys(grouped[year])
-                          .sort((a, b) => a.localeCompare(b))
-                          .map(userName => (
-                            <div key={userName} style={{ backgroundColor: '#ffffff', border: '2px solid #111111', borderRadius: '6px', padding: '1.25rem', boxShadow: '2px 2px 0px #111111' }}>
-                              <h4 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)', borderBottom: '1px solid #111111', paddingBottom: '0.5rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                👤 <span 
-                                  onClick={() => showProfilePopupByNameOrId(userName)}
-                                  style={{ cursor: 'pointer', textDecoration: 'underline' }}
-                                  title="Click To View Profile"
-                                >
-                                  {userName}
-                                </span>
-                              </h4>
-                              
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                                {Object.keys(grouped[year][userName])
-                                  .sort((a, b) => (monthOrder[b] || 0) - (monthOrder[a] || 0))
-                                  .map(month => (
-                                    <div key={month}>
-                                      <h5 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#444444', textTransform: 'uppercase', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                                        🌙 {month}
-                                      </h5>
-                                      
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingLeft: '0.5rem' }}>
-                                        {Object.keys(grouped[year][userName][month])
-                                          .sort((a, b) => {
-                                            const dateA = new Date(grouped[year][userName][month][a][0].visitDateTime || grouped[year][userName][month][a][0].createdAt);
-                                            const dateB = new Date(grouped[year][userName][month][b][0].visitDateTime || grouped[year][userName][month][b][0].createdAt);
-                                            return dateB - dateA;
-                                          })
-                                          .map(day => (
-                                            <div key={day} style={{ backgroundColor: '#f9fafb', border: '1px dashed #111111', borderRadius: '4px', padding: '1rem' }}>
-                                              <div style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                                <span>☀️</span> {day}
-                                              </div>
-                                              
-                                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.25rem' }}>
-                                                {grouped[year][userName][month][day].map(visit => (
-                                                  visit.photos && visit.photos.map((photo, pIdx) => (
-                                                    <div 
-                                                      key={`${visit.id}-${pIdx}`} 
-                                                      className="field-visit-photo-wrapper"
-                                                      onClick={() => setActivePreviewImage(photo)}
-                                                    >
-                                                      <img 
-                                                        src={photo} 
-                                                        alt={`Visit by ${visit.userName}`} 
-                                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                                                      />
-                                                      <div className="field-visit-tooltip">
-                                                        <div style={{ fontWeight: 800, borderBottom: '1px dashed rgba(255,255,255,0.4)', paddingBottom: '3px', marginBottom: '3px', textTransform: 'uppercase' }}>
-                                                          👤 {visit.userName}
-                                                        </div>
-                                                        <div style={{ fontWeight: 700 }}>📍 {visit.location}</div>
-                                                        <div style={{ fontSize: '0.65rem', color: '#e2e8f0', marginTop: '2px' }}>
-                                                          🕒 {new Date(visit.visitDateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                        </div>
-                                                        <div style={{ marginTop: '4px', color: visit.gpsEnabled ? '#34d399' : '#fbbf24', fontWeight: 800, fontSize: '0.65rem' }}>
-                                                          {visit.gpsEnabled ? 'Coordinates Verified' : 'No GPS info'}
-                                                        </div>
-                                                      </div>
-                                                    </div>
-                                                  ))
-                                                ))}
-                                              </div>
-                                            </div>
-                                          ))}
-                                      </div>
-                                    </div>
-                                  ))}
-                              </div>
+            </div>
+
+            {/* Dashboard Card Container */}
+            <div className="card" style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '2px solid #111111', paddingBottom: '0.75rem' }}>
+                <div>
+                  <h2 style={{ fontSize: '1.4rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.02em', margin: 0 }}>
+                    BD Team Field Visits Logs
+                  </h2>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                    Showing {filteredVisits.length} field visits after filters.
+                  </p>
+                </div>
+              </div>
+
+              {fieldVisitsLoading ? (
+                <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
+                  <RefreshCw className="spin" size={36} style={{ color: '#111' }} />
+                  <p style={{ marginTop: '1rem', fontWeight: 600 }}>Loading field visits logs...</p>
+                </div>
+              ) : filteredVisits.length > 0 ? (
+                fvViewMode === 'grid' ? (
+                  /* Grid Catalog Layout */
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                    gap: '1.5rem',
+                    marginTop: '1rem'
+                  }}>
+                    {filteredVisits.map(visit => 
+                      visit.photos && visit.photos.map((photo, pIdx) => 
+                        renderFieldVisitCard(visit, photo, pIdx)
+                      )
+                    )}
+                  </div>
+                ) : (
+                  /* Timeline Layout */
+                  (() => {
+                    const timelineGroups = {};
+                    filteredVisits.forEach(visit => {
+                      const date = new Date(visit.visitDateTime || visit.createdAt);
+                      if (isNaN(date.getTime())) return;
+                      const dateKey = date.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+                      if (!timelineGroups[dateKey]) timelineGroups[dateKey] = [];
+                      timelineGroups[dateKey].push(visit);
+                    });
+
+                    const sortedDates = Object.keys(timelineGroups).sort((a, b) => new Date(b) - new Date(a));
+
+                    return (
+                      <div style={{ position: 'relative', paddingLeft: '2rem', marginTop: '1.5rem' }}>
+                        {/* Central timeline axis line */}
+                        <div style={{
+                          position: 'absolute',
+                          left: '9px',
+                          top: '10px',
+                          bottom: '10px',
+                          width: '4px',
+                          background: '#111111',
+                          borderRadius: '2px'
+                        }}></div>
+
+                        {sortedDates.map((dateStr, idx) => (
+                          <div key={dateStr} style={{ position: 'relative', marginBottom: '2.5rem' }}>
+                            {/* Timeline node circle */}
+                            <div style={{
+                              position: 'absolute',
+                              left: '-2rem',
+                              top: '4px',
+                              width: '22px',
+                              height: '22px',
+                              borderRadius: '50%',
+                              background: '#ffffff',
+                              border: '3px solid #111111',
+                              boxShadow: '1.5px 1.5px 0px #111111',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              zIndex: 10
+                            }}>
+                              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#111111' }}></div>
                             </div>
-                          ))}
+
+                            {/* Date Header */}
+                            <h4 style={{ fontSize: '1.05rem', fontWeight: 900, marginBottom: '1.25rem', color: '#111111', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              📅 {dateStr}
+                            </h4>
+
+                            {/* Cards for this day */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1.5rem' }}>
+                              {timelineGroups[dateStr].map(visit => 
+                                visit.photos && visit.photos.map((photo, pIdx) => 
+                                  renderFieldVisitCard(visit, photo, pIdx)
+                                )
+                              )}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    </div>
-                  ))}
-              </div>
-            ) : (
-              <div style={{ textAlign: 'center', padding: '5rem 1rem', color: 'var(--text-muted)', border: '2px dashed #111111', borderRadius: '6px' }}>
-                <MapPin size={48} style={{ marginBottom: '1rem', color: 'var(--text-muted)' }} />
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111111' }}>No Field Visits Found</h3>
-                <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>Field visit photos uploaded by the Business Development Team will appear here.</p>
-              </div>
-            )}
+                    );
+                  })()
+                )
+              ) : (
+                <div style={{ textAlign: 'center', padding: '5rem 1rem', color: 'var(--text-muted)', border: '2px dashed #111111', borderRadius: '6px' }}>
+                  <MapPin size={48} style={{ marginBottom: '1rem', color: 'var(--text-muted)' }} />
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111111' }}>No Field Visits Found</h3>
+                  <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>Field visit photos uploaded by the Business Development Team will appear here.</p>
+                </div>
+              )}
+            </div>
           </div>
         );
       })()}

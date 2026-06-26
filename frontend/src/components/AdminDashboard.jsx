@@ -166,6 +166,7 @@ const AdminDashboard = ({ user, token }) => {
   const [selectedAttendanceUserId, setSelectedAttendanceUserId] = useState('');
   const [attendanceData, setAttendanceData] = useState(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceExcelLoading, setAttendanceExcelLoading] = useState(false);
   
   // Holiday Modal State
   const [showHolidayModal, setShowHolidayModal] = useState(false);
@@ -852,6 +853,35 @@ const AdminDashboard = ({ user, token }) => {
     }
   };
 
+  const handleAttendanceExcelDownload = async (userId, userName) => {
+    setAttendanceExcelLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/attendance/${userId}/excel`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to generate attendance report');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const cd = res.headers.get('Content-Disposition') || '';
+      const match = cd.match(/filename="(.+?)"/);
+      a.download = match ? match[1] : `${userName.replace(/\s+/g,'_')}_Attendance_Report.xlsx`;
+      a.href = url;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setAttendanceExcelLoading(false);
+    }
+  };
+
   // Helper: Get employee productivity metrics
   const getEmployeeLeaderboard = () => {
     // Group logs by user
@@ -1245,6 +1275,35 @@ const AdminDashboard = ({ user, token }) => {
               <Calendar size={16} />
               Manage Holidays
             </button>
+
+            {selectedAttendanceUserId && attendanceData && (
+              <button 
+                onClick={() => {
+                  const emp = users.find(u => u.id === selectedAttendanceUserId);
+                  if (emp) {
+                    handleAttendanceExcelDownload(emp.id, emp.name);
+                  }
+                }}
+                disabled={attendanceExcelLoading}
+                className="btn btn-secondary" 
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '0.5rem',
+                  height: '42px',
+                  padding: '0 1.25rem',
+                  fontWeight: 600,
+                  border: '2px solid #111111',
+                  boxShadow: '3px 3px 0px 0px #111111',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  background: '#ffffff'
+                }}
+              >
+                <FileSpreadsheet size={16} />
+                {attendanceExcelLoading ? 'Downloading...' : 'Download Excel'}
+              </button>
+            )}
           </div>
 
           {attendanceLoading ? (

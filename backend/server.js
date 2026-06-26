@@ -1514,6 +1514,188 @@ app.get('/api/admin/attendance/:userId', authenticateToken, requireAdmin, async 
   });
 });
 
+// Generate & Download Attendance Excel for a single user (Admin only)
+app.get('/api/admin/attendance/:userId/excel', authenticateToken, requireAdmin, async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const targetUser = await db.findUserById(userId);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Get all logs for this user
+    const userLogs = await db.getLogsByUserId(userId);
+    
+    // Get all configured holidays
+    let holidaysList = [];
+    try {
+      holidaysList = await db.getHolidays();
+    } catch (err) {
+      console.error('Error reading holidays in attendance calculation:', err);
+    }
+    
+    // Calculate days from registrationDate to today
+    const regDateStr = targetUser.registrationDate || targetUser.createdAt.split('T')[0];
+    const startDate = new Date(regDateStr);
+    startDate.setHours(12, 0, 0, 0);
+    
+    const endDate = new Date();
+    endDate.setHours(12, 0, 0, 0);
+    
+    let workingDays = 0;
+    let holidays = 0;
+    let presentDays = 0;
+    let absentDays = 0;
+    let overtimeDays = 0;
+    
+    const attendanceList = [];
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      const dateStr = `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+      const isSunday = d.getDay() === 0;
+      
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const ymdStr = `${year}-${month}-${day}`;
+      
+      const isConfiguredHoliday = holidaysList.some(h => h.date === ymdStr);
+      const isHoliday = isSunday || isConfiguredHoliday;
+      
+      const log = userLogs.find(l => l.callDate.toLowerCase() === dateStr.toLowerCase());
+      
+      if (isHoliday) {
+        holidays++;
+        if (log) {
+          overtimeDays++;
+          let durationStr = log.summary.workday_span_str || '-';
+          let netWorkHoursStr = '-';
+          if (log.summary.workday_span_secs) {
+            const netSecs = Math.max(0, log.summary.workday_span_secs - 2700);
+            const nh = Math.floor(netSecs / 3600);
+            const nm = Math.floor((netSecs % 3600) / 60);
+            const ns = netSecs % 60;
+            netWorkHoursStr = `${nh.toString().padStart(2, '0')}:${nm.toString().padStart(2, '0')}:${ns.toString().padStart(2, '0')}`;
+          }
+          attendanceList.push({
+            date: dateStr,
+            status: 'Overtime',
+            arrival: log.summary.workday_start || '-',
+            departure: log.summary.workday_end || '-',
+            duration: durationStr,
+            netWorkHours: netWorkHoursStr,
+            talkTime: log.summary.talk_time_str || '-',
+            calls: log.summary.grand_total || 0
+          });
+        } else {
+          attendanceList.push({
+            date: dateStr,
+            status: 'Holiday',
+            arrival: '-',
+            departure: '-',
+            duration: '-',
+            netWorkHours: '-',
+            talkTime: '-',
+            calls: 0
+          });
+        }
+      } else {
+        workingDays++;
+        if (log) {
+          presentDays++;
+          let durationStr = log.summary.workday_span_str || '-';
+          let netWorkHoursStr = '-';
+          if (log.summary.workday_span_secs) {
+            const netSecs = Math.max(0, log.summary.workday_span_secs - 2700);
+            const nh = Math.floor(netSecs / 3600);
+            const nm = Math.floor((netSecs % 3600) / 60);
+            const ns = netSecs % 60;
+            netWorkHoursStr = `${nh.toString().padStart(2, '0')}:${nm.toString().padStart(2, '0')}:${ns.toString().padStart(2, '0')}`;
+          }
+          attendanceList.push({
+            date: dateStr,
+            status: 'Present',
+            arrival: log.summary.workday_start || '-',
+            departure: log.summary.workday_end || '-',
+            duration: durationStr,
+            netWorkHours: netWorkHoursStr,
+            talkTime: log.summary.talk_time_str || '-',
+            calls: log.summary.grand_total || 0
+          });
+        } else {
+          absentDays++;
+          attendanceList.push({
+            date: dateStr,
+            status: 'Absent',
+            arrival: '-',
+            departure: '-',
+            duration: '-',
+            netWorkHours: '-',
+            talkTime: '-',
+            calls: 0
+          });
+        }
+      }
+    }
+
+    const payload = {
+      userName: targetUser.name,
+      domain: targetUser.domain || 'Pending',
+      branch: targetUser.branch || 'Pending',
+      registrationDate: regDateStr,
+      summary: {
+        workingDays,
+        holidays,
+        presentDays,
+        absentDays,
+        overtimeDays
+      },
+      history: attendanceList.reverse() // Keep newest first like in UI
+    };
+
+    const safeUserName = targetUser.name.replace(/\s+/g, '_');
+    const outputFilename = `${safeUserName}_AttendanceReport_${Date.now()}.xlsx`;
+    const outputPath = path.join(__dirname, 'uploads', outputFilename);
+    const pyScript = path.join(__dirname, 'generate_attendance_report.py');
+
+    let pythonCmd = 'python';
+    try {
+      execSync('python --version', { stdio: 'ignore' });
+    } catch (e) {
+      pythonCmd = 'python3';
+    }
+
+    const { spawn } = require('child_process');
+    const pyProcess = spawn(pythonCmd, ['-u', pyScript, '--output', outputPath]);
+
+    let stderr = '';
+    pyProcess.stdin.write(JSON.stringify(payload));
+    pyProcess.stdin.end();
+
+    pyProcess.stderr.on('data', (data) => { stderr += data.toString(); });
+
+    pyProcess.on('close', (code) => {
+      if (code !== 0) {
+        console.error(`Attendance report python failed (code ${code}): ${stderr}`);
+        return res.status(500).json({ error: `Report generation failed: ${stderr}` });
+      }
+      if (!fs.existsSync(outputPath)) {
+        return res.status(500).json({ error: 'Report file was not created' });
+      }
+      const downloadName = `${safeUserName}_Attendance_Report.xlsx`;
+      res.download(outputPath, downloadName, (err) => {
+        if (err) console.error('Error sending attendance report:', err);
+        try { fs.unlinkSync(outputPath); } catch (e) {}
+      });
+    });
+
+  } catch (err) {
+    console.error('Error generating attendance report:', err);
+    return res.status(500).json({ error: 'Failed to generate attendance report' });
+  }
+});
+
 // --- TODO LIST / TASKS ROUTES ---
 
 // Cleanup helper to remove completed tasks from previous days

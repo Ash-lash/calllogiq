@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Laptop, Phone, Wifi, AlertTriangle, CheckCircle, Trash2, Edit2, 
-  Download, User, Calendar, ArrowRight, Search, FileText, X, Check, UploadCloud
+  Download, User, Calendar, ArrowRight, Search, FileText, X, Check, UploadCloud, Plus
 } from 'lucide-react';
 import API_BASE from '../api';
 

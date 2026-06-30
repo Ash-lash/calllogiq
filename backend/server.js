@@ -39,18 +39,23 @@ const { fetch, ProxyAgent } = require('undici'); // Override global fetch to ens
 // Global Scraper Proxy dispatcher for bypassing geo/datacenter blocks
 let proxyDispatcher = null;
 let scrapingBeeApiKey = null;
+let scrapeDoApiKey = null;
 if (process.env.SCRAPER_PROXY) {
   try {
     if (process.env.SCRAPER_PROXY.includes('scrapingbee.com')) {
       const parsed = new URL(process.env.SCRAPER_PROXY);
       scrapingBeeApiKey = parsed.username;
       console.log('Scraper proxy: ScrapingBee detected. Using direct REST API with key:', scrapingBeeApiKey);
+    } else if (process.env.SCRAPER_PROXY.includes('scrape.do')) {
+      const parsed = new URL(process.env.SCRAPER_PROXY);
+      scrapeDoApiKey = parsed.username;
+      console.log('Scraper proxy: Scrape.do detected. Using direct REST API with key:', scrapeDoApiKey);
     } else {
       proxyDispatcher = new ProxyAgent(process.env.SCRAPER_PROXY);
       console.log('Scraper proxy dispatcher initialized using:', process.env.SCRAPER_PROXY);
     }
   } catch (err) {
-    console.error('Failed to initialize ProxyAgent/ScrapingBee:', err.message);
+    console.error('Failed to initialize ProxyAgent/ScrapingBee/Scrape.do:', err.message);
   }
 }
 
@@ -2709,6 +2714,9 @@ async function checkWebsiteForChanges(site) {
       if (scrapingBeeApiKey) {
         const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(site.url)}&render_js=false`;
         response = await fetch(scrapingBeeUrl, { signal: controller.signal });
+      } else if (scrapeDoApiKey) {
+        const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(site.url)}`;
+        response = await fetch(scrapeDoUrl, { signal: controller.signal });
       } else {
         const fetchOpts = {
           headers: {
@@ -2922,6 +2930,9 @@ app.get('/api/admin/web-notifications/proxy', authenticateTokenOrQuery, requireA
     if (scrapingBeeApiKey) {
       const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(targetUrl)}&render_js=false`;
       response = await fetch(scrapingBeeUrl);
+    } else if (scrapeDoApiKey) {
+      const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(targetUrl)}`;
+      response = await fetch(scrapeDoUrl);
     } else {
       const fetchOpts = {
         headers: {

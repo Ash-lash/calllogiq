@@ -2858,8 +2858,8 @@ let lastBackgroundCheckTime = 0;
 
 async function triggerBackgroundWebCheck() {
   const now = Date.now();
-  // Throttle: don't run more than once every 2 minutes
-  if (now - lastBackgroundCheckTime < 2 * 60 * 1000) {
+  // Throttle: don't run more than once every 30 minutes
+  if (now - lastBackgroundCheckTime < 30 * 60 * 1000) {
     return;
   }
   lastBackgroundCheckTime = now;
@@ -2884,10 +2884,10 @@ function startWebNotificationCrawlLoop() {
     triggerBackgroundWebCheck().catch(err => console.error(err));
   }, 10000);
 
-  // Set interval to check every 2 minutes
+  // Set interval to check every 30 minutes
   setInterval(async () => {
     await triggerBackgroundWebCheck();
-  }, 2 * 60 * 1000);
+  }, 30 * 60 * 1000);
 }
 
 // --- WEB MONITORING REST ROUTING (Admin only) ---

@@ -2716,7 +2716,7 @@ async function checkWebsiteForChanges(site) {
         response = await fetch(scrapingBeeUrl, { signal: controller.signal });
       } else if (scrapeDoApiKey) {
         const isTnea = site.url.includes('tneaonline.org');
-        const superParam = isTnea ? '&super=true' : '';
+        const superParam = isTnea ? '&super=true&render=true' : '';
         const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(site.url)}${superParam}`;
         response = await fetch(scrapeDoUrl, { signal: controller.signal });
       } else {
@@ -2934,7 +2934,7 @@ app.get('/api/admin/web-notifications/proxy', authenticateTokenOrQuery, requireA
       response = await fetch(scrapingBeeUrl);
     } else if (scrapeDoApiKey) {
       const isTnea = targetUrl.includes('tneaonline.org');
-      const superParam = isTnea ? '&super=true' : '';
+      const superParam = isTnea ? '&super=true&render=true' : '';
       const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(targetUrl)}${superParam}`;
       response = await fetch(scrapeDoUrl);
     } else {

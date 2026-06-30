@@ -2707,31 +2707,53 @@ async function checkWebsiteForChanges(site) {
     try {
       console.log(`Checking website "${site.name}" (${site.url}) using Cheerio fast-fetch...`);
       
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
-      
       let response;
-      if (scrapingBeeApiKey) {
-        const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(site.url)}&render_js=false`;
-        response = await fetch(scrapingBeeUrl, { signal: controller.signal });
-      } else if (scrapeDoApiKey) {
-        const isProtected = site.url.includes('tneaonline.org') || site.url.includes('tnhealth.tn.gov.in');
-        const superParam = isProtected ? '&super=true&render=true' : '';
-        const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(site.url)}${superParam}`;
-        response = await fetch(scrapeDoUrl, { signal: controller.signal });
-      } else {
-        const fetchOpts = {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-          },
-          signal: controller.signal
-        };
-        if (proxyDispatcher) {
-          fetchOpts.dispatcher = proxyDispatcher;
+      let retries = 3;
+      while (retries > 0) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
+        
+        try {
+          if (scrapingBeeApiKey) {
+            const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(site.url)}&render_js=false`;
+            response = await fetch(scrapingBeeUrl, { signal: controller.signal });
+          } else if (scrapeDoApiKey) {
+            const isProtected = site.url.includes('tneaonline.org') || site.url.includes('tnhealth.tn.gov.in');
+            const superParam = isProtected ? '&super=true&render=true' : '';
+            const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(site.url)}${superParam}`;
+            response = await fetch(scrapeDoUrl, { signal: controller.signal });
+          } else {
+            const fetchOpts = {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+              },
+              signal: controller.signal
+            };
+            if (proxyDispatcher) {
+              fetchOpts.dispatcher = proxyDispatcher;
+            }
+            response = await fetch(site.url, fetchOpts);
+          }
+          
+          clearTimeout(timeoutId);
+          if (response.ok) {
+            break; // Success! Exit retry loop.
+          } else {
+            console.warn(`Cheerio fetch for ${site.name} returned status ${response.status}. Retries remaining: ${retries - 1}`);
+          }
+        } catch (fetchErr) {
+          clearTimeout(timeoutId);
+          console.warn(`Cheerio fetch error for ${site.name}: ${fetchErr.message}. Retries remaining: ${retries - 1}`);
         }
-        response = await fetch(site.url, fetchOpts);
+        retries--;
+        if (retries > 0) {
+          await new Promise(resolve => setTimeout(resolve, 2000)); // wait 2s before retry
+        }
       }
-      clearTimeout(timeoutId);
+
+      if (!response || !response.ok) {
+        throw new Error(response ? `Server returned status: ${response.status}` : 'Fetch failed completely');
+      }
       
       if (response.ok) {
         const html = await response.text();
@@ -2929,28 +2951,46 @@ app.get('/api/admin/web-notifications/proxy', authenticateTokenOrQuery, requireA
   try {
     console.log(`Proxying request for visual selector: ${targetUrl}`);
     let response;
-    if (scrapingBeeApiKey) {
-      const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(targetUrl)}&render_js=false`;
-      response = await fetch(scrapingBeeUrl);
-    } else if (scrapeDoApiKey) {
-      const isProtected = targetUrl.includes('tneaonline.org') || targetUrl.includes('tnhealth.tn.gov.in');
-      const superParam = isProtected ? '&super=true&render=true' : '';
-      const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(targetUrl)}${superParam}`;
-      response = await fetch(scrapeDoUrl);
-    } else {
-      const fetchOpts = {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        if (scrapingBeeApiKey) {
+          const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(targetUrl)}&render_js=false`;
+          response = await fetch(scrapingBeeUrl);
+        } else if (scrapeDoApiKey) {
+          const isProtected = targetUrl.includes('tneaonline.org') || targetUrl.includes('tnhealth.tn.gov.in');
+          const superParam = isProtected ? '&super=true&render=true' : '';
+          const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(targetUrl)}${superParam}`;
+          response = await fetch(scrapeDoUrl);
+        } else {
+          const fetchOpts = {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+          };
+          if (proxyDispatcher) {
+            fetchOpts.dispatcher = proxyDispatcher;
+          }
+          response = await fetch(targetUrl, fetchOpts);
         }
-      };
-      if (proxyDispatcher) {
-        fetchOpts.dispatcher = proxyDispatcher;
+
+        if (response.ok) {
+          break; // Success! Exit retry loop.
+        } else {
+          console.warn(`Visual Selector proxy returned status ${response.status}. Retries remaining: ${retries - 1}`);
+        }
+      } catch (fetchErr) {
+        console.warn(`Visual Selector proxy fetch error: ${fetchErr.message}. Retries remaining: ${retries - 1}`);
       }
-      response = await fetch(targetUrl, fetchOpts);
+      retries--;
+      if (retries > 0) {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // wait 2s before retry
+      }
     }
 
-    if (!response.ok) {
-      return res.status(response.status).send(`Failed to fetch target URL. Status: ${response.status}`);
+    if (!response || !response.ok) {
+      const status = response ? response.status : 502;
+      return res.status(status).send(`Failed to fetch target URL. Status: ${status}`);
     }
 
     const rawHtml = await response.text();

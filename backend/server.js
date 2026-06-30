@@ -2683,113 +2683,150 @@ function isProxyRequired(url) {
 
 async function fetchWithFallbackScraper(targetUrl, signal = null) {
   const isProtected = isProxyRequired(targetUrl);
-  
-  // Define providers in order of preference/credits
+
+  // Helper: create a per-attempt AbortController that respects the global signal
+  function makeAttemptSignal(timeoutMs) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    const onGlobal = () => ctrl.abort();
+    if (signal) signal.addEventListener('abort', onGlobal, { once: true });
+    const cleanup = () => {
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener('abort', onGlobal);
+    };
+    return { signal: ctrl.signal, cleanup };
+  }
+
+  console.log(`[Scraper] Fetching: ${targetUrl} | Protected: ${isProtected}`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // STEP 1 — Direct fetch (FREE, no API credits consumed)
+  //   Skip for known geo-blocked / anti-bot protected domains.
+  // ─────────────────────────────────────────────────────────────────────────
+  if (!isProtected) {
+    const { signal: directSignal, cleanup } = makeAttemptSignal(20000); // 20s
+    try {
+      console.log(`[Scraper] Trying direct fetch (no proxy)...`);
+      const response = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Cache-Control': 'no-cache'
+        },
+        signal: directSignal
+      });
+      cleanup();
+      if (response.ok) {
+        // Quick sanity-check: response must have some HTML content
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('text/html') || contentType.includes('text/plain')) {
+          console.log(`[Scraper] Direct fetch succeeded (${response.status}). No API credits used.`);
+          return response;
+        }
+      }
+      console.warn(`[Scraper] Direct fetch returned ${response.status} or non-HTML. Trying proxy APIs...`);
+    } catch (err) {
+      cleanup();
+      if (signal && signal.aborted) throw err;
+      console.warn(`[Scraper] Direct fetch failed (${err.message}). Trying proxy APIs...`);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // STEP 2 — Proxy API fallback chain
+  //   Only reached if: (a) site is geo-blocked/protected, OR (b) direct failed.
+  //   Providers tried in order: ScrapingAnt → Crawlbase → ScrapingBee → Scrape.do
+  // ─────────────────────────────────────────────────────────────────────────
   const providers = [];
 
   if (scrapingAntApiKey) {
     providers.push({
       name: 'ScrapingAnt',
       buildUrl: (url) => {
-        const renderParam = isProtected ? '&browser=true&proxy_country=in' : '&browser=false';
-        return `https://api.scrapingant.com/v2/general?x-api-key=${scrapingAntApiKey}&url=${encodeURIComponent(url)}${renderParam}`;
+        const extra = isProtected ? '&browser=true&proxy_country=in' : '&browser=false';
+        return `https://api.scrapingant.com/v2/general?x-api-key=${scrapingAntApiKey}&url=${encodeURIComponent(url)}${extra}`;
       }
     });
   }
-
   if (crawlbaseToken) {
     providers.push({
       name: 'Crawlbase',
       buildUrl: (url) => {
-        const geoParam = isProtected ? '&country=in' : '';
-        return `https://api.crawlbase.com/?token=${crawlbaseToken}&url=${encodeURIComponent(url)}${geoParam}`;
+        const extra = isProtected ? '&country=in' : '';
+        return `https://api.crawlbase.com/?token=${crawlbaseToken}&url=${encodeURIComponent(url)}${extra}`;
       }
     });
   }
-
   if (scrapingBeeApiKey) {
     providers.push({
       name: 'ScrapingBee',
       buildUrl: (url) => {
-        const renderParam = isProtected ? '&render_js=true&country_code=in&premium_proxy=true' : '&render_js=false';
-        return `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(url)}${renderParam}`;
+        const extra = isProtected ? '&render_js=true&country_code=in&premium_proxy=true' : '&render_js=false';
+        return `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(url)}${extra}`;
       }
     });
   }
-
   if (scrapeDoApiKey) {
     providers.push({
       name: 'Scrape.do',
       buildUrl: (url) => {
-        const superParam = isProtected ? '&super=true&render=true&geoCode=in' : '';
-        return `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(url)}${superParam}`;
+        const extra = isProtected ? '&super=true&render=true&geoCode=in' : '';
+        return `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(url)}${extra}`;
       }
     });
   }
 
-  console.log(`[Scraper] Request received for: ${targetUrl}. Protected: ${isProtected}`);
-
-  // Try each configured API sequentially, each with its own 25s timeout.
-  // This prevents a single slow provider from consuming the full 90s budget.
   for (const provider of providers) {
-    // Check if the outer (global) signal has already aborted
     if (signal && signal.aborted) break;
-
+    const { signal: providerSignal, cleanup } = makeAttemptSignal(25000); // 25s per provider
     try {
       const apiUrl = provider.buildUrl(targetUrl);
-      console.log(`[Scraper] Fetching via ${provider.name}...`);
+      console.log(`[Scraper] Trying ${provider.name}...`);
+      const response = await fetch(apiUrl, { signal: providerSignal });
+      cleanup();
 
-      // Per-provider 25s timeout
-      const perProviderController = new AbortController();
-      const perProviderTimeout = setTimeout(() => perProviderController.abort(), 25000);
-
-      // Forward the global abort signal to per-provider controller
-      const onGlobalAbort = () => perProviderController.abort();
-      if (signal) signal.addEventListener('abort', onGlobalAbort, { once: true });
-
-      let response;
-      try {
-        response = await fetch(apiUrl, { signal: perProviderController.signal });
-      } finally {
-        clearTimeout(perProviderTimeout);
-        if (signal) signal.removeEventListener('abort', onGlobalAbort);
-      }
-
-      // 409 = ScrapingAnt free-tier concurrency limit — skip to next provider
       if (response.status === 409) {
-        console.warn(`[Scraper] ${provider.name} hit concurrency limit (409). Skipping...`);
+        console.warn(`[Scraper] ${provider.name} concurrency limit (409). Skipping...`);
         continue;
       }
-
       if (response.ok) {
-        console.log(`[Scraper] Success using ${provider.name}`);
+        console.log(`[Scraper] Success via ${provider.name}`);
         return response;
       }
-
-      console.warn(`[Scraper] ${provider.name} returned status ${response.status}. Trying next provider...`);
+      console.warn(`[Scraper] ${provider.name} → ${response.status}. Trying next...`);
     } catch (err) {
+      cleanup();
       if (signal && signal.aborted) {
-        console.warn(`[Scraper] Global timeout hit — stopping provider chain.`);
+        console.warn(`[Scraper] Global timeout — stopping.`);
         break;
       }
-      console.warn(`[Scraper] ${provider.name} timed out/errored (${err.message}). Trying next...`);
+      console.warn(`[Scraper] ${provider.name} failed (${err.message}). Trying next...`);
     }
   }
 
-  // Fallback to direct fetch
-  console.warn(`[Scraper] All scraper APIs failed or none configured. Trying direct fallback fetch...`);
-  const fallbackOpts = {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
-  };
-  if (signal) fallbackOpts.signal = signal;
-  if (proxyDispatcher) {
-    fallbackOpts.dispatcher = proxyDispatcher;
+  // ─────────────────────────────────────────────────────────────────────────
+  // STEP 3 — Last-resort direct fetch (if everything above failed)
+  // ─────────────────────────────────────────────────────────────────────────
+  console.warn(`[Scraper] All proxy APIs failed. Last-resort direct fetch...`);
+  const { signal: lastSignal, cleanup: lastCleanup } = makeAttemptSignal(20000);
+  try {
+    const response = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+      },
+      signal: lastSignal,
+      ...(proxyDispatcher ? { dispatcher: proxyDispatcher } : {})
+    });
+    lastCleanup();
+    return response;
+  } catch (err) {
+    lastCleanup();
+    throw err;
   }
-  return await fetch(targetUrl, fallbackOpts);
 }
 
+  
 async function checkWebsiteForChanges(site) {
   let text = '';
   let scrapedVia = 'Cheerio Fast Fetch';

@@ -2665,6 +2665,11 @@ function extractTextFromHtml(html) {
   return clean.replace(/\s+/g, ' ').trim();
 }
 
+function isProxyRequired(url) {
+  const protectedDomains = ['tneaonline.org', 'tnhealth.tn.gov.in', 'aaccc.gov.in'];
+  return protectedDomains.some(domain => url.includes(domain));
+}
+
 async function checkWebsiteForChanges(site) {
   let text = '';
   let scrapedVia = 'Cheerio Fast Fetch';
@@ -2717,14 +2722,14 @@ async function checkWebsiteForChanges(site) {
           if (scrapingBeeApiKey) {
             const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(site.url)}&render_js=false`;
             response = await fetch(scrapingBeeUrl, { signal: controller.signal });
-          } else if (scrapeDoApiKey) {
+          } else if (scrapeDoApiKey && isProxyRequired(site.url)) {
             const isProtected = site.url.includes('tneaonline.org') || site.url.includes('tnhealth.tn.gov.in');
             const superParam = isProtected ? '&super=true&render=true' : '';
             const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(site.url)}${superParam}`;
             response = await fetch(scrapeDoUrl, { signal: controller.signal });
             
-            // If Scrape.do fails with 502/504/403 (blocked/rotation errors), try direct fallback
-            if (!response.ok && (response.status === 502 || response.status === 504 || response.status === 403)) {
+            // If Scrape.do fails for ANY reason (blocked, monthly limit exceeded 401, timeout 504), try direct fallback
+            if (!response.ok) {
               console.warn(`Scrape.do failed for ${site.name} with status ${response.status}. Trying direct fallback fetch...`);
               const fallbackOpts = {
                 headers: {
@@ -2978,14 +2983,14 @@ app.get('/api/admin/web-notifications/proxy', authenticateTokenOrQuery, requireA
         if (scrapingBeeApiKey) {
           const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(targetUrl)}&render_js=false`;
           response = await fetch(scrapingBeeUrl);
-        } else if (scrapeDoApiKey) {
+        } else if (scrapeDoApiKey && isProxyRequired(targetUrl)) {
           const isProtected = targetUrl.includes('tneaonline.org') || targetUrl.includes('tnhealth.tn.gov.in');
           const superParam = isProtected ? '&super=true&render=true' : '';
           const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(targetUrl)}${superParam}`;
           response = await fetch(scrapeDoUrl);
 
-          // If Scrape.do fails with 502/504/403, try direct fallback
-          if (!response.ok && (response.status === 502 || response.status === 504 || response.status === 403)) {
+          // If Scrape.do fails, try direct fallback
+          if (!response.ok) {
             console.warn(`Visual Selector proxy: Scrape.do failed with status ${response.status}. Trying direct fallback fetch...`);
             const fallbackOpts = {
               headers: {

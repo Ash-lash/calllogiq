@@ -2750,6 +2750,13 @@ async function checkWebsiteForChanges(site) {
           clearTimeout(timeoutId);
           if (response.ok) {
             break; // Success! Exit retry loop.
+          } else if (response.status === 429) {
+            console.warn(`Hit Scrape.do rate limit (429) for ${site.name}. Retrying in 5s...`);
+            retries--;
+            if (retries > 0) {
+              await new Promise(resolve => setTimeout(resolve, 5000)); // wait 5s on 429
+            }
+            continue;
           } else {
             console.warn(`Cheerio fetch for ${site.name} returned status ${response.status}. Retries remaining: ${retries - 1}`);
           }
@@ -2862,6 +2869,8 @@ async function triggerBackgroundWebCheck() {
     for (const site of sites) {
       if (site.enabled !== false) {
         await checkWebsiteForChanges(site);
+        // Add 2-second cooldown to respect Scrape.do's rate limit
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
   } catch (err) {
@@ -3248,6 +3257,8 @@ app.post('/api/admin/web-notifications/trigger-check', authenticateToken, requir
       if (site.enabled !== false) {
         const changed = await checkWebsiteForChanges(site);
         if (changed) changeCount++;
+        // Add 2-second cooldown to respect Scrape.do's rate limit
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
     res.json({ message: `Check completed. Detected changes on ${changeCount} site(s).` });

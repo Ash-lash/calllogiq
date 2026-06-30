@@ -2715,8 +2715,8 @@ async function checkWebsiteForChanges(site) {
         const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(site.url)}&render_js=false`;
         response = await fetch(scrapingBeeUrl, { signal: controller.signal });
       } else if (scrapeDoApiKey) {
-        const isTnea = site.url.includes('tneaonline.org');
-        const superParam = isTnea ? '&super=true&render=true' : '';
+        const isProtected = site.url.includes('tneaonline.org') || site.url.includes('tnhealth.tn.gov.in');
+        const superParam = isProtected ? '&super=true&render=true' : '';
         const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(site.url)}${superParam}`;
         response = await fetch(scrapeDoUrl, { signal: controller.signal });
       } else {
@@ -2933,8 +2933,8 @@ app.get('/api/admin/web-notifications/proxy', authenticateTokenOrQuery, requireA
       const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(targetUrl)}&render_js=false`;
       response = await fetch(scrapingBeeUrl);
     } else if (scrapeDoApiKey) {
-      const isTnea = targetUrl.includes('tneaonline.org');
-      const superParam = isTnea ? '&super=true&render=true' : '';
+      const isProtected = targetUrl.includes('tneaonline.org') || targetUrl.includes('tnhealth.tn.gov.in');
+      const superParam = isProtected ? '&super=true&render=true' : '';
       const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(targetUrl)}${superParam}`;
       response = await fetch(scrapeDoUrl);
     } else {

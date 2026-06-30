@@ -36,28 +36,39 @@ const https = require('https');
 const http = require('http');
 const { fetch, ProxyAgent } = require('undici'); // Override global fetch to ensure undici version parity
 
-// Global Scraper Proxy dispatcher for bypassing geo/datacenter blocks
+// Global Scraper Proxy dispatcher and scraper API keys
 let proxyDispatcher = null;
-let scrapingBeeApiKey = null;
-let scrapeDoApiKey = null;
+const scrapingAntApiKey = process.env.SCRAPINGANT_API_KEY || null;
+let scrapingBeeApiKey = process.env.SCRAPINGBEE_API_KEY || null;
+let scrapeDoApiKey = process.env.SCRAPE_DO_API_KEY || null;
+const crawlbaseToken = process.env.CRAWLBASE_TOKEN || null;
+
 if (process.env.SCRAPER_PROXY) {
   try {
     if (process.env.SCRAPER_PROXY.includes('scrapingbee.com')) {
       const parsed = new URL(process.env.SCRAPER_PROXY);
-      scrapingBeeApiKey = parsed.username;
-      console.log('Scraper proxy: ScrapingBee detected. Using direct REST API with key:', scrapingBeeApiKey);
+      scrapingBeeApiKey = scrapingBeeApiKey || parsed.username;
+      console.log('Scraper proxy: ScrapingBee detected via SCRAPER_PROXY. Using direct REST API.');
     } else if (process.env.SCRAPER_PROXY.includes('scrape.do')) {
       const parsed = new URL(process.env.SCRAPER_PROXY);
-      scrapeDoApiKey = parsed.username;
-      console.log('Scraper proxy: Scrape.do detected. Using direct REST API with key:', scrapeDoApiKey);
+      scrapeDoApiKey = scrapeDoApiKey || parsed.username;
+      console.log('Scraper proxy: Scrape.do detected via SCRAPER_PROXY. Using direct REST API.');
     } else {
       proxyDispatcher = new ProxyAgent(process.env.SCRAPER_PROXY);
       console.log('Scraper proxy dispatcher initialized using:', process.env.SCRAPER_PROXY);
     }
   } catch (err) {
-    console.error('Failed to initialize ProxyAgent/ScrapingBee/Scrape.do:', err.message);
+    console.error('Failed to initialize ProxyAgent/ScrapingBee/Scrape.do from SCRAPER_PROXY:', err.message);
   }
 }
+
+console.log('Scraper APIs Configured:', {
+  ScrapingAnt: !!scrapingAntApiKey,
+  Crawlbase: !!crawlbaseToken,
+  ScrapingBee: !!scrapingBeeApiKey,
+  'Scrape.do': !!scrapeDoApiKey,
+  CustomProxyAgent: !!proxyDispatcher
+});
 
 // Cloudinary SDK Configuration
 const cloudinary = require('cloudinary').v2;
@@ -2670,6 +2681,115 @@ function isProxyRequired(url) {
   return protectedDomains.some(domain => url.includes(domain));
 }
 
+async function fetchWithFallbackScraper(targetUrl, signal = null) {
+  const isProtected = isProxyRequired(targetUrl);
+  
+  // Define providers in order of preference/credits
+  const providers = [];
+
+  if (scrapingAntApiKey) {
+    providers.push({
+      name: 'ScrapingAnt',
+      buildUrl: (url) => {
+        const renderParam = isProtected ? '&browser=true&proxy_country=in' : '&browser=false';
+        return `https://api.scrapingant.com/v2/general?x-api-key=${scrapingAntApiKey}&url=${encodeURIComponent(url)}${renderParam}`;
+      }
+    });
+  }
+
+  if (crawlbaseToken) {
+    providers.push({
+      name: 'Crawlbase',
+      buildUrl: (url) => {
+        const geoParam = isProtected ? '&country=in' : '';
+        return `https://api.crawlbase.com/?token=${crawlbaseToken}&url=${encodeURIComponent(url)}${geoParam}`;
+      }
+    });
+  }
+
+  if (scrapingBeeApiKey) {
+    providers.push({
+      name: 'ScrapingBee',
+      buildUrl: (url) => {
+        const renderParam = isProtected ? '&render_js=true&country_code=in&premium_proxy=true' : '&render_js=false';
+        return `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(url)}${renderParam}`;
+      }
+    });
+  }
+
+  if (scrapeDoApiKey) {
+    providers.push({
+      name: 'Scrape.do',
+      buildUrl: (url) => {
+        const superParam = isProtected ? '&super=true&render=true&geoCode=in' : '';
+        return `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(url)}${superParam}`;
+      }
+    });
+  }
+
+  console.log(`[Scraper] Request received for: ${targetUrl}. Protected: ${isProtected}`);
+
+  // Try each configured API sequentially, each with its own 25s timeout.
+  // This prevents a single slow provider from consuming the full 90s budget.
+  for (const provider of providers) {
+    // Check if the outer (global) signal has already aborted
+    if (signal && signal.aborted) break;
+
+    try {
+      const apiUrl = provider.buildUrl(targetUrl);
+      console.log(`[Scraper] Fetching via ${provider.name}...`);
+
+      // Per-provider 25s timeout
+      const perProviderController = new AbortController();
+      const perProviderTimeout = setTimeout(() => perProviderController.abort(), 25000);
+
+      // Forward the global abort signal to per-provider controller
+      const onGlobalAbort = () => perProviderController.abort();
+      if (signal) signal.addEventListener('abort', onGlobalAbort, { once: true });
+
+      let response;
+      try {
+        response = await fetch(apiUrl, { signal: perProviderController.signal });
+      } finally {
+        clearTimeout(perProviderTimeout);
+        if (signal) signal.removeEventListener('abort', onGlobalAbort);
+      }
+
+      // 409 = ScrapingAnt free-tier concurrency limit — skip to next provider
+      if (response.status === 409) {
+        console.warn(`[Scraper] ${provider.name} hit concurrency limit (409). Skipping...`);
+        continue;
+      }
+
+      if (response.ok) {
+        console.log(`[Scraper] Success using ${provider.name}`);
+        return response;
+      }
+
+      console.warn(`[Scraper] ${provider.name} returned status ${response.status}. Trying next provider...`);
+    } catch (err) {
+      if (signal && signal.aborted) {
+        console.warn(`[Scraper] Global timeout hit — stopping provider chain.`);
+        break;
+      }
+      console.warn(`[Scraper] ${provider.name} timed out/errored (${err.message}). Trying next...`);
+    }
+  }
+
+  // Fallback to direct fetch
+  console.warn(`[Scraper] All scraper APIs failed or none configured. Trying direct fallback fetch...`);
+  const fallbackOpts = {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+  };
+  if (signal) fallbackOpts.signal = signal;
+  if (proxyDispatcher) {
+    fallbackOpts.dispatcher = proxyDispatcher;
+  }
+  return await fetch(targetUrl, fallbackOpts);
+}
+
 async function checkWebsiteForChanges(site) {
   let text = '';
   let scrapedVia = 'Cheerio Fast Fetch';
@@ -2710,69 +2830,18 @@ async function checkWebsiteForChanges(site) {
   } else {
     // For other websites, use standard Cheerio scraper
     try {
-      console.log(`Checking website "${site.name}" (${site.url}) using Cheerio fast-fetch...`);
+      console.log(`Checking website "${site.name}" (${site.url}) using multi-provider fallback scraper...`);
       
       let response;
-      let retries = 3;
-      while (retries > 0) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
-        
-        try {
-          if (scrapingBeeApiKey) {
-            const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(site.url)}&render_js=false`;
-            response = await fetch(scrapingBeeUrl, { signal: controller.signal });
-          } else if (scrapeDoApiKey && isProxyRequired(site.url)) {
-            const isProtected = site.url.includes('tneaonline.org') || site.url.includes('tnhealth.tn.gov.in');
-            const superParam = isProtected ? '&super=true&render=true' : '';
-            const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(site.url)}${superParam}`;
-            response = await fetch(scrapeDoUrl, { signal: controller.signal });
-            
-            // If Scrape.do fails for ANY reason (blocked, monthly limit exceeded 401, timeout 504), try direct fallback
-            if (!response.ok) {
-              console.warn(`Scrape.do failed for ${site.name} with status ${response.status}. Trying direct fallback fetch...`);
-              const fallbackOpts = {
-                headers: {
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                },
-                signal: controller.signal
-              };
-              response = await fetch(site.url, fallbackOpts);
-            }
-          } else {
-            const fetchOpts = {
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-              },
-              signal: controller.signal
-            };
-            if (proxyDispatcher) {
-              fetchOpts.dispatcher = proxyDispatcher;
-            }
-            response = await fetch(site.url, fetchOpts);
-          }
-          
-          clearTimeout(timeoutId);
-          if (response.ok) {
-            break; // Success! Exit retry loop.
-          } else if (response.status === 429) {
-            console.warn(`Hit Scrape.do rate limit (429) for ${site.name}. Retrying in 5s...`);
-            retries--;
-            if (retries > 0) {
-              await new Promise(resolve => setTimeout(resolve, 5000)); // wait 5s on 429
-            }
-            continue;
-          } else {
-            console.warn(`Cheerio fetch for ${site.name} returned status ${response.status}. Retries remaining: ${retries - 1}`);
-          }
-        } catch (fetchErr) {
-          clearTimeout(timeoutId);
-          console.warn(`Cheerio fetch error for ${site.name}: ${fetchErr.message}. Retries remaining: ${retries - 1}`);
-        }
-        retries--;
-        if (retries > 0) {
-          await new Promise(resolve => setTimeout(resolve, 2000)); // wait 2s before retry
-        }
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
+      
+      try {
+        response = await fetchWithFallbackScraper(site.url, controller.signal);
+      } catch (fetchErr) {
+        console.warn(`Fetch error for ${site.name}: ${fetchErr.message}`);
+      } finally {
+        clearTimeout(timeoutId);
       }
 
       if (!response || !response.ok) {
@@ -2977,52 +3046,10 @@ app.get('/api/admin/web-notifications/proxy', authenticateTokenOrQuery, requireA
   try {
     console.log(`Proxying request for visual selector: ${targetUrl}`);
     let response;
-    let retries = 3;
-    while (retries > 0) {
-      try {
-        if (scrapingBeeApiKey) {
-          const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(targetUrl)}&render_js=false`;
-          response = await fetch(scrapingBeeUrl);
-        } else if (scrapeDoApiKey && isProxyRequired(targetUrl)) {
-          const isProtected = targetUrl.includes('tneaonline.org') || targetUrl.includes('tnhealth.tn.gov.in');
-          const superParam = isProtected ? '&super=true&render=true' : '';
-          const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(targetUrl)}${superParam}`;
-          response = await fetch(scrapeDoUrl);
-
-          // If Scrape.do fails, try direct fallback
-          if (!response.ok) {
-            console.warn(`Visual Selector proxy: Scrape.do failed with status ${response.status}. Trying direct fallback fetch...`);
-            const fallbackOpts = {
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-              }
-            };
-            response = await fetch(targetUrl, fallbackOpts);
-          }
-        } else {
-          const fetchOpts = {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-          };
-          if (proxyDispatcher) {
-            fetchOpts.dispatcher = proxyDispatcher;
-          }
-          response = await fetch(targetUrl, fetchOpts);
-        }
-
-        if (response.ok) {
-          break; // Success! Exit retry loop.
-        } else {
-          console.warn(`Visual Selector proxy returned status ${response.status}. Retries remaining: ${retries - 1}`);
-        }
-      } catch (fetchErr) {
-        console.warn(`Visual Selector proxy fetch error: ${fetchErr.message}. Retries remaining: ${retries - 1}`);
-      }
-      retries--;
-      if (retries > 0) {
-        await new Promise(resolve => setTimeout(resolve, 2000)); // wait 2s before retry
-      }
+    try {
+      response = await fetchWithFallbackScraper(targetUrl);
+    } catch (fetchErr) {
+      console.warn(`Visual Selector proxy fetch error: ${fetchErr.message}`);
     }
 
     if (!response || !response.ok) {

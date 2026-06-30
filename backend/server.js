@@ -2722,6 +2722,18 @@ async function checkWebsiteForChanges(site) {
             const superParam = isProtected ? '&super=true&render=true' : '';
             const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(site.url)}${superParam}`;
             response = await fetch(scrapeDoUrl, { signal: controller.signal });
+            
+            // If Scrape.do fails with 502/504/403 (blocked/rotation errors), try direct fallback
+            if (!response.ok && (response.status === 502 || response.status === 504 || response.status === 403)) {
+              console.warn(`Scrape.do failed for ${site.name} with status ${response.status}. Trying direct fallback fetch...`);
+              const fallbackOpts = {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                },
+                signal: controller.signal
+              };
+              response = await fetch(site.url, fallbackOpts);
+            }
           } else {
             const fetchOpts = {
               headers: {
@@ -2962,6 +2974,17 @@ app.get('/api/admin/web-notifications/proxy', authenticateTokenOrQuery, requireA
           const superParam = isProtected ? '&super=true&render=true' : '';
           const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(targetUrl)}${superParam}`;
           response = await fetch(scrapeDoUrl);
+
+          // If Scrape.do fails with 502/504/403, try direct fallback
+          if (!response.ok && (response.status === 502 || response.status === 504 || response.status === 403)) {
+            console.warn(`Visual Selector proxy: Scrape.do failed with status ${response.status}. Trying direct fallback fetch...`);
+            const fallbackOpts = {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+              }
+            };
+            response = await fetch(targetUrl, fallbackOpts);
+          }
         } else {
           const fetchOpts = {
             headers: {

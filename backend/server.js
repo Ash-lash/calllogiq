@@ -38,12 +38,19 @@ const { fetch, ProxyAgent } = require('undici'); // Override global fetch to ens
 
 // Global Scraper Proxy dispatcher for bypassing geo/datacenter blocks
 let proxyDispatcher = null;
+let scrapingBeeApiKey = null;
 if (process.env.SCRAPER_PROXY) {
   try {
-    proxyDispatcher = new ProxyAgent(process.env.SCRAPER_PROXY);
-    console.log('Scraper proxy dispatcher initialized using:', process.env.SCRAPER_PROXY);
+    if (process.env.SCRAPER_PROXY.includes('scrapingbee.com')) {
+      const parsed = new URL(process.env.SCRAPER_PROXY);
+      scrapingBeeApiKey = parsed.username;
+      console.log('Scraper proxy: ScrapingBee detected. Using direct REST API with key:', scrapingBeeApiKey);
+    } else {
+      proxyDispatcher = new ProxyAgent(process.env.SCRAPER_PROXY);
+      console.log('Scraper proxy dispatcher initialized using:', process.env.SCRAPER_PROXY);
+    }
   } catch (err) {
-    console.error('Failed to initialize ProxyAgent:', err.message);
+    console.error('Failed to initialize ProxyAgent/ScrapingBee:', err.message);
   }
 }
 
@@ -2698,17 +2705,22 @@ async function checkWebsiteForChanges(site) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 45000); // 45s timeout
       
-      const fetchOpts = {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        signal: controller.signal
-      };
-      if (proxyDispatcher) {
-        fetchOpts.dispatcher = proxyDispatcher;
+      let response;
+      if (scrapingBeeApiKey) {
+        const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(site.url)}&render_js=false`;
+        response = await fetch(scrapingBeeUrl, { signal: controller.signal });
+      } else {
+        const fetchOpts = {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          },
+          signal: controller.signal
+        };
+        if (proxyDispatcher) {
+          fetchOpts.dispatcher = proxyDispatcher;
+        }
+        response = await fetch(site.url, fetchOpts);
       }
-
-      const response = await fetch(site.url, fetchOpts);
       clearTimeout(timeoutId);
       
       if (response.ok) {
@@ -2906,15 +2918,21 @@ app.get('/api/admin/web-notifications/proxy', authenticateTokenOrQuery, requireA
 
   try {
     console.log(`Proxying request for visual selector: ${targetUrl}`);
-    const fetchOpts = {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    let response;
+    if (scrapingBeeApiKey) {
+      const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(targetUrl)}&render_js=false`;
+      response = await fetch(scrapingBeeUrl);
+    } else {
+      const fetchOpts = {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      };
+      if (proxyDispatcher) {
+        fetchOpts.dispatcher = proxyDispatcher;
       }
-    };
-    if (proxyDispatcher) {
-      fetchOpts.dispatcher = proxyDispatcher;
+      response = await fetch(targetUrl, fetchOpts);
     }
-    const response = await fetch(targetUrl, fetchOpts);
 
     if (!response.ok) {
       return res.status(response.status).send(`Failed to fetch target URL. Status: ${response.status}`);

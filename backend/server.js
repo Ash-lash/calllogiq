@@ -2715,7 +2715,9 @@ async function checkWebsiteForChanges(site) {
         const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(site.url)}&render_js=false`;
         response = await fetch(scrapingBeeUrl, { signal: controller.signal });
       } else if (scrapeDoApiKey) {
-        const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(site.url)}`;
+        const isTnea = site.url.includes('tneaonline.org');
+        const superParam = isTnea ? '&super=true' : '';
+        const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(site.url)}${superParam}`;
         response = await fetch(scrapeDoUrl, { signal: controller.signal });
       } else {
         const fetchOpts = {
@@ -2931,7 +2933,9 @@ app.get('/api/admin/web-notifications/proxy', authenticateTokenOrQuery, requireA
       const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(targetUrl)}&render_js=false`;
       response = await fetch(scrapingBeeUrl);
     } else if (scrapeDoApiKey) {
-      const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(targetUrl)}`;
+      const isTnea = targetUrl.includes('tneaonline.org');
+      const superParam = isTnea ? '&super=true' : '';
+      const scrapeDoUrl = `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(targetUrl)}${superParam}`;
       response = await fetch(scrapeDoUrl);
     } else {
       const fetchOpts = {

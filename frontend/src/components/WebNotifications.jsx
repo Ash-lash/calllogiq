@@ -6,6 +6,7 @@ import {
   List, BarChart2, Users, BookOpen, MessageSquare, Languages, ChevronLeft, Mail, Moon, Sun, Copy, Pause
 } from 'lucide-react';
 import API_BASE from '../api';
+import { Atom } from 'react-loading-indicators';
 
 function WebNotifications({ user, token }) {
   const [sites, setSites] = useState([]);
@@ -36,6 +37,7 @@ function WebNotifications({ user, token }) {
   const [selectMode, setSelectMode] = useState(true);
   const [tempSelector, setTempSelector] = useState('');
   const [tempSelectorText, setTempSelectorText] = useState('');
+  const [iframeLoading, setIframeLoading] = useState(false);
   const iframeRef = React.useRef(null);
 
   const handleOpenVisualSelector = () => {
@@ -43,10 +45,12 @@ function WebNotifications({ user, token }) {
     setTempSelector(siteSelector || '');
     setTempSelectorText('');
     setSelectMode(true);
+    setIframeLoading(true);
     setShowVisualSelector(true);
   };
 
   const handleIframeLoad = () => {
+    setIframeLoading(false);
     if (iframeRef.current && iframeRef.current.contentWindow) {
       setTimeout(() => {
         try {
@@ -1906,8 +1910,27 @@ function WebNotifications({ user, token }) {
                 border: '3px solid #0f172a',
                 borderRadius: '12px',
                 boxShadow: '4px 4px 0px #0f172a',
-                overflow: 'hidden'
+                overflow: 'hidden',
+                position: 'relative'
               }}>
+                {iframeLoading && (
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(255, 255, 255, 0.93)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    gap: '16px',
+                    zIndex: 10
+                  }}>
+                    <Atom color="#7c3aed" size="medium" text="Securing proxy connection..." textColor="#0f172a" style={{ fontWeight: 700 }} />
+                  </div>
+                )}
                 <iframe
                   ref={iframeRef}
                   src={`${API_BASE}/api/admin/web-notifications/proxy?url=${encodeURIComponent(siteUrl)}&token=${encodeURIComponent(token)}`}

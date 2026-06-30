@@ -2696,7 +2696,7 @@ async function checkWebsiteForChanges(site) {
       console.log(`Checking website "${site.name}" (${site.url}) using Cheerio fast-fetch...`);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 45000); // 45s timeout
       
       const fetchOpts = {
         headers: {

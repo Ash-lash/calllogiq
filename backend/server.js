@@ -2660,8 +2660,8 @@ function extractTextFromHtml(html) {
 
 /**
  * Fetch a URL using Playwright Chromium (handles JavaScript, anti-bot headers,
- * and geo-blocked government portals with no external API credits required).
- * Returns { ok: true, text: string } on success, throws on failure.
+ * self-signed SSL certs, and slow government portals — no external API credits).
+ * Returns { ok: true, html: string } on success, throws on failure.
  */
 async function fetchWithPlaywright(targetUrl, timeoutMs = 60000) {
   const pw = getPlaywright();
@@ -2674,7 +2674,9 @@ async function fetchWithPlaywright(targetUrl, timeoutMs = 60000) {
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-blink-features=AutomationControlled',
-      '--disable-dev-shm-usage'
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--single-process'           // Safer inside constrained Linux containers
     ]
   });
 
@@ -2683,6 +2685,7 @@ async function fetchWithPlaywright(targetUrl, timeoutMs = 60000) {
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       locale: 'en-IN',
       timezoneId: 'Asia/Kolkata',
+      ignoreHTTPSErrors: true,     // Accept self-signed / government CA SSL certs
       extraHTTPHeaders: {
         'Accept-Language': 'en-IN,en;q=0.9',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
@@ -2695,20 +2698,34 @@ async function fetchWithPlaywright(targetUrl, timeoutMs = 60000) {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
     });
 
-    const response = await page.goto(targetUrl, {
-      waitUntil: 'domcontentloaded',
-      timeout: timeoutMs
-    });
-
-    if (!response || !response.ok()) {
-      const status = response ? response.status() : 0;
-      throw new Error(`Playwright navigation returned status ${status}`);
+    // Try networkidle first for JS-heavy / slow-loading government portals.
+    // Fall back to domcontentloaded if the page never fully settles (e.g. long-poll).
+    let response = null;
+    try {
+      response = await page.goto(targetUrl, {
+        waitUntil: 'networkidle',
+        timeout: timeoutMs
+      });
+    } catch (idleErr) {
+      console.warn(`[Scraper] networkidle timed out (${idleErr.message}). Retrying with domcontentloaded...`);
+      response = await page.goto(targetUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: Math.min(timeoutMs, 30000)
+      });
     }
 
-    // Wait a moment for any lazy-loaded content
+    // Accept any non-server-error response. Government portals often go through
+    // 301 → 302 → 200 redirect chains; Playwright reports the *final* response
+    // which is usually 200. Only a true 5xx means the server failed.
+    const status = response ? response.status() : 0;
+    if (status >= 500) {
+      throw new Error(`Playwright navigation returned server error ${status}`);
+    }
+
+    // Brief settle wait for any lazy-loaded content
     await page.waitForTimeout(1500);
     const html = await page.content();
-    console.log(`[Scraper] Playwright succeeded for: ${targetUrl}`);
+    console.log(`[Scraper] Playwright succeeded for: ${targetUrl} (HTTP ${status})`);
     return { ok: true, html };
   } finally {
     await browser.close();

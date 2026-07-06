@@ -80,10 +80,11 @@ def parse_datetime_str(full_time_str):
             continue
             
     if not dt:
-        # Fallback to appending default year 2026
+        # Fallback: append the current year when the time string has no year component
+        current_year = datetime.now().year
         for fmt in ["%H:%M %d-%m-%Y", "%H:%M %d-%b-%Y"]:
             try:
-                dt = datetime.strptime(f"{full_time_str}-2026", fmt)
+                dt = datetime.strptime(f"{full_time_str}-{current_year}", fmt)
                 break
             except ValueError:
                 continue

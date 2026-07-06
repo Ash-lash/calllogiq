@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "postinstall": "node postinstall.js"
+    "postinstall": "node postinstall.js && npx playwright install chromium --with-deps"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -19,6 +19,7 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.13",
+    "playwright": "^1.49.0",
     "undici": "^8.5.0"
   }
 }

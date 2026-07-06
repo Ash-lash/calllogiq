@@ -34,41 +34,7 @@ try {
 
 const https = require('https');
 const http = require('http');
-const { fetch, ProxyAgent } = require('undici'); // Override global fetch to ensure undici version parity
-
-// Global Scraper Proxy dispatcher and scraper API keys
-let proxyDispatcher = null;
-const scrapingAntApiKey = process.env.SCRAPINGANT_API_KEY || null;
-let scrapingBeeApiKey = process.env.SCRAPINGBEE_API_KEY || null;
-let scrapeDoApiKey = process.env.SCRAPE_DO_API_KEY || null;
-const crawlbaseToken = process.env.CRAWLBASE_TOKEN || null;
-
-if (process.env.SCRAPER_PROXY) {
-  try {
-    if (process.env.SCRAPER_PROXY.includes('scrapingbee.com')) {
-      const parsed = new URL(process.env.SCRAPER_PROXY);
-      scrapingBeeApiKey = scrapingBeeApiKey || parsed.username;
-      console.log('Scraper proxy: ScrapingBee detected via SCRAPER_PROXY. Using direct REST API.');
-    } else if (process.env.SCRAPER_PROXY.includes('scrape.do')) {
-      const parsed = new URL(process.env.SCRAPER_PROXY);
-      scrapeDoApiKey = scrapeDoApiKey || parsed.username;
-      console.log('Scraper proxy: Scrape.do detected via SCRAPER_PROXY. Using direct REST API.');
-    } else {
-      proxyDispatcher = new ProxyAgent(process.env.SCRAPER_PROXY);
-      console.log('Scraper proxy dispatcher initialized using:', process.env.SCRAPER_PROXY);
-    }
-  } catch (err) {
-    console.error('Failed to initialize ProxyAgent/ScrapingBee/Scrape.do from SCRAPER_PROXY:', err.message);
-  }
-}
-
-console.log('Scraper APIs Configured:', {
-  ScrapingAnt: !!scrapingAntApiKey,
-  Crawlbase: !!crawlbaseToken,
-  ScrapingBee: !!scrapingBeeApiKey,
-  'Scrape.do': !!scrapeDoApiKey,
-  CustomProxyAgent: !!proxyDispatcher
-});
+const { fetch } = require('undici'); // Use undici fetch for consistent HTTP behaviour
 
 // Cloudinary SDK Configuration
 const cloudinary = require('cloudinary').v2;
@@ -1422,7 +1388,8 @@ app.get('/api/admin/attendance/:userId', authenticateToken, requireAdmin, async 
   
   // Loop through each day from startDate to today
   for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-    const dateStr = `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+    // Zero-pad the day to match Python's strftime("%d %b %Y") format (e.g. "01 Jul 2026" not "1 Jul 2026")
+    const dateStr = `${String(d.getDate()).padStart(2, '0')} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
     const isSunday = d.getDay() === 0;
     
     // Format YYYY-MM-DD
@@ -1575,7 +1542,8 @@ app.get('/api/admin/attendance/:userId/excel', authenticateToken, requireAdmin, 
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     
     for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      const dateStr = `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+      // Zero-pad the day to match Python's strftime("%d %b %Y") format (e.g. "01 Jul 2026" not "1 Jul 2026")
+      const dateStr = `${String(d.getDate()).padStart(2, '0')} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
       const isSunday = d.getDay() === 0;
       
       const year = d.getFullYear();
@@ -2666,6 +2634,20 @@ async function migrateDomainCategories() {
 const crypto = require('crypto');
 const cheerio = require('cheerio');
 
+// Lazily-required so the server starts even if playwright isn't installed yet
+let playwrightAvailable = null;
+function getPlaywright() {
+  if (playwrightAvailable !== null) return playwrightAvailable;
+  try {
+    playwrightAvailable = require('playwright');
+    console.log('[Scraper] Playwright is available — will use Chromium for JS-heavy pages.');
+  } catch (e) {
+    playwrightAvailable = false;
+    console.warn('[Scraper] Playwright not found — falling back to direct fetch only.');
+  }
+  return playwrightAvailable;
+}
+
 function extractTextFromHtml(html) {
   let clean = html.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '');
   clean = clean.replace(/<[^>]+>/g, ' ');
@@ -2676,153 +2658,129 @@ function extractTextFromHtml(html) {
   return clean.replace(/\s+/g, ' ').trim();
 }
 
-function isProxyRequired(url) {
-  const protectedDomains = ['tneaonline.org', 'tnhealth.tn.gov.in', 'aaccc.gov.in'];
-  return protectedDomains.some(domain => url.includes(domain));
+/**
+ * Fetch a URL using Playwright Chromium (handles JavaScript, anti-bot headers,
+ * and geo-blocked government portals with no external API credits required).
+ * Returns { ok: true, text: string } on success, throws on failure.
+ */
+async function fetchWithPlaywright(targetUrl, timeoutMs = 60000) {
+  const pw = getPlaywright();
+  if (!pw) throw new Error('Playwright not installed');
+
+  console.log(`[Scraper] Launching Playwright Chromium for: ${targetUrl}`);
+  const browser = await pw.chromium.launch({
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-blink-features=AutomationControlled',
+      '--disable-dev-shm-usage'
+    ]
+  });
+
+  try {
+    const context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      locale: 'en-IN',
+      timezoneId: 'Asia/Kolkata',
+      extraHTTPHeaders: {
+        'Accept-Language': 'en-IN,en;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+      }
+    });
+    const page = await context.newPage();
+
+    // Remove navigator.webdriver flag to bypass basic bot detection
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    });
+
+    const response = await page.goto(targetUrl, {
+      waitUntil: 'domcontentloaded',
+      timeout: timeoutMs
+    });
+
+    if (!response || !response.ok()) {
+      const status = response ? response.status() : 0;
+      throw new Error(`Playwright navigation returned status ${status}`);
+    }
+
+    // Wait a moment for any lazy-loaded content
+    await page.waitForTimeout(1500);
+    const html = await page.content();
+    console.log(`[Scraper] Playwright succeeded for: ${targetUrl}`);
+    return { ok: true, html };
+  } finally {
+    await browser.close();
+  }
 }
 
+/**
+ * Primary scraper: tries a fast direct fetch first, then falls back to
+ * Playwright Chromium (self-hosted, zero API credits, handles JS/anti-bot).
+ *
+ * Returns a response-like object with .text() method, or throws.
+ */
 async function fetchWithFallbackScraper(targetUrl, signal = null) {
-  const isProtected = isProxyRequired(targetUrl);
-
-  // Helper: create a per-attempt AbortController that respects the global signal
-  function makeAttemptSignal(timeoutMs) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    const onGlobal = () => ctrl.abort();
-    if (signal) signal.addEventListener('abort', onGlobal, { once: true });
-    const cleanup = () => {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener('abort', onGlobal);
-    };
-    return { signal: ctrl.signal, cleanup };
-  }
-
-  console.log(`[Scraper] Fetching: ${targetUrl} | Protected: ${isProtected}`);
+  console.log(`[Scraper] Fetching: ${targetUrl}`);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // STEP 1 — Direct fetch (FREE, no API credits consumed)
-  //   Skip for known geo-blocked / anti-bot protected domains.
+  // STEP 1 — Direct lightweight fetch (fastest, free, no dependencies)
+  //   Works for most public websites that don't require JavaScript rendering.
   // ─────────────────────────────────────────────────────────────────────────
-  if (!isProtected) {
-    const { signal: directSignal, cleanup } = makeAttemptSignal(20000); // 20s
-    try {
-      console.log(`[Scraper] Trying direct fetch (no proxy)...`);
-      const response = await fetch(targetUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'Cache-Control': 'no-cache'
-        },
-        signal: directSignal
-      });
-      cleanup();
-      if (response.ok) {
-        // Quick sanity-check: response must have some HTML content
-        const contentType = response.headers.get('content-type') || '';
-        if (contentType.includes('text/html') || contentType.includes('text/plain')) {
-          console.log(`[Scraper] Direct fetch succeeded (${response.status}). No API credits used.`);
-          return response;
-        }
-      }
-      console.warn(`[Scraper] Direct fetch returned ${response.status} or non-HTML. Trying proxy APIs...`);
-    } catch (err) {
-      cleanup();
-      if (signal && signal.aborted) throw err;
-      console.warn(`[Scraper] Direct fetch failed (${err.message}). Trying proxy APIs...`);
-    }
-  }
+  const directCtrl = new AbortController();
+  const directTimer = setTimeout(() => directCtrl.abort(), 20000);
+  if (signal) signal.addEventListener('abort', () => directCtrl.abort(), { once: true });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // STEP 2 — Proxy API fallback chain
-  //   Only reached if: (a) site is geo-blocked/protected, OR (b) direct failed.
-  //   Providers tried in order: ScrapingAnt → Crawlbase → ScrapingBee → Scrape.do
-  // ─────────────────────────────────────────────────────────────────────────
-  const providers = [];
-
-  if (scrapingAntApiKey) {
-    providers.push({
-      name: 'ScrapingAnt',
-      buildUrl: (url) => {
-        const extra = isProtected ? '&browser=true&proxy_country=in' : '&browser=false';
-        return `https://api.scrapingant.com/v2/general?x-api-key=${scrapingAntApiKey}&url=${encodeURIComponent(url)}${extra}`;
-      }
-    });
-  }
-  if (crawlbaseToken) {
-    providers.push({
-      name: 'Crawlbase',
-      buildUrl: (url) => {
-        const extra = isProtected ? '&country=in' : '';
-        return `https://api.crawlbase.com/?token=${crawlbaseToken}&url=${encodeURIComponent(url)}${extra}`;
-      }
-    });
-  }
-  if (scrapingBeeApiKey) {
-    providers.push({
-      name: 'ScrapingBee',
-      buildUrl: (url) => {
-        const extra = isProtected ? '&render_js=true&country_code=in&premium_proxy=true' : '&render_js=false';
-        return `https://app.scrapingbee.com/api/v1/?api_key=${scrapingBeeApiKey}&url=${encodeURIComponent(url)}${extra}`;
-      }
-    });
-  }
-  if (scrapeDoApiKey) {
-    providers.push({
-      name: 'Scrape.do',
-      buildUrl: (url) => {
-        const extra = isProtected ? '&super=true&render=true&geoCode=in' : '';
-        return `https://api.scrape.do?token=${scrapeDoApiKey}&url=${encodeURIComponent(url)}${extra}`;
-      }
-    });
-  }
-
-  for (const provider of providers) {
-    if (signal && signal.aborted) break;
-    const { signal: providerSignal, cleanup } = makeAttemptSignal(25000); // 25s per provider
-    try {
-      const apiUrl = provider.buildUrl(targetUrl);
-      console.log(`[Scraper] Trying ${provider.name}...`);
-      const response = await fetch(apiUrl, { signal: providerSignal });
-      cleanup();
-
-      if (response.status === 409) {
-        console.warn(`[Scraper] ${provider.name} concurrency limit (409). Skipping...`);
-        continue;
-      }
-      if (response.ok) {
-        console.log(`[Scraper] Success via ${provider.name}`);
-        return response;
-      }
-      console.warn(`[Scraper] ${provider.name} → ${response.status}. Trying next...`);
-    } catch (err) {
-      cleanup();
-      if (signal && signal.aborted) {
-        console.warn(`[Scraper] Global timeout — stopping.`);
-        break;
-      }
-      console.warn(`[Scraper] ${provider.name} failed (${err.message}). Trying next...`);
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // STEP 3 — Last-resort direct fetch (if everything above failed)
-  // ─────────────────────────────────────────────────────────────────────────
-  console.warn(`[Scraper] All proxy APIs failed. Last-resort direct fetch...`);
-  const { signal: lastSignal, cleanup: lastCleanup } = makeAttemptSignal(20000);
   try {
+    console.log(`[Scraper] Trying direct fetch...`);
     const response = await fetch(targetUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-IN,en;q=0.9',
+        'Cache-Control': 'no-cache',
+        'Upgrade-Insecure-Requests': '1'
       },
-      signal: lastSignal,
-      ...(proxyDispatcher ? { dispatcher: proxyDispatcher } : {})
+      signal: directCtrl.signal
     });
-    lastCleanup();
-    return response;
+    clearTimeout(directTimer);
+
+    if (response.ok) {
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('text/html') || contentType.includes('text/plain')) {
+        console.log(`[Scraper] Direct fetch succeeded (${response.status}).`);
+        return response; // Standard Response — caller uses .text()
+      }
+      console.warn(`[Scraper] Direct fetch returned non-HTML content-type (${contentType}). Trying Playwright...`);
+    } else {
+      console.warn(`[Scraper] Direct fetch returned HTTP ${response.status}. Trying Playwright...`);
+    }
   } catch (err) {
-    lastCleanup();
-    throw err;
+    clearTimeout(directTimer);
+    if (signal && signal.aborted) throw err; // Propagate global cancellation
+    console.warn(`[Scraper] Direct fetch failed (${err.message}). Trying Playwright...`);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // STEP 2 — Playwright Chromium (self-hosted, handles JS rendering + anti-bot)
+  //   Used when direct fetch fails or returns non-HTML (e.g. government portals,
+  //   JS-heavy SPAs, pages with bot-detection redirects).
+  // ─────────────────────────────────────────────────────────────────────────
+  if (signal && signal.aborted) throw new Error('Scraper aborted by caller');
+
+  try {
+    const { html } = await fetchWithPlaywright(targetUrl, 60000);
+    // Wrap as a response-like object so callers can uniformly call .text()
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => 'text/html' },
+      text: async () => html
+    };
+  } catch (playwrightErr) {
+    console.error(`[Scraper] Playwright also failed (${playwrightErr.message}). Giving up.`);
+    throw new Error(`All scraping methods failed for ${targetUrl}: ${playwrightErr.message}`);
   }
 }
 

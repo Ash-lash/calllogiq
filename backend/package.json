@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "postinstall": "node postinstall.js && npx playwright install chromium --with-deps"
+    "postinstall": "node postinstall.js && npx playwright install chromium || true"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

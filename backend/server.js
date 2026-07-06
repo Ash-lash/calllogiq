@@ -2661,14 +2661,15 @@ function extractTextFromHtml(html) {
 /**
  * Fetch a URL using Playwright Chromium (handles JavaScript, anti-bot headers,
  * self-signed SSL certs, and slow government portals — no external API credits).
+ * Self-heals: if the Chromium binary is missing (e.g. postinstall failed silently
+ * on Render), it downloads it on first use and retries automatically.
  * Returns { ok: true, html: string } on success, throws on failure.
  */
 async function fetchWithPlaywright(targetUrl, timeoutMs = 60000) {
   const pw = getPlaywright();
   if (!pw) throw new Error('Playwright not installed');
 
-  console.log(`[Scraper] Launching Playwright Chromium for: ${targetUrl}`);
-  const browser = await pw.chromium.launch({
+  const launchOpts = {
     headless: true,
     args: [
       '--no-sandbox',
@@ -2676,9 +2677,30 @@ async function fetchWithPlaywright(targetUrl, timeoutMs = 60000) {
       '--disable-blink-features=AutomationControlled',
       '--disable-dev-shm-usage',
       '--disable-gpu',
-      '--single-process'           // Safer inside constrained Linux containers
+      '--single-process'           // Required inside constrained Linux containers
     ]
-  });
+  };
+
+  // ── Self-healing launch ────────────────────────────────────────────────────
+  // If the Chromium binary is missing (postinstall || true hid a failed download),
+  // run `npx playwright install chromium` now and retry once.
+  // This adds ~30-60s on the very first cold start but never blocks again.
+  // ──────────────────────────────────────────────────────────────────────────
+  let browser;
+  try {
+    console.log(`[Scraper] Launching Playwright Chromium for: ${targetUrl}`);
+    browser = await pw.chromium.launch(launchOpts);
+  } catch (launchErr) {
+    if (launchErr.message && launchErr.message.includes("Executable doesn't exist")) {
+      console.warn('[Scraper] Chromium binary missing — downloading now (first cold start only)...');
+      const { execSync } = require('child_process');
+      execSync('npx playwright install chromium', { stdio: 'inherit', timeout: 180000 });
+      console.log('[Scraper] Chromium downloaded. Retrying launch...');
+      browser = await pw.chromium.launch(launchOpts); // Retry after self-heal
+    } else {
+      throw launchErr; // Any other launch error (e.g. sandbox config) — surface it
+    }
+  }
 
   try {
     const context = await browser.newContext({
@@ -2715,8 +2737,8 @@ async function fetchWithPlaywright(targetUrl, timeoutMs = 60000) {
     }
 
     // Accept any non-server-error response. Government portals often go through
-    // 301 → 302 → 200 redirect chains; Playwright reports the *final* response
-    // which is usually 200. Only a true 5xx means the server failed.
+    // 301 → 302 → 200 redirect chains; Playwright reports the *final* response.
+    // Only a true 5xx means the server failed.
     const status = response ? response.status() : 0;
     if (status >= 500) {
       throw new Error(`Playwright navigation returned server error ${status}`);

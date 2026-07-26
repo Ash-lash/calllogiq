@@ -10,15 +10,19 @@ const jwt = require('jsonwebtoken');
 const { exec, execSync } = require('child_process');
 const db = require('./db');
 
+function getPythonCmd() {
+  try {
+    execSync('python --version', { stdio: 'ignore' });
+    return 'python';
+  } catch (e) {
+    return 'python3';
+  }
+}
+
 // Auto-install python dependencies on startup if missing
 try {
   console.log('Checking Python dependencies (pdfplumber, openpyxl)...');
-  let pythonCmd = 'python';
-  try {
-    execSync('python --version', { stdio: 'ignore' });
-  } catch (e) {
-    pythonCmd = 'python3';
-  }
+  const pythonCmd = getPythonCmd();
   
   try {
     execSync(`${pythonCmd} -c "import pdfplumber, openpyxl"`, { stdio: 'ignore' });
@@ -886,7 +890,8 @@ app.post('/api/calls/upload', authenticateToken, (req, res) => {
 
           // Call Python analyzer FIRST so we know the PDF's date
           const pyScript = path.join(__dirname, 'analyzer.py');
-          const command = `python "${pyScript}" --pdf "${pdfPath}" --user "${username}" --out "${excelPath}"`;
+          const pyCmd = getPythonCmd();
+          const command = `"${pyCmd}" "${pyScript}" --pdf "${pdfPath}" --user "${username}" --out "${excelPath}"`;
           
           exec(command, async (error, stdout, stderr) => {
             if (error) {

@@ -892,10 +892,15 @@ const AdminDashboard = ({ user, token }) => {
   const getEmployeeLeaderboard = () => {
     // Group logs by user
     const leaderboard = users.map(u => {
-      const userLogs = logs.filter(l => l.userId === u.id);
-      const totalCalls = userLogs.reduce((sum, l) => sum + l.summary.grand_total, 0);
-      const totalTalkSecs = userLogs.reduce((sum, l) => sum + l.summary.talk_time_secs, 0);
-      const totalIdleSecs = userLogs.reduce((sum, l) => sum + l.summary.total_idle_secs, 0);
+      const userLogs = logs.filter(l => 
+        l.userId === u.id || 
+        (u.email && l.userId === u.email) || 
+        (l.user && l.user.email && u.email && l.user.email.toLowerCase() === u.email.toLowerCase()) ||
+        (l.user && l.user.id && l.user.id === u.id)
+      );
+      const totalCalls = userLogs.reduce((sum, l) => sum + (l.summary?.grand_total || 0), 0);
+      const totalTalkSecs = userLogs.reduce((sum, l) => sum + (l.summary?.talk_time_secs || 0), 0);
+      const totalIdleSecs = userLogs.reduce((sum, l) => sum + (l.summary?.total_idle_secs || 0), 0);
       const totalUploads = userLogs.length;
 
       return {
@@ -1153,7 +1158,7 @@ const AdminDashboard = ({ user, token }) => {
               <div className="kpi-icon secondary"><PhoneCall size={20} /></div>
               <div>
                 <div className="kpi-label">Combined Daily Calls</div>
-                <div className="kpi-value">{logs.reduce((sum, l) => sum + l.summary.grand_total, 0)}</div>
+                <div className="kpi-value">{logs.reduce((sum, l) => sum + (l.summary?.grand_total || 0), 0)}</div>
               </div>
             </div>
 
@@ -1161,7 +1166,7 @@ const AdminDashboard = ({ user, token }) => {
               <div className="kpi-icon warning"><Clock size={20} /></div>
               <div>
                 <div className="kpi-label">Combined Talk Time</div>
-                <div className="kpi-value">{formatSeconds(logs.reduce((sum, l) => sum + l.summary.talk_time_secs, 0))}</div>
+                <div className="kpi-value">{formatSeconds(logs.reduce((sum, l) => sum + (l.summary?.talk_time_secs || 0), 0))}</div>
               </div>
             </div>
           </div>

@@ -1095,9 +1095,13 @@ app.get('/api/calls/download/:logId', authenticateToken, requireAdmin, async (re
   const downloadName = `${logUser ? logUser.name.replace(/\s+/g, '_') : 'User'}_Call_Log_Analysis_${log.callDate.replace(/\s+/g, '')}.xlsx`;
   
   // 1. Try local file first
-  const filePath = path.join(UPLOADS_DIR, log.filename);
+  const filePath = path.join(UPLOADS_DIR, log.filename || `${log.id}.xlsx`);
+  const altExcelPath = path.join(UPLOADS_DIR, `excel_${log.id}.xlsx`);
   if (fs.existsSync(filePath)) {
     return res.download(filePath, downloadName);
+  }
+  if (fs.existsSync(altExcelPath)) {
+    return res.download(altExcelPath, downloadName);
   }
   
   // 2. Try Firestore Base64 next
@@ -1197,7 +1201,15 @@ app.get('/api/calls/pdf/:logId', authenticateToken, requireAdmin, async (req, re
     const logUser = await db.findUserById(log.userId);
     const filename = `${logUser ? logUser.name.replace(/\s+/g, '_') : 'User'}_${log.callDate.replace(/\s+/g, '')}.pdf`;
     
-    // 1. Try Firestore Base64 first
+    // 1. Try local file on disk first
+    const localPdfPath = path.join(UPLOADS_DIR, `pdf_${log.id}.pdf`);
+    if (fs.existsSync(localPdfPath)) {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      return res.sendFile(localPdfPath);
+    }
+    
+    // 2. Try Firestore Base64 next
     if (log.pdfBase64) {
       try {
         const pdfBuffer = Buffer.from(log.pdfBase64, 'base64');

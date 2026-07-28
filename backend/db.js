@@ -40,6 +40,42 @@ function readLocalDB() {
     if (!parsed.whatsappBroadcasts) parsed.whatsappBroadcasts = [];
     if (!parsed.whatsappChatbots) parsed.whatsappChatbots = [];
     if (!parsed.holidays) parsed.holidays = [];
+
+    // Strip heavy base64 strings from db.json if present to prevent high RAM usage / Exit 134 crashes
+    let dbModified = false;
+    const UPLOADS_DIR = path.join(__dirname, 'uploads');
+    if (parsed.logs && Array.isArray(parsed.logs)) {
+      parsed.logs.forEach(log => {
+        if (log.pdfBase64) {
+          try {
+            if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+            const pdfPath = path.join(UPLOADS_DIR, `pdf_${log.id}.pdf`);
+            if (!fs.existsSync(pdfPath)) {
+              fs.writeFileSync(pdfPath, Buffer.from(log.pdfBase64, 'base64'));
+            }
+          } catch (e) {}
+          delete log.pdfBase64;
+          log.hasPdf = true;
+          dbModified = true;
+        }
+        if (log.excelBase64) {
+          try {
+            if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+            const excelPath = path.join(UPLOADS_DIR, `excel_${log.id}.xlsx`);
+            if (!fs.existsSync(excelPath)) {
+              fs.writeFileSync(excelPath, Buffer.from(log.excelBase64, 'base64'));
+            }
+          } catch (e) {}
+          delete log.excelBase64;
+          log.hasExcel = true;
+          dbModified = true;
+        }
+      });
+    }
+    if (dbModified) {
+      fs.writeFileSync(DB_FILE, JSON.stringify(parsed, null, 2), 'utf8');
+    }
+
     return parsed;
   } catch (err) {
     console.error('Error reading database file:', err);
@@ -310,6 +346,24 @@ const db = {
       return newLog;
     } else {
       const data = readLocalDB();
+      const UPLOADS_DIR = path.join(__dirname, 'uploads');
+      if (newLog.pdfBase64) {
+        try {
+          if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+          fs.writeFileSync(path.join(UPLOADS_DIR, `pdf_${id}.pdf`), Buffer.from(newLog.pdfBase64, 'base64'));
+        } catch (e) {}
+        delete newLog.pdfBase64;
+        newLog.hasPdf = true;
+      }
+      if (newLog.excelBase64) {
+        try {
+          if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+          fs.writeFileSync(path.join(UPLOADS_DIR, `excel_${id}.xlsx`), Buffer.from(newLog.excelBase64, 'base64'));
+        } catch (e) {}
+        delete newLog.excelBase64;
+        newLog.hasExcel = true;
+      }
+
       data.logs.push(newLog);
       writeLocalDB(data);
       return newLog;

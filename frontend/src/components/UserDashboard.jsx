@@ -466,7 +466,14 @@ function UserDashboard({ user, token, previewMode, onProfileUpdate }) {
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       });
-      const data = await res.json();
+      
+      let data = {};
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else if (!res.ok) {
+        throw new Error('Server is currently restarting or temporarily unavailable. Please wait a few seconds and try again.');
+      }
       
       if (!res.ok) {
         throw new Error(data.error || 'Failed to process PDF file');

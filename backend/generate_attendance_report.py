@@ -1,11 +1,12 @@
 """
 generate_attendance_report.py
-Generates a styled Excel report for a single user's attendance history from JSON data passed via stdin.
+Generates a styled Excel report for a single user or all employees' attendance history from JSON data passed via stdin.
 """
 
 import sys
 import json
 import argparse
+import re
 from datetime import datetime
 
 try:
@@ -60,28 +61,14 @@ def auto_width(ws):
                 pass
         ws.column_dimensions[col_letter].width = min(max(max_len + 4, 12), 50)
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--output', required=True)
-    args = parser.parse_args()
-
-    try:
-        data = json.load(sys.stdin)
-    except Exception as e:
-        print(f"Failed to read JSON from stdin: {e}", file=sys.stderr)
-        sys.exit(1)
-
+def build_single_user_sheet(ws, data):
+    ws.views.sheetView[0].showGridLines = True
     user_name = data.get("userName", "Employee")
     domain = data.get("domain", "-")
     branch = data.get("branch", "-")
     reg_date = data.get("registrationDate", "-")
     summary = data.get("summary", {})
     history = data.get("history", [])
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Attendance Report"
-    ws.views.sheetView[0].showGridLines = True
 
     # Title Block
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=8)
@@ -113,7 +100,6 @@ def main():
         ("Overtime Days", summary.get("overtimeDays", 0)),
     ]
 
-    # Calculate Attendance Rate
     pres = summary.get("presentDays", 0)
     total_work = summary.get("workingDays", 0)
     rate = f"{round((pres / total_work) * 100, 1)}%" if total_work > 0 else "0%"
@@ -150,7 +136,6 @@ def main():
         r = start_history_row + 1 + idx
         status = day.get("status", "Absent")
         
-        # Determine status cell fill
         status_fill = WHITE_FILL
         if status == "Present": status_fill = PRESENT_FILL
         elif status == "Absent": status_fill = ABSENT_FILL
@@ -176,7 +161,6 @@ def main():
             cell.border = THIN_BORDER
             cell.alignment = CENTER if c_idx != 0 else LEFT
             
-            # Fill status specifically, else standard alt rows
             if c_idx == 1:
                 cell.fill = status_fill
                 cell.font = BOLD_FONT
@@ -184,6 +168,111 @@ def main():
                 cell.fill = row_fill
 
     auto_width(ws)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--output', required=True)
+    args = parser.parse_args()
+
+    try:
+        data = json.load(sys.stdin)
+    except Exception as e:
+        print(f"Failed to read JSON from stdin: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    wb = openpyxl.Workbook()
+
+    if data.get("isAllEmployees"):
+        # Master summary sheet
+        ws_summary = wb.active
+        ws_summary.title = "All Telecallers Summary"
+        ws_summary.views.sheetView[0].showGridLines = True
+
+        employees_data = data.get("employeesData", [])
+        period_str = data.get("periodName", "Full Period")
+
+        ws_summary.merge_cells(start_row=1, start_column=1, end_row=1, end_column=10)
+        ws_summary.merge_cells(start_row=2, start_column=1, end_row=2, end_column=10)
+
+        t_cell = ws_summary.cell(row=1, column=1, value="ALL EMPLOYEES ATTENDANCE REPORT")
+        t_cell.font = TITLE_FONT
+        t_cell.fill = HEADER_FILL
+        t_cell.alignment = CENTER
+
+        subtitle = f"Generated: {datetime.now().strftime('%d %b %Y, %H:%M')}  |  Period: {period_str}  |  Total Telecallers: {len(employees_data)}"
+        s_cell = ws_summary.cell(row=2, column=1, value=subtitle)
+        s_cell.font = Font(bold=False, color="FFFFFF", name="Calibri", size=10)
+        s_cell.fill = ACCENT_FILL
+        s_cell.alignment = CENTER
+
+        ws_summary.row_dimensions[1].height = 30
+        ws_summary.row_dimensions[2].height = 20
+
+        headers = [
+            "Employee Name", "Email", "Domain", "Branch", 
+            "Workdays", "Present Days", "Absent Days", "Holidays", "Overtime Days", "Attendance Rate"
+        ]
+
+        for c_idx, h in enumerate(headers):
+            cell = ws_summary.cell(row=4, column=c_idx+1, value=h)
+            cell.font = HEADER_FONT
+            cell.fill = HEADER_FILL
+            cell.alignment = CENTER
+            cell.border = THIN_BORDER
+
+        for idx, emp in enumerate(employees_data):
+            r = 5 + idx
+            s = emp.get("summary", {})
+            pres = s.get("presentDays", 0)
+            total_work = s.get("workingDays", 0)
+            rate_num = round((pres / total_work) * 100, 1) if total_work > 0 else 0
+            rate_str = f"{rate_num}%"
+
+            vals = [
+                emp.get("userName", "-"),
+                emp.get("email", "-"),
+                emp.get("domain", "-"),
+                emp.get("branch", "-"),
+                total_work,
+                pres,
+                s.get("absentDays", 0),
+                s.get("holidays", 0),
+                s.get("overtimeDays", 0),
+                rate_str
+            ]
+
+            row_fill = ALT_ROW_FILL if idx % 2 == 1 else WHITE_FILL
+
+            for c_idx, val in enumerate(vals):
+                cell = ws_summary.cell(row=r, column=c_idx+1, value=val)
+                cell.font = BOLD_FONT if c_idx == 0 or c_idx == 9 else BODY_FONT
+                cell.border = THIN_BORDER
+                cell.alignment = CENTER if c_idx >= 4 else LEFT
+                cell.fill = row_fill
+
+        auto_width(ws_summary)
+
+        # Create individual worksheets for each employee
+        used_titles = {"All Telecallers Summary"}
+        for emp in employees_data:
+            raw_title = emp.get("userName", "Employee")
+            clean_title = re.sub(r'[\\/*?:\[\]]', '', raw_title)[:25].strip()
+            if not clean_title: clean_title = "Emp"
+            sheet_title = clean_title
+            counter = 1
+            while sheet_title in used_titles:
+                sheet_title = f"{clean_title[:22]}_{counter}"
+                counter += 1
+            used_titles.add(sheet_title)
+
+            ws_emp = wb.create_sheet(title=sheet_title)
+            build_single_user_sheet(ws_emp, emp)
+
+    else:
+        ws = wb.active
+        ws.title = "Attendance Report"
+        build_single_user_sheet(ws, data)
+
     wb.save(args.output)
     print("Report generated successfully.")
 

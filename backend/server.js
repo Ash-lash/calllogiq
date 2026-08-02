@@ -1525,161 +1525,205 @@ app.get('/api/admin/attendance/:userId', authenticateToken, requireAdmin, async 
   });
 });
 
-// Generate & Download Attendance Excel for a single user (Admin only)
+// Generate & Download Attendance Excel for a single user or all employees (Admin only)
 app.get('/api/admin/attendance/:userId/excel', authenticateToken, requireAdmin, async (req, res) => {
   const { userId } = req.params;
-  try {
-    const targetUser = await db.findUserById(userId);
-    if (!targetUser) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+  const monthParam = req.query.month; // e.g. "2026-08" or undefined / "full"
 
-    // Get all logs for this user
-    const userLogs = await db.getLogsByUserId(userId);
-    
-    // Get all configured holidays
+  try {
     let holidaysList = [];
     try {
       holidaysList = await db.getHolidays();
     } catch (err) {
       console.error('Error reading holidays in attendance calculation:', err);
     }
-    
-    // Calculate days from registrationDate to today
-    const regDateStr = targetUser.registrationDate || targetUser.createdAt.split('T')[0];
-    const startDate = new Date(regDateStr);
-    startDate.setHours(12, 0, 0, 0);
-    
-    const endDate = new Date();
-    endDate.setHours(12, 0, 0, 0);
-    
-    let workingDays = 0;
-    let holidays = 0;
-    let presentDays = 0;
-    let absentDays = 0;
-    let overtimeDays = 0;
-    
-    const attendanceList = [];
+
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    
-    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      // Zero-pad the day to match Python's strftime("%d %b %Y") format (e.g. "01 Jul 2026" not "1 Jul 2026")
-      const dateStr = `${String(d.getDate()).padStart(2, '0')} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-      const isSunday = d.getDay() === 0;
-      
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      const ymdStr = `${year}-${month}-${day}`;
-      
-      const isConfiguredHoliday = holidaysList.some(h => h.date === ymdStr);
-      const isHoliday = isSunday || isConfiguredHoliday;
-      
-      const log = userLogs.find(l => l.callDate.toLowerCase() === dateStr.toLowerCase());
-      
-      if (isHoliday) {
-        holidays++;
-        if (log) {
-          overtimeDays++;
-          let durationStr = log.summary.workday_span_str || '-';
-          let netWorkHoursStr = '-';
-          if (log.summary.workday_span_secs) {
-            const netSecs = Math.max(0, log.summary.workday_span_secs - 2700);
-            const nh = Math.floor(netSecs / 3600);
-            const nm = Math.floor((netSecs % 3600) / 60);
-            const ns = netSecs % 60;
-            netWorkHoursStr = `${nh.toString().padStart(2, '0')}:${nm.toString().padStart(2, '0')}:${ns.toString().padStart(2, '0')}`;
+
+    const computeSingleUserAttendance = (targetUser, userLogs) => {
+      const regDateStr = targetUser.registrationDate || (targetUser.createdAt ? targetUser.createdAt.split('T')[0] : '2026-01-01');
+      let startDate = new Date(regDateStr);
+      startDate.setHours(12, 0, 0, 0);
+
+      let endDate = new Date();
+      endDate.setHours(12, 0, 0, 0);
+
+      if (monthParam && monthParam !== 'full' && monthParam !== 'all') {
+        const parts = monthParam.split('-');
+        if (parts.length === 2) {
+          const yNum = parseInt(parts[0]);
+          const mNum = parseInt(parts[1]) - 1;
+          const firstDayOfMonth = new Date(yNum, mNum, 1, 12, 0, 0);
+          const lastDayOfMonth = new Date(yNum, mNum + 1, 0, 12, 0, 0);
+
+          if (startDate < firstDayOfMonth) {
+            startDate = firstDayOfMonth;
           }
-          attendanceList.push({
-            date: dateStr,
-            status: 'Overtime',
-            arrival: log.summary.workday_start || '-',
-            departure: log.summary.workday_end || '-',
-            duration: durationStr,
-            netWorkHours: netWorkHoursStr,
-            talkTime: log.summary.talk_time_str || '-',
-            calls: log.summary.grand_total || 0
-          });
-        } else {
-          attendanceList.push({
-            date: dateStr,
-            status: 'Holiday',
-            arrival: '-',
-            departure: '-',
-            duration: '-',
-            netWorkHours: '-',
-            talkTime: '-',
-            calls: 0
-          });
-        }
-      } else {
-        workingDays++;
-        if (log) {
-          presentDays++;
-          let durationStr = log.summary.workday_span_str || '-';
-          let netWorkHoursStr = '-';
-          if (log.summary.workday_span_secs) {
-            const netSecs = Math.max(0, log.summary.workday_span_secs - 2700);
-            const nh = Math.floor(netSecs / 3600);
-            const nm = Math.floor((netSecs % 3600) / 60);
-            const ns = netSecs % 60;
-            netWorkHoursStr = `${nh.toString().padStart(2, '0')}:${nm.toString().padStart(2, '0')}:${ns.toString().padStart(2, '0')}`;
+          if (endDate > lastDayOfMonth) {
+            endDate = lastDayOfMonth;
           }
-          attendanceList.push({
-            date: dateStr,
-            status: 'Present',
-            arrival: log.summary.workday_start || '-',
-            departure: log.summary.workday_end || '-',
-            duration: durationStr,
-            netWorkHours: netWorkHoursStr,
-            talkTime: log.summary.talk_time_str || '-',
-            calls: log.summary.grand_total || 0
-          });
-        } else {
-          absentDays++;
-          attendanceList.push({
-            date: dateStr,
-            status: 'Absent',
-            arrival: '-',
-            departure: '-',
-            duration: '-',
-            netWorkHours: '-',
-            talkTime: '-',
-            calls: 0
-          });
         }
       }
-    }
 
-    const payload = {
-      userName: targetUser.name,
-      domain: targetUser.domain || 'Pending',
-      branch: targetUser.branch || 'Pending',
-      registrationDate: regDateStr,
-      summary: {
-        workingDays,
-        holidays,
-        presentDays,
-        absentDays,
-        overtimeDays
-      },
-      history: attendanceList.reverse() // Keep newest first like in UI
+      let workingDays = 0;
+      let holidays = 0;
+      let presentDays = 0;
+      let absentDays = 0;
+      let overtimeDays = 0;
+
+      const attendanceList = [];
+
+      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+        const dateStr = `${String(d.getDate()).padStart(2, '0')} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+        const isSunday = d.getDay() === 0;
+
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const ymdStr = `${year}-${month}-${day}`;
+
+        const isConfiguredHoliday = holidaysList.some(h => h.date === ymdStr);
+        const isHoliday = isSunday || isConfiguredHoliday;
+
+        const log = userLogs.find(l => l.callDate.toLowerCase() === dateStr.toLowerCase());
+
+        if (isHoliday) {
+          holidays++;
+          if (log) {
+            overtimeDays++;
+            let durationStr = log.summary.workday_span_str || '-';
+            let netWorkHoursStr = '-';
+            if (log.summary.workday_span_secs) {
+              const netSecs = Math.max(0, log.summary.workday_span_secs - 2700);
+              const nh = Math.floor(netSecs / 3600);
+              const nm = Math.floor((netSecs % 3600) / 60);
+              const ns = netSecs % 60;
+              netWorkHoursStr = `${nh.toString().padStart(2, '0')}:${nm.toString().padStart(2, '0')}:${ns.toString().padStart(2, '0')}`;
+            }
+            attendanceList.push({
+              date: dateStr,
+              status: 'Overtime',
+              arrival: log.summary.workday_start || '-',
+              departure: log.summary.workday_end || '-',
+              duration: durationStr,
+              netWorkHours: netWorkHoursStr,
+              talkTime: log.summary.talk_time_str || '-',
+              calls: log.summary.grand_total || 0
+            });
+          } else {
+            attendanceList.push({
+              date: dateStr,
+              status: 'Holiday',
+              arrival: '-',
+              departure: '-',
+              duration: '-',
+              netWorkHours: '-',
+              talkTime: '-',
+              calls: 0
+            });
+          }
+        } else {
+          workingDays++;
+          if (log) {
+            presentDays++;
+            let durationStr = log.summary.workday_span_str || '-';
+            let netWorkHoursStr = '-';
+            if (log.summary.workday_span_secs) {
+              const netSecs = Math.max(0, log.summary.workday_span_secs - 2700);
+              const nh = Math.floor(netSecs / 3600);
+              const nm = Math.floor((netSecs % 3600) / 60);
+              const ns = netSecs % 60;
+              netWorkHoursStr = `${nh.toString().padStart(2, '0')}:${nm.toString().padStart(2, '0')}:${ns.toString().padStart(2, '0')}`;
+            }
+            attendanceList.push({
+              date: dateStr,
+              status: 'Present',
+              arrival: log.summary.workday_start || '-',
+              departure: log.summary.workday_end || '-',
+              duration: durationStr,
+              netWorkHours: netWorkHoursStr,
+              talkTime: log.summary.talk_time_str || '-',
+              calls: log.summary.grand_total || 0
+            });
+          } else {
+            absentDays++;
+            attendanceList.push({
+              date: dateStr,
+              status: 'Absent',
+              arrival: '-',
+              departure: '-',
+              duration: '-',
+              netWorkHours: '-',
+              talkTime: '-',
+              calls: 0
+            });
+          }
+        }
+      }
+
+      return {
+        userName: targetUser.name,
+        email: targetUser.email,
+        domain: targetUser.domain || 'Pending',
+        branch: targetUser.branch || 'Pending',
+        registrationDate: regDateStr,
+        summary: {
+          workingDays,
+          holidays,
+          presentDays,
+          absentDays,
+          overtimeDays
+        },
+        history: attendanceList.reverse()
+      };
     };
 
-    const safeUserName = targetUser.name.replace(/\s+/g, '_');
-    const outputFilename = `${safeUserName}_AttendanceReport_${Date.now()}.xlsx`;
+    let payload = {};
+    let downloadName = '';
+
+    if (userId === 'all') {
+      const allUsers = await db.listUsers();
+      const nonAdminUsers = allUsers.filter(u => u.role !== 'admin');
+      const allLogs = await db.getAllLogs();
+
+      const employeesData = nonAdminUsers.map(u => {
+        const uLogs = allLogs.filter(l => l.userId === u.id || (u.email && l.userId === u.email) || (l.user && l.user.email === u.email));
+        return computeSingleUserAttendance(u, uLogs);
+      });
+
+      let periodLabel = 'Full Period';
+      if (monthParam && monthParam !== 'full' && monthParam !== 'all') {
+        const [y, m] = monthParam.split('-');
+        const d = new Date(parseInt(y), parseInt(m) - 1, 1);
+        periodLabel = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      }
+
+      payload = {
+        isAllEmployees: true,
+        periodName: periodLabel,
+        employeesData
+      };
+      downloadName = `All_Employees_Attendance_${monthParam && monthParam !== 'full' ? monthParam : 'Full_Report'}.xlsx`;
+
+    } else {
+      const targetUser = await db.findUserById(userId);
+      if (!targetUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      const userLogs = await db.getLogsByUserId(userId);
+      payload = computeSingleUserAttendance(targetUser, userLogs);
+      const safeUserName = targetUser.name.replace(/\s+/g, '_');
+      downloadName = `${safeUserName}_Attendance_${monthParam && monthParam !== 'full' ? monthParam : 'Full_Report'}.xlsx`;
+    }
+
+    const outputFilename = `AttendanceReport_${Date.now()}.xlsx`;
     const outputPath = path.join(__dirname, 'uploads', outputFilename);
     const pyScript = path.join(__dirname, 'generate_attendance_report.py');
 
-    let pythonCmd = 'python';
-    try {
-      execSync('python --version', { stdio: 'ignore' });
-    } catch (e) {
-      pythonCmd = 'python3';
-    }
+    const pyCmd = getPythonCmd();
 
     const { spawn } = require('child_process');
-    const pyProcess = spawn(pythonCmd, ['-u', pyScript, '--output', outputPath]);
+    const pyProcess = spawn(pyCmd, ['-u', pyScript, '--output', outputPath]);
 
     let stderr = '';
     pyProcess.stdin.write(JSON.stringify(payload));
@@ -1695,7 +1739,6 @@ app.get('/api/admin/attendance/:userId/excel', authenticateToken, requireAdmin, 
       if (!fs.existsSync(outputPath)) {
         return res.status(500).json({ error: 'Report file was not created' });
       }
-      const downloadName = `${safeUserName}_Attendance_Report.xlsx`;
       res.download(outputPath, downloadName, (err) => {
         if (err) console.error('Error sending attendance report:', err);
         try { fs.unlinkSync(outputPath); } catch (e) {}

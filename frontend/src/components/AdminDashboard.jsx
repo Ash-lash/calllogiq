@@ -350,6 +350,12 @@ const AdminDashboard = ({ user, token }) => {
   // Aggregate download loading per userId
   const [aggregateLoading, setAggregateLoading] = useState({});
 
+  // Attendance Download Modal States
+  const [showAllAttendanceModal, setShowAllAttendanceModal] = useState(false);
+  const [showSingleAttendanceModal, setShowSingleAttendanceModal] = useState(false);
+  const [selectedAllMonth, setSelectedAllMonth] = useState('');
+  const [selectedSingleMonth, setSelectedSingleMonth] = useState('');
+
   const showProfilePopupByNameOrId = (nameOrId) => {
     if (!nameOrId) return;
     const foundUser = users.find(u => 
@@ -859,10 +865,46 @@ const AdminDashboard = ({ user, token }) => {
     }
   };
 
-  const handleAttendanceExcelDownload = async (userId, userName) => {
+  // Helper: Get available unique months from call log dates
+  const getAvailableAttendanceMonths = (userLogs = null) => {
+    const targetLogs = userLogs || logs;
+    const monthsMap = {};
+    
+    // Add current month as default fallback
+    const now = new Date();
+    const curY = now.getFullYear();
+    const curM = String(now.getMonth() + 1).padStart(2, '0');
+    const curKey = `${curY}-${curM}`;
+    monthsMap[curKey] = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+    targetLogs.forEach(l => {
+      if (!l.callDate) return;
+      try {
+        const parts = l.callDate.trim().split(' ');
+        if (parts.length >= 3) {
+          const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          const mIdx = monthNames.indexOf(parts[1]);
+          const yNum = parseInt(parts[2]);
+          if (mIdx !== -1 && yNum > 0) {
+            const mKey = `${yNum}-${String(mIdx + 1).padStart(2, '0')}`;
+            const d = new Date(yNum, mIdx, 1);
+            monthsMap[mKey] = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+          }
+        }
+      } catch (e) {}
+    });
+
+    return Object.keys(monthsMap).sort((a, b) => b.localeCompare(a)).map(k => ({
+      key: k,
+      label: monthsMap[k]
+    }));
+  };
+
+  const handleAttendanceExcelDownload = async (userId, userName, month = 'full') => {
     setAttendanceExcelLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/attendance/${userId}/excel`, {
+      const queryStr = month && month !== 'full' ? `?month=${month}` : '';
+      const res = await fetch(`${API_BASE}/api/admin/attendance/${userId}/excel${queryStr}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) {
@@ -875,7 +917,7 @@ const AdminDashboard = ({ user, token }) => {
       const a = document.createElement('a');
       const cd = res.headers.get('Content-Disposition') || '';
       const match = cd.match(/filename="(.+?)"/);
-      a.download = match ? match[1] : `${userName.replace(/\s+/g,'_')}_Attendance_Report.xlsx`;
+      a.download = match ? match[1] : (userId === 'all' ? `All_Employees_Attendance_${month !== 'full' ? month : 'Full'}.xlsx` : `${userName.replace(/\s+/g,'_')}_Attendance_Report.xlsx`);
       a.href = url;
       document.body.appendChild(a);
       a.click();
@@ -1288,36 +1330,9 @@ const AdminDashboard = ({ user, token }) => {
                 }
               }}
             />
-            <button 
-              onClick={() => setShowHolidayModal(true)}
-              className="btn btn-secondary" 
-              style={{ 
-                marginLeft: 'auto', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '0.5rem',
-                height: '42px',
-                padding: '0 1.25rem',
-                fontWeight: 600,
-                border: '2px solid #111111',
-                boxShadow: '3px 3px 0px 0px #111111',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                background: '#ffffff'
-              }}
-            >
-              <Calendar size={16} />
-              Manage Holidays
-            </button>
-
-            {selectedAttendanceUserId && attendanceData && (
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
               <button 
-                onClick={() => {
-                  const emp = users.find(u => u.id === selectedAttendanceUserId);
-                  if (emp) {
-                    handleAttendanceExcelDownload(emp.id, emp.name);
-                  }
-                }}
+                onClick={() => setShowAllAttendanceModal(true)}
                 disabled={attendanceExcelLoading}
                 className="btn btn-secondary" 
                 style={{ 
@@ -1335,9 +1350,54 @@ const AdminDashboard = ({ user, token }) => {
                 }}
               >
                 <FileSpreadsheet size={16} />
-                {attendanceExcelLoading ? 'Downloading...' : 'Download Excel'}
+                {attendanceExcelLoading ? 'Downloading...' : 'Download Full Attendance Report'}
               </button>
-            )}
+
+              <button 
+                onClick={() => setShowHolidayModal(true)}
+                className="btn btn-secondary" 
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '0.5rem',
+                  height: '42px',
+                  padding: '0 1.25rem',
+                  fontWeight: 600,
+                  border: '2px solid #111111',
+                  boxShadow: '3px 3px 0px 0px #111111',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  background: '#ffffff'
+                }}
+              >
+                <Calendar size={16} />
+                Manage Holidays
+              </button>
+
+              {selectedAttendanceUserId && attendanceData && (
+                <button 
+                  onClick={() => setShowSingleAttendanceModal(true)}
+                  disabled={attendanceExcelLoading}
+                  className="btn btn-secondary" 
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '0.5rem',
+                    height: '42px',
+                    padding: '0 1.25rem',
+                    fontWeight: 600,
+                    border: '2px solid #111111',
+                    boxShadow: '3px 3px 0px 0px #111111',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    background: '#ffffff'
+                  }}
+                >
+                  <FileSpreadsheet size={16} />
+                  {attendanceExcelLoading ? 'Downloading...' : 'Download Excel'}
+                </button>
+              )}
+            </div>
           </div>
 
           {attendanceLoading ? (
@@ -1451,9 +1511,10 @@ const AdminDashboard = ({ user, token }) => {
                               {(row.status === 'Present' || row.status === 'Overtime') && row.logId && (
                                 <button
                                   onClick={() => handleFileAction(row.logId, 'excel')}
-                                  disabled={downloadingStates[`${row.logId}_excel`]}
+                                  disabled={downloadingStates[`${row.logId}_excel`] || !(row.hasExcel || row.excelUrl)}
                                   className="btn btn-outline" 
-                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '3px', opacity: (row.hasExcel || row.excelUrl) ? 1 : 0.4, cursor: (row.hasExcel || row.excelUrl) ? 'pointer' : 'not-allowed' }}
+                                  title={(row.hasExcel || row.excelUrl) ? 'Download Excel' : 'No Excel available'}
                                 >
                                   <Download size={12} />
                                   {downloadingStates[`${row.logId}_excel`] ? 'Loading...' : 'Excel'}
@@ -1475,6 +1536,150 @@ const AdminDashboard = ({ user, token }) => {
               <p style={{ marginTop: '0.5rem' }}>Please choose a telecaller from the dropdown above to load their attendance and clock logs.</p>
             </div>
           )}
+
+          {/* Modal 1: All Employees Attendance Download Modal */}
+          {showAllAttendanceModal && (
+            <div className="modal-overlay" onClick={() => setShowAllAttendanceModal(false)}>
+              <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700 }}>Download All Employees Attendance</h3>
+                  <button className="btn-close" onClick={() => setShowAllAttendanceModal(false)}>×</button>
+                </div>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
+                  Export combined attendance reports for all telecallers across all departments.
+                </p>
+
+                {/* Option A: Month Wise */}
+                <div style={{ padding: '1.25rem', border: '2px solid #111111', boxShadow: '3px 3px 0px 0px #111111', borderRadius: '6px', marginBottom: '1.25rem', background: '#ffffff' }}>
+                  <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Calendar size={16} /> 1. Month-Wise Download
+                  </h4>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                    Select a month derived from imported call log reports:
+                  </p>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <select 
+                      value={selectedAllMonth || (getAvailableAttendanceMonths()[0] && getAvailableAttendanceMonths()[0].key)} 
+                      onChange={(e) => setSelectedAllMonth(e.target.value)}
+                      className="input"
+                      style={{ flex: 1, padding: '0.4rem 0.6rem', fontSize: '0.85rem' }}
+                    >
+                      {getAvailableAttendanceMonths().map(m => (
+                        <option key={m.key} value={m.key}>{m.label}</option>
+                      ))}
+                    </select>
+                    <button 
+                      onClick={() => {
+                        const targetM = selectedAllMonth || (getAvailableAttendanceMonths()[0] && getAvailableAttendanceMonths()[0].key);
+                        setShowAllAttendanceModal(false);
+                        handleAttendanceExcelDownload('all', 'All_Employees', targetM);
+                      }}
+                      disabled={attendanceExcelLoading}
+                      className="btn btn-primary"
+                      style={{ padding: '0 1rem', fontSize: '0.85rem', fontWeight: 600 }}
+                    >
+                      Download
+                    </button>
+                  </div>
+                </div>
+
+                {/* Option B: Full Report */}
+                <div style={{ padding: '1.25rem', border: '2px solid #111111', boxShadow: '3px 3px 0px 0px #111111', borderRadius: '6px', background: '#ffffff' }}>
+                  <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FileSpreadsheet size={16} /> 2. Full Attendance Report
+                  </h4>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                    Download complete attendance records for all telecallers across all date ranges.
+                  </p>
+                  <button 
+                    onClick={() => {
+                      setShowAllAttendanceModal(false);
+                      handleAttendanceExcelDownload('all', 'All_Employees', 'full');
+                    }}
+                    disabled={attendanceExcelLoading}
+                    className="btn btn-primary"
+                    style={{ width: '100%', fontSize: '0.85rem', fontWeight: 600, padding: '0.6rem' }}
+                  >
+                    Download Full Report (All Employees)
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal 2: Single Employee Attendance Download Modal */}
+          {showSingleAttendanceModal && (() => {
+            const emp = users.find(u => u.id === selectedAttendanceUserId);
+            const empName = emp ? emp.name : 'Employee';
+            const empLogs = logs.filter(l => l.userId === selectedAttendanceUserId || (emp && emp.email && l.userId === emp.email));
+            const availableMonths = getAvailableAttendanceMonths(empLogs);
+
+            return (
+              <div className="modal-overlay" onClick={() => setShowSingleAttendanceModal(false)}>
+                <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700 }}>Download Attendance — {empName}</h3>
+                    <button className="btn-close" onClick={() => setShowSingleAttendanceModal(false)}>×</button>
+                  </div>
+
+                  {/* Option A: Month Wise */}
+                  <div style={{ padding: '1.25rem', border: '2px solid #111111', boxShadow: '3px 3px 0px 0px #111111', borderRadius: '6px', marginBottom: '1.25rem', background: '#ffffff' }}>
+                    <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Calendar size={16} /> 1. Month-Wise Download
+                    </h4>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                      Select a month derived from call logs imported for {empName}:
+                    </p>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <select 
+                        value={selectedSingleMonth || (availableMonths[0] && availableMonths[0].key)} 
+                        onChange={(e) => setSelectedSingleMonth(e.target.value)}
+                        className="input"
+                        style={{ flex: 1, padding: '0.4rem 0.6rem', fontSize: '0.85rem' }}
+                      >
+                        {availableMonths.map(m => (
+                          <option key={m.key} value={m.key}>{m.label}</option>
+                        ))}
+                      </select>
+                      <button 
+                        onClick={() => {
+                          const targetM = selectedSingleMonth || (availableMonths[0] && availableMonths[0].key);
+                          setShowSingleAttendanceModal(false);
+                          handleAttendanceExcelDownload(selectedAttendanceUserId, empName, targetM);
+                        }}
+                        disabled={attendanceExcelLoading}
+                        className="btn btn-primary"
+                        style={{ padding: '0 1rem', fontSize: '0.85rem', fontWeight: 600 }}
+                      >
+                        Download
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Option B: Full Report */}
+                  <div style={{ padding: '1.25rem', border: '2px solid #111111', boxShadow: '3px 3px 0px 0px #111111', borderRadius: '6px', background: '#ffffff' }}>
+                    <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <FileSpreadsheet size={16} /> 2. Full Attendance Report
+                    </h4>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                      Download complete attendance records for {empName} across all dates.
+                    </p>
+                    <button 
+                      onClick={() => {
+                        setShowSingleAttendanceModal(false);
+                        handleAttendanceExcelDownload(selectedAttendanceUserId, empName, 'full');
+                      }}
+                      disabled={attendanceExcelLoading}
+                      className="btn btn-primary"
+                      style={{ width: '100%', fontSize: '0.85rem', fontWeight: 600, padding: '0.6rem' }}
+                    >
+                      Download Full Report ({empName})
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 

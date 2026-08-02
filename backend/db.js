@@ -375,14 +375,13 @@ const db = {
     if (firestore) {
       const snapshot = await firestore.collection('logs')
         .where('userId', '==', userId)
+        .select('id', 'userId', 'callDate', 'summary', 'calls', 'arrivalTime', 'departureTime', 'createdAt', 'filename', 'pdfUrl', 'excelUrl')
         .get();
       const logsList = [];
       snapshot.forEach(doc => {
         const data = doc.data();
-        data.hasPdf = !!data.pdfUrl || !!data.pdfBase64;
-        data.hasExcel = !!data.excelUrl || !!data.excelBase64;
-        delete data.pdfBase64;
-        delete data.excelBase64;
+        data.hasPdf = true;
+        data.hasExcel = true;
         logsList.push({ id: doc.id, ...data });
       });
       return logsList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -392,8 +391,8 @@ const db = {
         .filter(l => l.userId === userId)
         .map(({ pdfBase64, excelBase64, ...l }) => ({
           ...l,
-          hasPdf: !!l.pdfUrl || !!pdfBase64,
-          hasExcel: !!l.excelUrl || !!excelBase64
+          hasPdf: true,
+          hasExcel: true
         }))
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     }
@@ -414,14 +413,14 @@ const db = {
   getAllLogs: async () => {
     const firestore = getFirestore();
     if (firestore) {
-      const snapshot = await firestore.collection('logs').get();
+      const snapshot = await firestore.collection('logs')
+        .select('id', 'userId', 'callDate', 'summary', 'calls', 'arrivalTime', 'departureTime', 'createdAt', 'filename', 'pdfUrl', 'excelUrl')
+        .get();
       const logsList = [];
       snapshot.forEach(doc => {
         const data = doc.data();
-        data.hasPdf = !!data.pdfUrl || !!data.pdfBase64;
-        data.hasExcel = !!data.excelUrl || !!data.excelBase64;
-        delete data.pdfBase64;
-        delete data.excelBase64;
+        data.hasPdf = true;
+        data.hasExcel = true;
         logsList.push({ id: doc.id, ...data });
       });
       return logsList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -430,8 +429,8 @@ const db = {
       return data.logs
         .map(({ pdfBase64, excelBase64, ...l }) => ({
           ...l,
-          hasPdf: !!l.pdfUrl || !!pdfBase64,
-          hasExcel: !!l.excelUrl || !!excelBase64
+          hasPdf: true,
+          hasExcel: true
         }))
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     }

@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://calllogiq-backend.onrender.com/api/:path*"
+      "destination": "http://13.126.122.52/api/:path*"
     },
     {
       "source": "/(.*)",

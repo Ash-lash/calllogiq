@@ -38,8 +38,6 @@ try {
 
 const https = require('https');
 const http = require('http');
-const { fetch } = require('undici'); // Use undici fetch for consistent HTTP behaviour
-
 // Cloudinary SDK Configuration
 const cloudinary = require('cloudinary').v2;
 const isCloudinaryConfigured = process.env.CLOUDINARY_CLOUD_NAME && 

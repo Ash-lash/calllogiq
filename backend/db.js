@@ -341,115 +341,147 @@ const db = {
       id
     };
     
-    if (firestore) {
-      await firestore.collection('logs').doc(id).set(newLog);
-      return newLog;
-    } else {
-      const data = readLocalDB();
-      const UPLOADS_DIR = path.join(__dirname, 'uploads');
-      if (newLog.pdfBase64) {
-        try {
-          if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-          fs.writeFileSync(path.join(UPLOADS_DIR, `pdf_${id}.pdf`), Buffer.from(newLog.pdfBase64, 'base64'));
-        } catch (e) {}
-        delete newLog.pdfBase64;
-        newLog.hasPdf = true;
-      }
-      if (newLog.excelBase64) {
-        try {
-          if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-          fs.writeFileSync(path.join(UPLOADS_DIR, `excel_${id}.xlsx`), Buffer.from(newLog.excelBase64, 'base64'));
-        } catch (e) {}
-        delete newLog.excelBase64;
-        newLog.hasExcel = true;
-      }
-
-      data.logs.push(newLog);
-      writeLocalDB(data);
-      return newLog;
+    // Always persist binary files locally to disk
+    const UPLOADS_DIR = path.join(__dirname, 'uploads');
+    if (newLog.pdfBase64) {
+      try {
+        if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+        fs.writeFileSync(path.join(UPLOADS_DIR, `pdf_${id}.pdf`), Buffer.from(newLog.pdfBase64, 'base64'));
+      } catch (e) {}
     }
+    if (newLog.excelBase64) {
+      try {
+        if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+        fs.writeFileSync(path.join(UPLOADS_DIR, `excel_${id}.xlsx`), Buffer.from(newLog.excelBase64, 'base64'));
+      } catch (e) {}
+    }
+
+    if (firestore) {
+      try {
+        const firestoreLog = { ...newLog };
+        // Firestore has a hard 1MB document limit. If payload > 800KB, strip Base64
+        const docSize = JSON.stringify(firestoreLog).length;
+        if (docSize > 800000) {
+          console.warn(`[Firestore] Document ${id} is ${docSize} bytes (exceeds 800KB safe threshold). Omit base64 to avoid Firestore error.`);
+          delete firestoreLog.pdfBase64;
+          delete firestoreLog.excelBase64;
+          firestoreLog.hasPdf = true;
+          firestoreLog.hasExcel = true;
+        }
+        await firestore.collection('logs').doc(id).set(firestoreLog);
+        return newLog;
+      } catch (fsErr) {
+        console.error('Firestore createLog error, falling back to local DB:', fsErr);
+      }
+    }
+
+    const data = readLocalDB();
+    const cleanLog = { ...newLog };
+    delete cleanLog.pdfBase64;
+    delete cleanLog.excelBase64;
+    cleanLog.hasPdf = true;
+    cleanLog.hasExcel = true;
+    data.logs.push(cleanLog);
+    writeLocalDB(data);
+    return cleanLog;
   },
 
   getLogsByUserId: async (userId) => {
     const firestore = getFirestore();
     if (firestore) {
-      const snapshot = await firestore.collection('logs')
-        .where('userId', '==', userId)
-        .select('id', 'userId', 'callDate', 'summary', 'calls', 'arrivalTime', 'departureTime', 'createdAt', 'filename', 'pdfUrl', 'excelUrl')
-        .get();
-      const logsList = [];
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        data.hasPdf = true;
-        data.hasExcel = true;
-        logsList.push({ id: doc.id, ...data });
-      });
-      return logsList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    } else {
-      const data = readLocalDB();
-      return data.logs
-        .filter(l => l.userId === userId)
-        .map(({ pdfBase64, excelBase64, ...l }) => ({
-          ...l,
-          hasPdf: true,
-          hasExcel: true
-        }))
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      try {
+        const snapshot = await firestore.collection('logs')
+          .where('userId', '==', userId)
+          .get();
+        const logsList = [];
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          data.hasPdf = true;
+          data.hasExcel = true;
+          delete data.pdfBase64;
+          delete data.excelBase64;
+          logsList.push({ id: doc.id, ...data });
+        });
+        return logsList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      } catch (fsErr) {
+        console.error('Firestore getLogsByUserId error, falling back to local DB:', fsErr);
+      }
     }
+    const data = readLocalDB();
+    return data.logs
+      .filter(l => l.userId === userId)
+      .map(({ pdfBase64, excelBase64, ...l }) => ({
+        ...l,
+        hasPdf: true,
+        hasExcel: true
+      }))
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   },
 
   getLogById: async (id) => {
     const firestore = getFirestore();
     if (firestore) {
-      const doc = await firestore.collection('logs').doc(id).get();
-      if (!doc.exists) return null;
-      return { id: doc.id, ...doc.data() };
-    } else {
-      const data = readLocalDB();
-      return data.logs.find(l => l.id === id) || null;
+      try {
+        const doc = await firestore.collection('logs').doc(id).get();
+        if (doc.exists) {
+          return { id: doc.id, ...doc.data() };
+        }
+      } catch (fsErr) {
+        console.error('Firestore getLogById error, falling back to local DB:', fsErr);
+      }
     }
+    const data = readLocalDB();
+    return data.logs.find(l => l.id === id) || null;
   },
 
   getAllLogs: async () => {
     const firestore = getFirestore();
     if (firestore) {
-      const snapshot = await firestore.collection('logs')
-        .select('id', 'userId', 'callDate', 'summary', 'calls', 'arrivalTime', 'departureTime', 'createdAt', 'filename', 'pdfUrl', 'excelUrl')
-        .get();
-      const logsList = [];
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        data.hasPdf = true;
-        data.hasExcel = true;
-        logsList.push({ id: doc.id, ...data });
-      });
-      return logsList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    } else {
-      const data = readLocalDB();
-      return data.logs
-        .map(({ pdfBase64, excelBase64, ...l }) => ({
-          ...l,
-          hasPdf: true,
-          hasExcel: true
-        }))
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      try {
+        const snapshot = await firestore.collection('logs').get();
+        const logsList = [];
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          data.hasPdf = true;
+          data.hasExcel = true;
+          delete data.pdfBase64;
+          delete data.excelBase64;
+          logsList.push({ id: doc.id, ...data });
+        });
+        return logsList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      } catch (fsErr) {
+        console.error('Firestore getAllLogs error, falling back to local DB:', fsErr);
+      }
     }
+    const data = readLocalDB();
+    return data.logs
+      .map(({ pdfBase64, excelBase64, ...l }) => ({
+        ...l,
+        hasPdf: true,
+        hasExcel: true
+      }))
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   },
 
   updateLog: async (id, updatedFields) => {
     const firestore = getFirestore();
     if (firestore) {
-      await firestore.collection('logs').doc(id).update(updatedFields);
-      const doc = await firestore.collection('logs').doc(id).get();
-      return { id: doc.id, ...doc.data() };
-    } else {
-      const data = readLocalDB();
-      const idx = data.logs.findIndex(l => l.id === id);
-      if (idx === -1) return null;
-      data.logs[idx] = { ...data.logs[idx], ...updatedFields };
-      writeLocalDB(data);
-      return data.logs[idx];
+      try {
+        await firestore.collection('logs').doc(id).update(updatedFields);
+        const doc = await firestore.collection('logs').doc(id).get();
+        if (doc.exists) {
+          return { id: doc.id, ...doc.data() };
+        }
+      } catch (fsErr) {
+        console.error('Firestore updateLog error, falling back to local DB:', fsErr);
+      }
     }
+    const data = readLocalDB();
+    const idx = data.logs.findIndex(l => l.id === id);
+    if (idx === -1) return null;
+    data.logs[idx] = { ...data.logs[idx], ...updatedFields };
+    writeLocalDB(data);
+    return data.logs[idx];
   },
 
   // --- TASKS ---

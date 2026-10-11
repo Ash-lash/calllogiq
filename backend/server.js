@@ -882,10 +882,17 @@ app.post('/api/calls/upload', authenticateToken, (req, res) => {
     
     // Push the analysis function to the queue
     analysisQueue.push(() => {
-      return new Promise((resolve) => {
-        // Fetch all logs for this user first, then run the analyzer
-        db.getAllLogs().then(async (allLogs) => {
+      return new Promise(async (resolve) => {
+        // Fetch existing logs ONLY for this user (avoids downloading 1700+ logs for the entire company)
+        let userLogs = [];
+        try {
+          userLogs = await db.getLogsByUserId(userId);
+        } catch (fetchErr) {
+          console.error('[Upload Queue] Warning: Could not fetch existing user logs for duplication check:', fetchErr);
+          userLogs = [];
+        }
 
+        try {
           // Call Python analyzer FIRST so we know the PDF's date
           const pyScript = path.join(__dirname, 'analyzer.py');
           const pyCmd = getPythonCmd();
@@ -896,7 +903,6 @@ app.post('/api/calls/upload', authenticateToken, (req, res) => {
               if (fs.existsSync(pdfPath)) {
                 fs.unlinkSync(pdfPath);
               }
-              // Programmer-friendly detailed log
               console.error('--- UPLOAD ANALYZER FAILURE (Developer Log) ---');
               console.error('Command:', command);
               console.error('Exit Code:', error.code);
@@ -918,7 +924,6 @@ app.post('/api/calls/upload', authenticateToken, (req, res) => {
                 if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
                 if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
                 
-                // Programmer-friendly detailed log
                 console.error('--- UPLOAD JSON PARSE FAILURE (Developer Log) ---');
                 console.error('Raw stdout:', stdout);
                 console.error('Parse Error:', parseErr);
@@ -934,7 +939,6 @@ app.post('/api/calls/upload', authenticateToken, (req, res) => {
                 if (fs.existsSync(pdfPath)) {
                   fs.unlinkSync(pdfPath);
                 }
-                // Programmer-friendly log
                 console.error('--- ANALYZER RETURNED ERROR (Developer Log) ---');
                 console.error('Error string:', analysisData.error);
                 console.error('------------------------------------------------');
@@ -951,7 +955,7 @@ app.post('/api/calls/upload', authenticateToken, (req, res) => {
               }
               
               // 3 UNIQUE PDFS PER DATE CONSTRAINT CHECK (based on PDF's own callDate)
-              const existingLogsForDate = allLogs.filter(l => l.userId === userId && l.callDate === analysisData.call_date);
+              const existingLogsForDate = (userLogs || []).filter(l => l && l.callDate === analysisData.call_date);
               
               if (existingLogsForDate.length >= 3) {
                 if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
@@ -964,11 +968,12 @@ app.post('/api/calls/upload', authenticateToken, (req, res) => {
 
               // Helper to check if two call lists are identical
               const areCallListsIdentical = (listA, listB) => {
-                if (!listA || !listB) return false;
+                if (!Array.isArray(listA) || !Array.isArray(listB)) return false;
                 if (listA.length !== listB.length) return false;
                 for (let i = 0; i < listA.length; i++) {
                   const cA = listA[i];
                   const cB = listB[i];
+                  if (!cA || !cB) return false;
                   if (cA.phone !== cB.phone ||
                       cA.time_str !== cB.time_str ||
                       cA.duration_secs !== cB.duration_secs ||
@@ -980,7 +985,7 @@ app.post('/api/calls/upload', authenticateToken, (req, res) => {
               };
 
               // Reject if an identical call log content exists for this date
-              const isDuplicate = existingLogsForDate.some(el => areCallListsIdentical(el.calls, analysisData.calls));
+              const isDuplicate = existingLogsForDate.some(el => el && areCallListsIdentical(el.calls, analysisData.calls));
               if (isDuplicate) {
                 if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
                 if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
@@ -999,7 +1004,7 @@ app.post('/api/calls/upload', authenticateToken, (req, res) => {
                 fs.renameSync(excelPath, finalPath);
               }
 
-              // Convert PDF and Excel to Base64 strings for Firestore storage
+              // Convert PDF and Excel to Base64 strings for storage
               let pdfBase64 = '';
               try {
                 if (fs.existsSync(pdfPath)) {
@@ -1049,7 +1054,6 @@ app.post('/api/calls/upload', authenticateToken, (req, res) => {
               if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
               if (fs.existsSync(excelPath)) { fs.unlinkSync(excelPath); }
               
-              // Programmer-friendly detailed log
               console.error('--- UPLOAD EXCEPTION (Developer Log) ---');
               console.error('Error:', parseErr);
               console.error('----------------------------------------');
@@ -1060,12 +1064,12 @@ app.post('/api/calls/upload', authenticateToken, (req, res) => {
               resolve();
             }
           });
-        }).catch(err => {
+        } catch (queueExecErr) {
           if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); }
-          console.error('Queue database retrieval error:', err);
-          res.status(500).json({ error: 'Database retrieval error' });
+          console.error('[Upload Queue] Execution error:', queueExecErr);
+          res.status(500).json({ error: 'Failed to process call log upload. Please try again.' });
           resolve();
-        });
+        }
       });
     });
     
@@ -1076,8 +1080,13 @@ app.post('/api/calls/upload', authenticateToken, (req, res) => {
 
 // Get history of uploads
 app.get('/api/calls/history', authenticateToken, async (req, res) => {
-  const logs = await db.getLogsByUserId(req.user.userId);
-  return res.json(logs);
+  try {
+    const logs = await db.getLogsByUserId(req.user.userId);
+    return res.json(logs || []);
+  } catch (err) {
+    console.error('Error fetching user call history:', err);
+    return res.json([]);
+  }
 });
 
 // Download Generated Excel File (Admin only)
